@@ -1,4 +1,5 @@
 import java.util.Properties
+import java.io.FileInputStream
 
 plugins {
     id("com.android.application")
@@ -13,6 +14,10 @@ val tauriProperties = Properties().apply {
     }
 }
 
+// Signing configuration
+val keystorePath = file("easywork-keystore.jks")
+val hasKeystore = keystorePath.exists()
+
 android {
     compileSdk = 36
     namespace = "com.easywork.desktop"
@@ -23,6 +28,21 @@ android {
         targetSdk = 36
         versionCode = tauriProperties.getProperty("tauri.android.versionCode", "1").toInt()
         versionName = tauriProperties.getProperty("tauri.android.versionName", "1.0")
+
+        // Only build arm64-v8a
+        ndk {
+            abiFilters += listOf("arm64-v8a")
+        }
+    }
+    signingConfigs {
+        if (hasKeystore) {
+            create("release") {
+                storeFile = keystorePath
+                storePassword = "easywork123"
+                keyAlias = "easywork"
+                keyPassword = "easywork123"
+            }
+        }
     }
     buildTypes {
         getByName("debug") {
@@ -30,10 +50,8 @@ android {
             isDebuggable = true
             isJniDebuggable = true
             isMinifyEnabled = false
-            packaging {                jniLibs.keepDebugSymbols.add("*/arm64-v8a/*.so")
-                jniLibs.keepDebugSymbols.add("*/armeabi-v7a/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86/*.so")
-                jniLibs.keepDebugSymbols.add("*/x86_64/*.so")
+            packaging {
+                jniLibs.keepDebugSymbols.add("*/arm64-v8a/*.so")
             }
         }
         getByName("release") {
@@ -43,6 +61,9 @@ android {
                     .plus(getDefaultProguardFile("proguard-android-optimize.txt"))
                     .toList().toTypedArray()
             )
+            if (hasKeystore) {
+                signingConfig = signingConfigs.getByName("release")
+            }
         }
     }
     kotlinOptions {

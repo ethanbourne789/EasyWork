@@ -179,6 +179,66 @@ pub fn update_message_thread_id(pool: &DbPool, message_id: i64, thread_id: &str)
     Ok(())
 }
 
+/// Find messages whose thread_id doesn't match their Message-ID references.
+/// Returns (message_id, current_thread_id, message_id_header, in_reply_to) tuples.
+pub fn find_mislinked_threads(pool: &DbPool, account_id: i64) -> Result<Vec<(i64, String, String, String)>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, thread_id, message_id_header, subject
+         FROM mail_messages
+         WHERE account_id = ?1 AND is_deleted = 0
+         ORDER BY id DESC LIMIT 200"
+    )?;
+    let rows = stmt.query_map(params![account_id], |row| {
+        let id: i64 = row.get(0)?;
+        let thread_id: String = row.get(1)?;
+        let msg_id: String = row.get(2)?;
+        let subject: String = row.get(3)?;
+        Ok((id, thread_id, msg_id, subject))
+    })?;
+    let mut results = Vec::new();
+    for row in rows {
+        if let Ok((id, ref thread_id, msg_id, subject)) = row {
+            // Check if any other message references this msg_id with different thread_id
+            let mut check = conn.prepare(
+                "SELECT id, thread_id FROM mail_messages
+                 WHERE account_id = ?1 AND is_deleted = 0
+                 AND (in_reply_to = ?2 OR message_id_header = ?2)
+                 AND thread_id != ?3
+                 LIMIT 1"
+            ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+            let ref_found: Result<Option<(i64, String)>> = check.query_row(
+                params![account_id, msg_id, thread_id],
+                |row| Ok((row.get(0)?, row.get(1)?)),
+            ).map(Some)
+             .or_else(|e| if e == rusqlite::Error::QueryReturnedNoRows { Ok(None) } else { Err(e) });
+
+            if let Ok(Some((_ref_id, ref_thread_id))) = ref_found {
+                results.push((id, thread_id.clone(), msg_id, subject));
+            }
+        }
+    }
+    Ok(results)
+}
+
+/// Get the thread_id of a message by its message_id_header (e.g. "<abc@example.com>").
+pub fn get_thread_id_by_message_id(pool: &DbPool, account_id: i64, message_id_header: &str) -> Result<Option<String>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    match conn.query_row(
+        "SELECT thread_id FROM mail_messages
+         WHERE account_id = ?1 AND (message_id_header = ?2 OR message_id_header LIKE ?3)
+         AND is_deleted = 0
+         LIMIT 1",
+        params![account_id, message_id_header, format!("%<{}%", message_id_header.trim_matches('<'))],
+        |row| row.get(0),
+    ) {
+        Ok(tid) => Ok(Some(tid)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn list_messages(
     pool: &DbPool,
     account_id: i64,

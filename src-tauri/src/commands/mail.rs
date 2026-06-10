@@ -548,9 +548,11 @@ pub async fn sync_account_impl(
                                 let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
                                 let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
                                 if !parsed.attachments.is_empty() {
-                                    let app_data_dir = std::env::current_dir()
-                                        .unwrap_or_else(|_| std::path::PathBuf::from("."));
-                                    let attach_dir = app_data_dir.join("mail_attachments").join(msg_id.to_string());
+                                    let base_dir = ops::get_config(&pool, "app_data_dir")
+                                        .map(std::path::PathBuf::from)
+                                        .unwrap_or_else(|| std::env::current_dir()
+                                            .unwrap_or_else(|_| std::path::PathBuf::from(".")));
+                                    let attach_dir = base_dir.join("mail_attachments").join(msg_id.to_string());
                                     let _ = std::fs::create_dir_all(&attach_dir);
                                     for att in &parsed.attachments {
                                         let safe_name = sanitize_filename::sanitize(&att.filename);

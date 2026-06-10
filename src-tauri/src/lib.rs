@@ -11,6 +11,8 @@ use tauri::{
     tray::TrayIconBuilder,
 };
 use tauri_plugin_notification::NotificationExt;
+#[cfg(desktop)]
+use tauri_plugin_global_shortcut::GlobalShortcutExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
@@ -67,6 +69,38 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
     Ok(())
 }
 
+// ---- Tauri Commands for global-shortcut & autostart ----
+
+#[tauri::command]
+async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    let manager = app.state::<tauri_plugin_autostart::AutoLaunchManager>();
+    if enabled {
+        manager.enable().map_err(|e| format!("Failed to enable autostart: {}", e))?;
+    } else {
+        manager.disable().map_err(|e| format!("Failed to disable autostart: {}", e))?;
+    }
+    log::info!("Autostart set to {}", enabled);
+    Ok(())
+}
+
+#[tauri::command]
+async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
+    let manager = app.state::<tauri_plugin_autostart::AutoLaunchManager>();
+    manager.is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+async fn get_global_shortcut(pool: tauri::State<'_, db::DbPool>) -> Result<String, String> {
+    Ok(db::ops::get_config(&pool, "global_shortcut").unwrap_or_else(|| "Alt+W".to_string()))
+}
+
+#[tauri::command]
+async fn set_global_shortcut(pool: tauri::State<'_, db::DbPool>, shortcut: String) -> Result<(), String> {
+    db::ops::set_config(&pool, "global_shortcut", &shortcut);
+    log::info!("Global shortcut saved: {} (will take effect on next restart)", shortcut);
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Track whether a "close to tray" event is in progress
@@ -74,6 +108,10 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
+        .plugin(tauri_plugin_autostart::init(
+            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+            Some(vec![]),
+        ))
         .setup(move |app| {
             if cfg!(debug_assertions) {
                 app.handle().plugin(
@@ -81,6 +119,51 @@ pub fn run() {
                         .level(log::LevelFilter::Info)
                         .build(),
                 )?;
+            }
+
+            // ---- Single instance (desktop only) ----
+            #[cfg(desktop)]
+            app.handle().plugin(
+                tauri_plugin_single_instance::init(|app, _args, _cwd| {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                })
+            ).ok();
+
+            // ---- Global shortcut (desktop only) ----
+            #[cfg(desktop)]
+            {
+                let app_data_dir = app.path().app_data_dir()
+                    .expect("Failed to get app data dir");
+                let pool_for_shortcut = db::init_db(&app_data_dir)
+                    .expect("Failed to init db for shortcut");
+
+                let shortcut_key = db::ops::get_config(&pool_for_shortcut, "global_shortcut")
+                    .unwrap_or_else(|| "Alt+W".to_string());
+
+                let app_handle = app.handle().clone();
+                app.handle().plugin(
+                    tauri_plugin_global_shortcut::Builder::default()
+                        .with_handler(move |_app_handle, shortcut, event| {
+                            if event.state() == tauri_plugin_global_shortcut::ShortcutState::Pressed {
+                                log::info!("Global shortcut triggered: {}", shortcut);
+                                if let Some(window) = _app_handle.get_webview_window("main") {
+                                    if window.is_visible().unwrap_or(false) {
+                                        let _ = window.hide();
+                                    } else {
+                                        let _ = window.show();
+                                        let _ = window.set_focus();
+                                    }
+                                }
+                            }
+                        })
+                        .build(),
+                )?;
+
+                // Register the configured shortcut
+                let _ = app_handle.global_shortcut().register(shortcut_key.as_str());
             }
 
             let app_data_dir = app
@@ -92,6 +175,9 @@ pub fn run() {
                 .expect("Failed to initialize mail database");
 
             app.manage(pool.clone());
+
+            // Store app_data_dir in config so background workers can find it
+            db::ops::set_config(&pool, "app_data_dir", &app_data_dir.to_string_lossy());
 
             // Start background sync worker
             let pool_clone = pool.clone();
@@ -205,6 +291,11 @@ pub fn run() {
             // Remote Images
             commands::mail::get_remote_images_enabled,
             commands::mail::set_remote_images_enabled,
+            // System
+            set_autostart,
+            get_autostart,
+            get_global_shortcut,
+            set_global_shortcut,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

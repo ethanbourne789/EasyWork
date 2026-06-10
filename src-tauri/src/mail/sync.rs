@@ -211,8 +211,10 @@ async fn sync_folder_with_cursor(
                     let _ = ops::insert_message_folder(pool, msg_id, folder_db_id);
                     let _ = ops::fts_insert(pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
                     if !parsed.attachments.is_empty() {
-                        let app_data_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
-                        let attach_dir = app_data_dir.join("mail_attachments").join(msg_id.to_string());
+                        let base_dir = ops::get_config(pool, "app_data_dir")
+                            .map(std::path::PathBuf::from)
+                            .unwrap_or_else(|| std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from(".")));
+                        let attach_dir = base_dir.join("mail_attachments").join(msg_id.to_string());
                         let _ = std::fs::create_dir_all(&attach_dir);
                         for att in &parsed.attachments {
                             let safe_name = sanitize_filename::sanitize(&att.filename);
@@ -265,6 +267,20 @@ async fn reconcile_all_accounts(pool: &DbPool) {
                 }
             }
             Err(e) => log::warn!("Reconcile failed for account {}: {}", account_id, e),
+        }
+
+        // ---- Thread re-association: find mislinked threads and fix them ----
+        if let Ok(mislinks) = ops::find_mislinked_threads(pool, account_id) {
+            for (msg_id, _current_tid, msg_id_header, _subject) in &mislinks {
+                // Look up the parent thread_id (message referenced by msg_id_header)
+                if let Ok(Some(parent_tid)) = ops::get_thread_id_by_message_id(pool, account_id, msg_id_header) {
+                    log::info!("Re-associating message {} (msg_id={}) to thread {}", msg_id, msg_id_header, parent_tid);
+                    let _ = ops::update_message_thread_id(pool, *msg_id, &parent_tid);
+                }
+            }
+            if !mislinks.is_empty() {
+                log::info!("Re-associated {} threads for account {}", mislinks.len(), account_id);
+            }
         }
     }
 }

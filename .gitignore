@@ -35,5 +35,9 @@ portable/
 # AI agent workspace (local config/memory, not part of source)
 .workbuddy/
 
+# Android keystore (sensitive, never commit)
+*.jks
+*.keystore
+
 # Generated square logo (used to generate icons)
 logo-square.png
