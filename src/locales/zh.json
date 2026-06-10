@@ -142,6 +142,8 @@
     "minutes": "分钟",
     "hours": "小时",
     "apply": "应用",
+    "remoteImages": "显示远程图片",
+    "remoteImagesHint": "开启后邮件中的远程图片将直接加载显示",
     "notifications": "通知",
     "notificationsDesc": "消息提醒与推送设置",
     "data": "数据管理",

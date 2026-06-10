@@ -5,6 +5,8 @@ interface ShadowDomEmailProps {
   className?: string
   /** Map of content_id (without angle brackets) → data URL for inline images */
   cidMap?: Record<string, string>
+  /** Whether to load remote images directly (default: true) */
+  remoteImagesEnabled?: boolean
 }
 
 /**
@@ -16,7 +18,7 @@ interface ShadowDomEmailProps {
  * - CID inline image replacement
  * - Remote image blocking (click to show)
  */
-export function ShadowDomEmail({ html, className, cidMap }: ShadowDomEmailProps) {
+export function ShadowDomEmail({ html, className, cidMap, remoteImagesEnabled = true }: ShadowDomEmailProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shadowRootRef = useRef<ShadowRoot | null>(null)
   const [showRemoteImages, setShowRemoteImages] = useState(false)
@@ -35,13 +37,13 @@ export function ShadowDomEmail({ html, className, cidMap }: ShadowDomEmailProps)
     // Replace cid: references with data URLs
     const withCid = cidMap ? replaceCidRefs(sanitized, cidMap) : sanitized
 
-    // Block remote images if not allowed
-    const finalHtml = showRemoteImages ? withCid : blockRemoteImages(withCid)
+    // Determine whether to block remote images
+    // remoteImagesEnabled=true: show all images directly (no blocking)
+    // remoteImagesEnabled=false: block remote images, show notification bar with button
+    const shouldBlock = !remoteImagesEnabled && !showRemoteImages
+    const finalHtml = shouldBlock ? blockRemoteImages(withCid) : withCid
 
-    const hasRemoteImages = !showRemoteImages && hasRemoteImgTags(withCid)
-
-    // Check for blocked images after rendering
-    const checkBlocked = hasRemoteImages
+    const hasRemoteImages = !remoteImagesEnabled && !showRemoteImages && hasRemoteImgTags(withCid)
 
     shadow.innerHTML = `
       <style>
@@ -83,7 +85,7 @@ export function ShadowDomEmail({ html, className, cidMap }: ShadowDomEmailProps)
           padding: 6px 10px;
         }
       </style>
-      ${checkBlocked ? `<div id="remote-img-bar" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:12px;color:#6b7280;display:flex;align-items:center;gap:8px;">
+      ${hasRemoteImages ? `<div id="remote-img-bar" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:12px;color:#6b7280;display:flex;align-items:center;gap:8px;">
         <span>🖼️ 邮件中包含远程图片</span>
         <button id="show-images-btn" style="background:#2563eb;color:white;border:none;border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;">显示图片</button>
       </div>` : ""}
@@ -91,13 +93,13 @@ export function ShadowDomEmail({ html, className, cidMap }: ShadowDomEmailProps)
     `
 
     // Attach event listener for "show images" button
-    if (checkBlocked) {
+    if (hasRemoteImages) {
       const btn = shadow.querySelector("#show-images-btn")
       if (btn) {
         btn.addEventListener("click", () => setShowRemoteImages(true))
       }
     }
-  }, [html, cidMap, showRemoteImages])
+  }, [html, cidMap, showRemoteImages, remoteImagesEnabled])
 
   useEffect(() => {
     renderContent()

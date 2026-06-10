@@ -213,3 +213,13 @@ export async function getCloseBehavior(): Promise<string> {
 export async function setCloseBehavior(behavior: string): Promise<void> {
   return tauriInvoke("set_close_behavior", { behavior })
 }
+
+// ==================== Remote Images ====================
+
+export async function getRemoteImagesEnabled(): Promise<boolean> {
+  return tauriInvoke<boolean>("get_remote_images_enabled")
+}
+
+export async function setRemoteImagesEnabled(enabled: boolean): Promise<void> {
+  return tauriInvoke("set_remote_images_enabled", { enabled })
+}

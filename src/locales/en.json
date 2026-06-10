@@ -142,6 +142,8 @@
     "minutes": "minutes",
     "hours": "hours",
     "apply": "Apply",
+    "remoteImages": "Show Remote Images",
+    "remoteImagesHint": "When enabled, remote images in emails will load automatically",
     "notifications": "Notifications",
     "notificationsDesc": "Message alerts and push settings",
     "data": "Data Management",

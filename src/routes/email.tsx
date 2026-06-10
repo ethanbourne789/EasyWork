@@ -4,7 +4,6 @@ import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useMailStore, type MailAccount, type MailContact } from "@/stores/mail-store"
 import * as mailIpc from "@/lib/mail-ipc"
-import { demoEmails } from "@/data/demo-data"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
 import "@/lib/i18n"
@@ -611,6 +610,15 @@ function EmailPage() {
   const [dbFolders, setDbFolders] = useState<mailIpc.MailFolder[]>([])
   const [attachments, setAttachments] = useState<mailIpc.AttachmentInfo[]>([])
   const [cidMap, setCidMap] = useState<Record<string, string>>({})
+  const [remoteImagesEnabled, setRemoteImagesEnabled] = useState(true)
+
+  // Load remote images setting
+  useEffect(() => {
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (isTauri) {
+      mailIpc.getRemoteImagesEnabled().then(setRemoteImagesEnabled).catch(() => {})
+    }
+  }, [])
   const [page, setPage] = useState(1)
   const [messageBodies, setMessageBodies] = useState<Record<number, { body_text: string; body_html: string } | null>>({})
   const [threadViewId, setThreadViewId] = useState<string | null>(null)
@@ -641,9 +649,10 @@ function EmailPage() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // Load folders
+  // Load folders (re-fetch when switching accounts)
   useEffect(() => {
-    if (activeAccountId) {
+    if (activeAccountId && hasRunAutoSync.current) {
+      // Only re-fetch if auto-sync already ran (skip first load, auto-sync handles it)
       mailIpc.listFolders(activeAccountId).then(folders => {
         setDbFolders(folders)
         mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
@@ -652,8 +661,57 @@ function EmailPage() {
           setFolderUnreadCounts(map)
         }).catch(() => {})
       }).catch(() => setDbFolders([]))
-    } else { setDbFolders([]) }
+    }
   }, [activeAccountId, setFolderUnreadCounts])
+
+  // ---- Auto-sync on startup & load messages from DB ----
+  const hasRunAutoSync = useRef(false)
+
+  useEffect(() => {
+    if (!activeAccountId || hasRunAutoSync.current) return
+    hasRunAutoSync.current = true
+
+    const doAutoSync = async () => {
+      setSyncStatus({ syncing: true, lastResult: null, lastError: null })
+
+      // Wait a brief moment for folders to load, then fetch
+      await new Promise(r => setTimeout(r, 500))
+
+      // 1. Load existing messages from DB immediately
+      const folders = await mailIpc.listFolders(activeAccountId).catch(() => [] as mailIpc.MailFolder[])
+      setDbFolders(folders)
+
+      const inbox = folders.find(f => f.role === "inbox")
+      const folderId: number | undefined = inbox?.id ?? undefined
+
+      try {
+        const existing = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
+        setMessages(existing)
+      } catch {}
+
+      // 2. Trigger incremental sync in background
+      try {
+        const result = await mailIpc.syncAccount(activeAccountId)
+        if (result.messages_new > 0) {
+          setToast({ message: `${result.messages_new} 封新邮件`, type: "success" })
+        }
+        // Reload messages after sync
+        const refreshed = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
+        setMessages(refreshed)
+        // Refresh unread counts
+        mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
+          const map: Record<number, number> = {}
+          counts.forEach(([fid, c]) => { map[fid] = c })
+          setFolderUnreadCounts(map)
+        }).catch(() => {})
+        setSyncStatus({ syncing: false, lastSyncAt: new Date().toLocaleTimeString(), lastResult: "同步完成" })
+      } catch {
+        setSyncStatus({ syncing: false, lastError: "同步失败", lastResult: null })
+      }
+    }
+
+    doAutoSync()
+  }, [activeAccountId])
 
   // Sorted folders
   const sortedFolders = useMemo(() => {
@@ -796,11 +854,7 @@ function EmailPage() {
   const displayMessages = useMemo(() => {
     let msgs = starredFilter
       ? messages.filter(m => m.is_starred)
-      : messages.length > 0 ? messages : (activeAccountId ? [] : demoEmails.map((e, i) => ({
-          id: i + 1, account_id: 0, remote_uid: i + 1, subject: e.subject,
-          from_name: e.fromName, from_email: e.from, date: e.date,
-          is_read: e.read, is_starred: e.starred, has_attachment: e.hasAttachment, size: 0,
-        })))
+      : messages
     if (searchFilters.from) msgs = msgs.filter(m => m.from_name.toLowerCase().includes(searchFilters.from.toLowerCase()) || m.from_email.toLowerCase().includes(searchFilters.from.toLowerCase()))
     if (searchFilters.subject) msgs = msgs.filter(m => m.subject.toLowerCase().includes(searchFilters.subject.toLowerCase()))
     if (searchFilters.hasAttachment) msgs = msgs.filter(m => m.has_attachment)
@@ -1083,7 +1137,7 @@ function EmailPage() {
                   )}
                   <div className="text-surface-700 dark:text-surface-200">
                     {messageBody?.body_html ? (
-                      <ShadowDomEmail html={messageBody.body_html} cidMap={cidMap} />
+                      <ShadowDomEmail html={messageBody.body_html} cidMap={cidMap} remoteImagesEnabled={remoteImagesEnabled} />
                     ) : messageBody?.body_text ? (
                       <div className="whitespace-pre-wrap text-sm leading-relaxed">{messageBody.body_text}</div>
                     ) : null}

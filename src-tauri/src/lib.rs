@@ -17,6 +17,13 @@ pub fn run() {
     let closing_to_tray = Arc::new(AtomicBool::new(false));
 
     tauri::Builder::default()
+        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
+            // Focus the existing window when a second instance is launched
+            if let Some(window) = app.get_webview_window("main") {
+                let _ = window.show();
+                let _ = window.set_focus();
+            }
+        }))
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -188,6 +195,9 @@ pub fn run() {
             commands::mail::get_close_behavior,
             commands::mail::set_close_behavior,
             commands::mail::get_unread_count,
+            // Remote Images
+            commands::mail::get_remote_images_enabled,
+            commands::mail::set_remote_images_enabled,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

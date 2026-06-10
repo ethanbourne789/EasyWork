@@ -587,3 +587,17 @@ pub async fn get_pending_ops_summary(
 ) -> Result<serde_json::Value, String> {
     ops::get_pending_ops_summary(&pool).map_err(|e| e.to_string())
 }
+
+// ==================== Remote Images Config ====================
+
+#[tauri::command]
+pub async fn get_remote_images_enabled(pool: State<'_, DbPool>) -> Result<bool, String> {
+    let val = ops::get_config(&pool, "remote_images_enabled");
+    Ok(val.as_deref().map(|v| v == "1").unwrap_or(true))
+}
+
+#[tauri::command]
+pub async fn set_remote_images_enabled(pool: State<'_, DbPool>, enabled: bool) -> Result<(), String> {
+    ops::set_config(&pool, "remote_images_enabled", if enabled { "1" } else { "0" });
+    Ok(())
+}

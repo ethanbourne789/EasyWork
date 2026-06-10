@@ -28,11 +28,12 @@ function SettingsPage() {
   const [themeOpen, setThemeOpen] = useState(false)
   const [langOpen, setLangOpen] = useState(false)
 
-  // Close behavior & auto-fetch
+  // Close behavior & auto-fetch & remote images
   const [closeBehavior, setCloseBehaviorState] = useState<"minimize" | "exit">("minimize")
   const [_autoFetchInterval, setAutoFetchIntervalState] = useState(300)
   const [fetchIntervalInput, setFetchIntervalInput] = useState("5")
   const [fetchIntervalUnit, setFetchIntervalUnit] = useState<"minutes" | "hours">("minutes")
+  const [remoteImagesEnabled, setRemoteImagesEnabledState] = useState(true)
 
   useEffect(() => {
     const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
@@ -48,6 +49,7 @@ function SettingsPage() {
           setFetchIntervalUnit("minutes")
         }
       }).catch(() => {})
+      mailIpc.getRemoteImagesEnabled().then(setRemoteImagesEnabledState).catch(() => {})
     }
   }, [])
 
@@ -67,6 +69,15 @@ function SettingsPage() {
     const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
     if (isTauri) {
       await mailIpc.setAutoFetchInterval(secs).catch(() => {})
+    }
+  }
+
+  const handleRemoteImagesToggle = async () => {
+    const newVal = !remoteImagesEnabled
+    setRemoteImagesEnabledState(newVal)
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (isTauri) {
+      await mailIpc.setRemoteImagesEnabled(newVal).catch(() => {})
     }
   }
 
@@ -266,6 +277,23 @@ function SettingsPage() {
           <CardDescription className="dark:text-surface-400">{t("settings.notificationsDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
+          {/* Remote images toggle */}
+          <div className="flex items-center justify-between py-2">
+            <div className="flex-1">
+              <span className="text-sm dark:text-surface-200">{t("settings.remoteImages")}</span>
+              <p className="text-xs text-surface-400 dark:text-surface-500">{t("settings.remoteImagesHint")}</p>
+            </div>
+            <button
+              onClick={handleRemoteImagesToggle}
+              className={`relative w-9 h-5 rounded-full transition-colors shrink-0 ${
+                remoteImagesEnabled ? "bg-primary-600" : "bg-surface-300 dark:bg-surface-600"
+              }`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                remoteImagesEnabled ? "translate-x-4" : "translate-x-0.5"
+              }`} />
+            </button>
+          </div>
           {[
             { label: "任务到期提醒", enabled: true },
             { label: "日历事件提醒", enabled: true },
