@@ -51,8 +51,12 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             is_read INTEGER NOT NULL DEFAULT 0,
             is_starred INTEGER NOT NULL DEFAULT 0,
             has_attachment INTEGER NOT NULL DEFAULT 0,
+            is_deleted INTEGER NOT NULL DEFAULT 0,
+            deleted_at TEXT,
+            thread_id TEXT NOT NULL DEFAULT '',
             size INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
         );
 
@@ -78,13 +82,34 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         CREATE TABLE IF NOT EXISTS mail_pending_ops (
             id INTEGER PRIMARY KEY AUTOINCREMENT,
             account_id INTEGER NOT NULL,
-            message_id INTEGER NOT NULL,
+            message_id INTEGER,
             op_type TEXT NOT NULL,
+            payload TEXT NOT NULL DEFAULT '{}',
             status TEXT NOT NULL DEFAULT 'pending',
             attempts INTEGER NOT NULL DEFAULT 0,
+            last_error TEXT,
             created_at TEXT NOT NULL DEFAULT (datetime('now')),
             FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
         );
+
+        CREATE TABLE IF NOT EXISTS mail_contacts (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            phone TEXT NOT NULL DEFAULT '',
+            group_name TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
+        );
+
+        -- Indexes
+        CREATE INDEX IF NOT EXISTS idx_mail_messages_account_id ON mail_messages(account_id);
+        CREATE INDEX IF NOT EXISTS idx_mail_messages_thread_id ON mail_messages(thread_id);
+        CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
+        CREATE INDEX IF NOT EXISTS idx_mail_pending_ops_status ON mail_pending_ops(status);
+        CREATE INDEX IF NOT EXISTS idx_mail_contacts_account_id ON mail_contacts(account_id);
         "
     )?;
 
@@ -96,6 +121,38 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         conn.execute_batch(
             "ALTER TABLE mail_accounts ADD COLUMN sync_period_days INTEGER NOT NULL DEFAULT 30;"
         )?;
+    }
+
+    // Migration: add is_deleted, deleted_at, thread_id columns
+    for (col, def) in [
+        ("is_deleted", "INTEGER NOT NULL DEFAULT 0"),
+        ("deleted_at", "TEXT"),
+        ("thread_id", "TEXT NOT NULL DEFAULT ''"),
+        ("updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))"),
+    ] {
+        let has = conn
+            .prepare(&format!("SELECT {} FROM mail_messages LIMIT 0", col))
+            .is_ok();
+        if !has {
+            conn.execute_batch(&format!(
+                "ALTER TABLE mail_messages ADD COLUMN {} {};", col, def
+            ))?;
+        }
+    }
+
+    // Migration: add payload, last_error columns to pending ops
+    for (col, def) in [
+        ("payload", "TEXT NOT NULL DEFAULT '{}'"),
+        ("last_error", "TEXT"),
+    ] {
+        let has = conn
+            .prepare(&format!("SELECT {} FROM mail_pending_ops LIMIT 0", col))
+            .is_ok();
+        if !has {
+            conn.execute_batch(&format!(
+                "ALTER TABLE mail_pending_ops ADD COLUMN {} {};", col, def
+            ))?;
+        }
     }
 
     Ok(())

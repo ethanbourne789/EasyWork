@@ -1,10 +1,9 @@
 use tauri::State;
 use crate::db::ops;
 use crate::db::DbPool;
-use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary};
+use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact};
 
-/// Structured sync result returned to frontend
-#[derive(serde::Serialize)]
+#[derive(serde::Serialize, serde::Deserialize)]
 pub struct SyncResult {
     pub success: bool,
     pub folders_count: usize,
@@ -12,6 +11,28 @@ pub struct SyncResult {
     pub messages_total: usize,
     pub error: Option<String>,
 }
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SendMailRequest {
+    pub account_id: i64,
+    pub to: String,
+    pub to_name: Option<String>,
+    pub cc: Option<String>,
+    pub bcc: Option<String>,
+    pub subject: String,
+    pub body_text: String,
+    pub body_html: Option<String>,
+    pub in_reply_to: Option<String>,
+    pub references: Option<Vec<String>>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct SendResult {
+    pub success: bool,
+    pub error: Option<String>,
+}
+
+// ==================== Account ====================
 
 #[tauri::command]
 pub async fn add_account(
@@ -61,16 +82,36 @@ pub async fn update_account(
 }
 
 #[tauri::command]
+pub async fn folder_unread_counts(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<Vec<(i64, i64)>, String> {
+    ops::folder_unread_counts(&pool, account_id).map_err(|e| e.to_string())
+}
+
+// ==================== Messages ====================
+
+#[tauri::command]
 pub async fn fetch_messages(
     pool: State<'_, DbPool>,
     account_id: i64,
+    folder_id: Option<i64>,
     page: Option<i64>,
     page_size: Option<i64>,
 ) -> Result<Vec<MailMessageSummary>, String> {
     let page = page.unwrap_or(1);
     let page_size = page_size.unwrap_or(50);
-    ops::list_messages(&pool, account_id, None, page, page_size)
+    ops::list_messages(&pool, account_id, folder_id, page, page_size)
         .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn search_messages(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+    query: String,
+) -> Result<Vec<MailMessageSummary>, String> {
+    ops::search_messages(&pool, account_id, &query).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -78,11 +119,28 @@ pub async fn get_message_body(
     pool: State<'_, DbPool>,
     message_id: i64,
 ) -> Result<serde_json::Value, String> {
-    let (body_text, body_html) = ops::get_message_body(&pool, message_id)
+    let (body_text, body_html, cc_list) = ops::get_message_body(&pool, message_id)
         .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "body_text": body_text,
         "body_html": body_html,
+        "cc_list": cc_list,
+    }))
+}
+
+#[tauri::command]
+pub async fn get_message_headers(
+    pool: State<'_, DbPool>,
+    message_id: i64,
+) -> Result<serde_json::Value, String> {
+    let (subject, from_name, from_email, to_list, msg_id) = ops::get_message_headers(&pool, message_id)
+        .map_err(|e| e.to_string())?;
+    Ok(serde_json::json!({
+        "subject": subject,
+        "from_name": from_name,
+        "from_email": from_email,
+        "to_list": to_list,
+        "message_id": msg_id,
     }))
 }
 
@@ -102,6 +160,123 @@ pub async fn toggle_message_star(
 ) -> Result<bool, String> {
     ops::toggle_star(&pool, message_id).map_err(|e| e.to_string())
 }
+
+#[tauri::command]
+pub async fn delete_message(
+    pool: State<'_, DbPool>,
+    message_id: i64,
+) -> Result<(), String> {
+    ops::soft_delete_message(&pool, message_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn archive_message(
+    pool: State<'_, DbPool>,
+    message_id: i64,
+) -> Result<(), String> {
+    ops::archive_message(&pool, message_id).map_err(|e| e.to_string())
+}
+
+// ==================== Send Mail ====================
+
+#[tauri::command]
+pub async fn send_mail(
+    pool: State<'_, DbPool>,
+    request: SendMailRequest,
+) -> Result<SendResult, String> {
+    log::info!("Sending mail from account {}: subject='{}' to='{}'", request.account_id, request.subject, request.to);
+
+    let (account, password) = ops::get_account_with_password(&pool, request.account_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Account {} not found", request.account_id))?;
+
+    // Normalize to_name: extract from "Name <email>" format if needed
+    let from_name = request.to_name.clone();
+    let (to_addr, to_name) = if let Some(start) = request.to.find('<') {
+        if let Some(end) = request.to.find('>') {
+            let name = request.to[..start].trim().trim_matches('"').to_string();
+            let addr = request.to[start + 1..end].to_string();
+            (addr, if name.is_empty() { None } else { Some(name) })
+        } else {
+            (request.to.clone(), from_name.clone())
+        }
+    } else {
+        (request.to.clone(), from_name.clone())
+    };
+
+    match mail::smtp::send_mail(
+        &account.smtp_host,
+        account.smtp_port,
+        &account.username,
+        &password,
+        &account.email,
+        from_name.as_deref(),
+        &to_addr,
+        to_name.as_deref(),
+        &request.subject,
+        &request.body_text,
+        request.body_html.as_deref(),
+    ).await {
+        Ok(()) => {
+            log::info!("Mail sent successfully from {}", account.email);
+            Ok(SendResult { success: true, error: None })
+        }
+        Err(e) => {
+            log::error!("Failed to send mail: {}", e);
+            Ok(SendResult {
+                success: false,
+                error: Some(format!("发送失败: {}", e)),
+            })
+        }
+    }
+}
+
+// ==================== Attachments ====================
+
+#[tauri::command]
+pub async fn list_message_attachments(
+    pool: State<'_, DbPool>,
+    message_id: i64,
+) -> Result<Vec<serde_json::Value>, String> {
+    let attachments = ops::list_attachments(&pool, message_id).map_err(|e| e.to_string())?;
+    Ok(attachments.into_iter().map(|(id, filename, content_type, size, local_path)| {
+        serde_json::json!({
+            "id": id,
+            "filename": filename,
+            "content_type": content_type,
+            "size": size,
+            "local_path": local_path,
+        })
+    }).collect())
+}
+
+// ==================== Contacts ====================
+
+#[tauri::command]
+pub async fn add_contact(
+    pool: State<'_, DbPool>,
+    contact: MailContact,
+) -> Result<i64, String> {
+    ops::insert_contact(&pool, &contact).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn list_contacts(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<Vec<MailContact>, String> {
+    ops::list_contacts(&pool, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_contact(
+    pool: State<'_, DbPool>,
+    id: i64,
+) -> Result<(), String> {
+    ops::delete_contact(&pool, id).map_err(|e| e.to_string())
+}
+
+// ==================== Sync ====================
 
 #[tauri::command]
 pub async fn test_connection(
@@ -125,7 +300,6 @@ pub async fn test_connection(
     }
 }
 
-/// Full IMAP sync: connect → list folders → fetch by date range → store
 #[tauri::command]
 pub async fn sync_account(
     pool: State<'_, DbPool>,
@@ -133,7 +307,6 @@ pub async fn sync_account(
 ) -> Result<SyncResult, String> {
     log::info!("Starting sync for account {}", account_id);
 
-    // 1. Get account with password and sync_period_days from DB
     let (account, password) = ops::get_account_with_password(&pool, account_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Account {} not found", account_id))?;
@@ -141,7 +314,6 @@ pub async fn sync_account(
     let period_days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
     log::info!("Sync period: {} days, connecting to {}:{}", period_days, account.imap_host, account.imap_port);
 
-    // 2. Connect IMAP
     let mut session = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
@@ -154,7 +326,6 @@ pub async fn sync_account(
         format!("IMAP 连接失败: {}", e)
     })?;
 
-    // 3. List folders → store in DB
     let remote_folders = mail::imap::list_folders(&mut session)
         .await
         .map_err(|e| {
@@ -178,7 +349,6 @@ pub async fn sync_account(
 
     log::info!("Synced {} folders for account {}", folder_db_ids.len(), account_id);
 
-    // 4. For each folder, fetch messages using date-based search
     let mut total_new = 0usize;
     let mut total_all = 0usize;
     let mut total_parsed = 0usize;
@@ -186,13 +356,11 @@ pub async fn sync_account(
     let mut total_failed_insert = 0usize;
 
     for (folder_name, folder_db_id) in &folder_db_ids {
-        // Select folder
         if let Err(e) = mail::imap::select_folder(&mut session, folder_name).await {
             log::warn!("Failed to select folder '{}': {}", folder_name, e);
             continue;
         }
 
-        // Get UIDs since sync_period_days ago
         let remote_uids = match mail::imap::fetch_uids_since(&mut session, folder_name, period_days).await {
             Ok(uids) => uids,
             Err(e) => {
@@ -207,7 +375,6 @@ pub async fn sync_account(
 
         log::info!("Folder '{}': found {} UIDs to fetch", folder_name, remote_uids.len());
 
-        // Fetch in batches of 50 to avoid overwhelming the server
         let batch_size = 50usize;
         for chunk in remote_uids.chunks(batch_size) {
             total_all += chunk.len();
@@ -226,7 +393,6 @@ pub async fn sync_account(
                 }
             };
 
-            // Bulk dedup: skip UIDs that already exist in DB (Pebble pattern)
             let chunk_uids: Vec<i64> = raw_msgs.iter().map(|(uid, _)| *uid as i64).collect();
             let existing_uids = ops::get_existing_remote_uids(&pool, account_id, &chunk_uids)
                 .unwrap_or_default();
@@ -235,15 +401,20 @@ pub async fn sync_account(
                 folder_name, raw_msgs.len(), existing_uids.len()
             );
 
-            // Parse and store each message
             for (uid, raw) in raw_msgs {
-                // Skip if already synced
                 if existing_uids.contains(&(uid as i64)) {
                     continue;
                 }
 
                 match mail::parser::parse_raw_message(&raw) {
                     Ok(parsed) => {
+                        let thread_id = mail::thread::compute_thread_id(
+                            &parsed.message_id,
+                            &parsed.in_reply_to,
+                            &parsed.references,
+                            &parsed.subject,
+                        );
+
                         let msg = MailMessage {
                             id: None,
                             account_id,
@@ -262,12 +433,34 @@ pub async fn sync_account(
                             has_attachment: !parsed.attachments.is_empty(),
                             size: raw.len() as i64,
                             folder_ids: vec![*folder_db_id],
+                            thread_id,
                         };
                         total_parsed += 1;
 
                         match ops::insert_message(&pool, &msg) {
                             Ok(msg_id) => {
                                 let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
+
+                                // Store attachments
+                                if !parsed.attachments.is_empty() {
+                                    let app_data_dir = std::env::current_dir()
+                                        .unwrap_or_else(|_| std::path::PathBuf::from("."));
+                                    let attach_dir = app_data_dir.join("mail_attachments").join(msg_id.to_string());
+                                    let _ = std::fs::create_dir_all(&attach_dir);
+                                    for att in &parsed.attachments {
+                                        let safe_name = sanitize_filename::sanitize(&att.filename);
+                                        let local_path = attach_dir.join(&safe_name);
+                                        let _ = std::fs::write(&local_path, &att.content);
+                                        let _ = ops::insert_attachment(
+                                            &pool, msg_id,
+                                            &att.filename,
+                                            &att.content_type,
+                                            att.size as i64,
+                                            &local_path.to_string_lossy(),
+                                            "",
+                                        );
+                                    }
+                                }
                                 total_new += 1;
                             }
                             Err(e) => {
@@ -291,7 +484,6 @@ pub async fn sync_account(
         }
     }
 
-    // 5. Update sync state
     let sync_state = serde_json::json!({
         "last_sync_at": chrono::Utc::now().to_rfc3339(),
         "messages_new": total_new,
@@ -299,7 +491,6 @@ pub async fn sync_account(
     });
     let _ = ops::update_sync_state(&pool, account_id, &sync_state.to_string());
 
-    // 6. Logout
     let _ = mail::imap::logout(session).await;
 
     log::info!(

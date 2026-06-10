@@ -1,4 +1,4 @@
-import type { MailAccount, MailMessageSummary } from "@/stores/mail-store"
+import type { MailAccount, MailMessageSummary, MailContact } from "@/stores/mail-store"
 
 export interface MailFolder {
   id: number | null
@@ -9,17 +9,22 @@ export interface MailFolder {
   folder_type: string
 }
 
-// Check if Tauri API is available
-const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+export interface SendMailRequest {
+  account_id: number
+  to: string
+  to_name?: string
+  cc?: string
+  bcc?: string
+  subject: string
+  body_text: string
+  body_html?: string
+  in_reply_to?: string
+  references?: string[]
+}
 
-// Dynamic import for Tauri invoke (only on desktop)
-async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
-  if (!isTauri) {
-    console.warn(`Tauri not available, command "${cmd}" skipped`)
-    throw new Error("Tauri not available")
-  }
-  const { invoke } = await import("@tauri-apps/api/core")
-  return invoke<T>(cmd, args)
+export interface SendResult {
+  success: boolean
+  error: string | null
 }
 
 export interface SyncResult {
@@ -28,6 +33,34 @@ export interface SyncResult {
   messages_new: number
   messages_total: number
   error: string | null
+}
+
+export interface AttachmentInfo {
+  id: number
+  filename: string
+  content_type: string
+  size: number
+  local_path: string
+}
+
+export interface MessageHeaders {
+  subject: string
+  from_name: string
+  from_email: string
+  to_list: string
+  message_id: string
+}
+
+// Check if Tauri API is available
+const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+
+async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T> {
+  if (!isTauri) {
+    console.warn(`Tauri not available, command "${cmd}" skipped`)
+    throw new Error("Tauri not available")
+  }
+  const { invoke } = await import("@tauri-apps/api/core")
+  return invoke<T>(cmd, args)
 }
 
 // ==================== Accounts ====================
@@ -64,20 +97,35 @@ export async function syncAccount(accountId: number): Promise<SyncResult> {
 
 export async function fetchMessages(
   accountId: number,
+  folderId?: number,
   page?: number,
-  pageSize?: number
+  pageSize?: number,
 ): Promise<MailMessageSummary[]> {
   return tauriInvoke<MailMessageSummary[]>("fetch_messages", {
     accountId,
+    folderId: folderId ?? null,
     page: page ?? 1,
     pageSize: pageSize ?? 50,
   })
 }
 
+export async function searchMessages(
+  accountId: number,
+  query: string,
+): Promise<MailMessageSummary[]> {
+  return tauriInvoke<MailMessageSummary[]>("search_messages", { accountId, query })
+}
+
 export async function getMessageBody(
   messageId: number
-): Promise<{ body_text: string; body_html: string }> {
+): Promise<{ body_text: string; body_html: string; cc_list: string }> {
   return tauriInvoke("get_message_body", { messageId })
+}
+
+export async function getMessageHeaders(
+  messageId: number
+): Promise<MessageHeaders> {
+  return tauriInvoke("get_message_headers", { messageId })
 }
 
 export async function markMessageRead(
@@ -89,4 +137,48 @@ export async function markMessageRead(
 
 export async function toggleMessageStar(messageId: number): Promise<boolean> {
   return tauriInvoke("toggle_message_star", { messageId })
+}
+
+export async function deleteMessage(messageId: number): Promise<void> {
+  return tauriInvoke("delete_message", { messageId })
+}
+
+export async function archiveMessage(messageId: number): Promise<void> {
+  return tauriInvoke("archive_message", { messageId })
+}
+
+// ==================== Send ====================
+
+export async function sendMail(request: SendMailRequest): Promise<SendResult> {
+  return tauriInvoke<SendResult>("send_mail", { request })
+}
+
+// ==================== Attachments ====================
+
+export async function listMessageAttachments(
+  messageId: number,
+): Promise<AttachmentInfo[]> {
+  return tauriInvoke<AttachmentInfo[]>("list_message_attachments", { messageId })
+}
+
+// ==================== Folders ====================
+
+export async function folderUnreadCounts(
+  accountId: number,
+): Promise<[number, number][]> {
+  return tauriInvoke<[number, number][]>("folder_unread_counts", { accountId })
+}
+
+// ==================== Contacts ====================
+
+export async function addContact(contact: MailContact): Promise<number> {
+  return tauriInvoke<number>("add_contact", { contact })
+}
+
+export async function listContacts(accountId: number): Promise<MailContact[]> {
+  return tauriInvoke<MailContact[]>("list_contacts", { accountId })
+}
+
+export async function deleteContact(id: number): Promise<void> {
+  return tauriInvoke("delete_contact", { id })
 }

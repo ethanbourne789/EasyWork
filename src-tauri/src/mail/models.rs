@@ -46,6 +46,7 @@ pub struct MailMessage {
     pub has_attachment: bool,
     pub size: i64,
     pub folder_ids: Vec<i64>,
+    pub thread_id: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -61,15 +62,25 @@ pub struct MailMessageSummary {
     pub is_starred: bool,
     pub has_attachment: bool,
     pub size: i64,
+    #[serde(default)]
+    pub thread_id: String,
+    #[serde(default)]
+    pub is_deleted: bool,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct PendingOp {
     pub id: Option<i64>,
     pub account_id: i64,
-    pub message_id: i64,
+    pub message_id: Option<i64>,
     pub op_type: String,
+    #[serde(default)]
+    pub payload: String,
     pub status: String,
+    #[serde(default)]
+    pub last_error: Option<String>,
+    #[serde(default)]
+    pub attempts: i32,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -77,4 +88,18 @@ pub struct SyncState {
     pub last_sync_uid: Option<i64>,
     pub uid_validity: Option<u64>,
     pub last_sync_at: Option<String>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailContact {
+    pub id: Option<i64>,
+    pub account_id: i64,
+    pub name: String,
+    pub email: String,
+    #[serde(default)]
+    pub phone: String,
+    #[serde(default)]
+    pub group_name: String,
+    #[serde(default)]
+    pub notes: String,
 }

@@ -28,6 +28,8 @@ export interface MailMessageSummary {
   is_starred: boolean
   has_attachment: boolean
   size: number
+  thread_id?: string
+  is_deleted?: boolean
 }
 
 export interface SyncStatus {
@@ -38,43 +40,66 @@ export interface SyncStatus {
 }
 
 export interface MailContact {
-  id: string
+  id?: number
+  account_id: number
   name: string
   email: string
   phone: string
-  group: string
+  group_name: string
   notes: string
+}
+
+export interface ComposeData {
+  to: string
+  cc: string
+  bcc: string
+  subject: string
+  body: string
+  inReplyTo?: string
+  references?: string[]
+  isReply?: boolean
+  isForward?: boolean
+  replyMessageId?: number
 }
 
 interface MailState {
   // Accounts
   accounts: MailAccount[]
+  activeAccountId: number | null
   loadingAccounts: boolean
   setAccounts: (accounts: MailAccount[]) => void
   addAccount: (account: MailAccount) => void
   removeAccount: (id: number) => void
+  setActiveAccountId: (id: number | null) => void
 
   // Messages
   messages: MailMessageSummary[]
   selectedMessageId: number | null
-  messageBody: { body_text: string; body_html: string } | null
+  messageBody: { body_text: string; body_html: string; cc_list?: string } | null
   loadingMessages: boolean
   loadingBody: boolean
   setMessages: (messages: MailMessageSummary[]) => void
   setLoadingMessages: (loading: boolean) => void
   selectMessage: (id: number | null) => void
-  setMessageBody: (body: { body_text: string; body_html: string } | null) => void
+  setMessageBody: (body: { body_text: string; body_html: string; cc_list?: string } | null) => void
   markRead: (id: number, is_read: boolean) => void
   toggleStar: (id: number) => void
+  removeMessage: (id: number) => void
+  clearMessages: () => void
+
+  // Search
+  searchQuery: string
+  setSearchQuery: (q: string) => void
 
   // UI state
   activeView: "inbox" | "account" | "contacts" | "compose"
   activeFolder: string
+  activeFolderId: number | null
   composeOpen: boolean
-  composeData: { to: string; subject: string; body: string } | null
+  composeData: ComposeData | null
   setActiveView: (view: "inbox" | "account" | "contacts" | "compose") => void
-  setActiveFolder: (folder: string) => void
-  openCompose: (data?: { to: string; subject: string; body: string }) => void
+  setActiveFolder: (folder: string, folderId?: number | null) => void
+  openCompose: (data?: Partial<ComposeData>) => void
   closeCompose: () => void
 
   // Sync
@@ -84,14 +109,29 @@ interface MailState {
   // Contacts
   contacts: MailContact[]
   setContacts: (contacts: MailContact[]) => void
+
+  // Folders
+  folderUnreadCounts: Record<number, number>
+  setFolderUnreadCounts: (counts: Record<number, number>) => void
 }
 
 export const useMailStore = create<MailState>((set) => ({
   accounts: [],
+  activeAccountId: null,
   loadingAccounts: false,
-  setAccounts: (accounts) => set({ accounts }),
-  addAccount: (account) => set((s) => ({ accounts: [...s.accounts, account] })),
-  removeAccount: (id) => set((s) => ({ accounts: s.accounts.filter((a) => a.id !== id) })),
+  setAccounts: (accounts) => set((s) => ({
+    accounts,
+    activeAccountId: s.activeAccountId ?? (accounts[0]?.id ?? null),
+  })),
+  addAccount: (account) => set((s) => ({
+    accounts: [...s.accounts, account],
+    activeAccountId: s.activeAccountId ?? account.id ?? null,
+  })),
+  removeAccount: (id) => set((s) => ({
+    accounts: s.accounts.filter((a) => a.id !== id),
+    activeAccountId: s.activeAccountId === id ? null : s.activeAccountId,
+  })),
+  setActiveAccountId: (id) => set({ activeAccountId: id }),
 
   messages: [],
   selectedMessageId: null,
@@ -112,14 +152,38 @@ export const useMailStore = create<MailState>((set) => ({
         m.id === id ? { ...m, is_starred: !m.is_starred } : m
       ),
     })),
+  removeMessage: (id) =>
+    set((s) => ({
+      messages: s.messages.filter((m) => m.id !== id),
+      selectedMessageId: s.selectedMessageId === id ? null : s.selectedMessageId,
+    })),
+  clearMessages: () => set({ messages: [], selectedMessageId: null, messageBody: null }),
+
+  searchQuery: "",
+  setSearchQuery: (q) => set({ searchQuery: q }),
 
   activeView: "inbox",
   activeFolder: "inbox",
+  activeFolderId: null,
   composeOpen: false,
   composeData: null,
   setActiveView: (view) => set({ activeView: view }),
-  setActiveFolder: (folder) => set({ activeFolder: folder }),
-  openCompose: (data) => set({ composeOpen: true, composeData: data || null }),
+  setActiveFolder: (folder, folderId) => set({ activeFolder: folder, activeFolderId: folderId ?? null }),
+  openCompose: (data) => set({
+    composeOpen: true,
+    composeData: {
+      to: data?.to || "",
+      cc: data?.cc || "",
+      bcc: data?.bcc || "",
+      subject: data?.subject || "",
+      body: data?.body || "",
+      inReplyTo: data?.inReplyTo,
+      references: data?.references,
+      isReply: data?.isReply,
+      isForward: data?.isForward,
+      replyMessageId: data?.replyMessageId,
+    },
+  }),
   closeCompose: () => set({ composeOpen: false, composeData: null }),
 
   syncStatus: { syncing: false, lastResult: null, lastError: null, lastSyncAt: null },
@@ -128,4 +192,7 @@ export const useMailStore = create<MailState>((set) => ({
 
   contacts: [],
   setContacts: (contacts) => set({ contacts }),
+
+  folderUnreadCounts: {},
+  setFolderUnreadCounts: (counts) => set({ folderUnreadCounts: counts }),
 }))
