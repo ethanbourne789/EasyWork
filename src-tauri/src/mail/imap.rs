@@ -211,6 +211,93 @@ pub async fn check_new_uid_count(
     fetch_uids_since(session, folder, since_days).await
 }
 
+/// Fetch flags (uid, is_read, is_starred) for all messages in the selected folder.
+/// Uses IMAP FETCH with FLAGS to retrieve \Seen and \Flagged states.
+pub async fn fetch_flags_batch(
+    session: &mut ImapSession,
+) -> Result<Vec<(u32, bool, bool)>, Box<dyn std::error::Error + Send + Sync>> {
+    use futures::TryStreamExt;
+
+    // Fetch all UIDs first, then batch fetch flags
+    let uids = session.uid_search("ALL").await?;
+    let uid_list: Vec<u32> = uids.into_iter().collect();
+
+    if uid_list.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let mut results = Vec::new();
+    for chunk in uid_list.chunks(100) {
+        let uid_set = chunk.iter()
+            .map(|u| u.to_string())
+            .collect::<Vec<_>>()
+            .join(",");
+        let stream = session.uid_fetch(&uid_set, "(UID FLAGS)").await?;
+        let fetches: Vec<async_imap::types::Fetch> = stream.try_collect().await?;
+
+        for fetch in &fetches {
+            if let Some(uid) = fetch.uid {
+                let mut flags = fetch.flags();
+                let is_read = flags.any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Seen"));
+                let is_starred = flags.any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Flagged"));
+                results.push((uid, is_read, is_starred));
+            }
+        }
+    }
+
+    log::info!("Fetched flags for {} messages", results.len());
+    Ok(results)
+}
+
+/// IDLE loop: wait for new mail events with a timeout.
+/// Uses a polling fallback (UID comparison) which works with all IMAP servers.
+/// Native IMAP IDLE requires async-imap v0.9 idle extension which has API limitations.
+pub async fn idle_wait(
+    session: &mut ImapSession,
+    folder: &str,
+    timeout: std::time::Duration,
+) -> Result<IdleEvent, Box<dyn std::error::Error + Send + Sync>> {
+    // Select folder and record current UID count
+    let mailbox = session.select(folder).await?;
+    let initial_exists = mailbox.exists;
+
+    // Wait for the configured duration
+    tokio::time::sleep(timeout).await;
+
+    // Re-select and check if new messages arrived
+    let mailbox = session.select(folder).await?;
+
+    if mailbox.exists > initial_exists {
+        Ok(IdleEvent::NewMail)
+    } else {
+        Ok(IdleEvent::Timeout)
+    }
+}
+
+/// Result of IDLE monitoring.
+#[derive(Debug, Clone)]
+pub enum IdleEvent {
+    NewMail,
+    Timeout,
+}
+
+/// Check for folder changes by comparing UID counts (fallback when IDLE unsupported).
+pub async fn check_folder_changes(
+    session: &mut ImapSession,
+    folder: &str,
+    last_uid: u32,
+) -> Result<(bool, u32), Box<dyn std::error::Error + Send + Sync>> {
+    session.select(folder).await?;
+    let uids = session.uid_search("ALL").await?;
+    let max_uid: u32 = uids.into_iter().max().unwrap_or(0);
+
+    if max_uid > last_uid {
+        Ok((true, max_uid))
+    } else {
+        Ok((false, last_uid))
+    }
+}
+
 pub async fn logout(
     mut session: ImapSession,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {

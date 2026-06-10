@@ -31,6 +31,9 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             name TEXT NOT NULL,
             role TEXT NOT NULL DEFAULT '',
             folder_type TEXT NOT NULL DEFAULT 'user',
+            uid_validity INTEGER,
+            highest_modseq INTEGER DEFAULT 0,
+            last_uid INTEGER DEFAULT 0,
             FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE,
             UNIQUE(account_id, remote_id)
         );
@@ -110,6 +113,14 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
         CREATE INDEX IF NOT EXISTS idx_mail_pending_ops_status ON mail_pending_ops(status);
         CREATE INDEX IF NOT EXISTS idx_mail_contacts_account_id ON mail_contacts(account_id);
+
+        -- FTS5 full-text search index
+        CREATE VIRTUAL TABLE IF NOT EXISTS mail_fts USING fts5(
+            subject, from_name, from_email, body_text,
+            content='mail_messages',
+            content_rowid='id',
+            tokenize='unicode61 remove_diacritics 2'
+        );
         "
     )?;
 
@@ -151,6 +162,22 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         if !has {
             conn.execute_batch(&format!(
                 "ALTER TABLE mail_pending_ops ADD COLUMN {} {};", col, def
+            ))?;
+        }
+    }
+
+    // Migration: add folder cursor fields (uid_validity, highest_modseq, last_uid)
+    for (col, def) in [
+        ("uid_validity", "INTEGER"),
+        ("highest_modseq", "INTEGER DEFAULT 0"),
+        ("last_uid", "INTEGER DEFAULT 0"),
+    ] {
+        let has = conn
+            .prepare(&format!("SELECT {} FROM mail_folders LIMIT 0", col))
+            .is_ok();
+        if !has {
+            conn.execute_batch(&format!(
+                "ALTER TABLE mail_folders ADD COLUMN {} {};", col, def
             ))?;
         }
     }

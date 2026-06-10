@@ -426,7 +426,7 @@ pub async fn sync_account(
                             to_list: serde_json::to_string(&parsed.to_list).unwrap_or_else(|_| "[]".into()),
                             cc_list: serde_json::to_string(&parsed.cc_list).unwrap_or_else(|_| "[]".into()),
                             date: parsed.date,
-                            body_text: parsed.body_text,
+                            body_text: parsed.body_text.clone(),
                             body_html: parsed.body_html,
                             is_read: false,
                             is_starred: false,
@@ -440,6 +440,8 @@ pub async fn sync_account(
                         match ops::insert_message(&pool, &msg) {
                             Ok(msg_id) => {
                                 let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
+                                // FTS index
+                                let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
 
                                 // Store attachments
                                 if !parsed.attachments.is_empty() {
@@ -505,4 +507,35 @@ pub async fn sync_account(
         messages_total: total_all,
         error: None,
     })
+}
+
+// ==================== Reconciliation ====================
+
+#[tauri::command]
+pub async fn reconcile_account(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<serde_json::Value, String> {
+    let (account, password) = ops::get_account_with_password(&pool, account_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Account {} not found", account_id))?;
+
+    let (flag_changes, deletions) = mail::reconcile::reconcile_account(
+        &pool, &account, account_id, &password,
+    ).await.map_err(|e| e.to_string())?;
+
+    Ok(serde_json::json!({
+        "success": true,
+        "flag_changes": flag_changes,
+        "deletions": deletions,
+    }))
+}
+
+// ==================== Pending Ops ====================
+
+#[tauri::command]
+pub async fn get_pending_ops_summary(
+    pool: State<'_, DbPool>,
+) -> Result<serde_json::Value, String> {
+    ops::get_pending_ops_summary(&pool).map_err(|e| e.to_string())
 }

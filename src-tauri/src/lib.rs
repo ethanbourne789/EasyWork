@@ -63,6 +63,9 @@ pub fn run() {
             commands::mail::add_contact,
             commands::mail::list_contacts,
             commands::mail::delete_contact,
+            // Reconciliation & Monitoring
+            commands::mail::reconcile_account,
+            commands::mail::get_pending_ops_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

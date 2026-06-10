@@ -544,9 +544,43 @@ pub fn get_existing_remote_uids(
     Ok(existing)
 }
 
-/// Search messages by keyword (subject, from, body text)
+/// Search messages by keyword using FTS5 with LIKE fallback.
 pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Vec<MailMessageSummary>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    // Try FTS5 first
+    if let Ok(mut stmt) = conn.prepare("SELECT rowid FROM mail_fts WHERE mail_fts MATCH ?1 LIMIT 200") {
+        let ids: Vec<i64> = stmt.query_map(params![query], |row| row.get(0))?
+            .filter_map(|r| r.ok()).collect();
+
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 1)).collect();
+            let sql = format!(
+                "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
+                        is_read, is_starred, has_attachment, size, thread_id, is_deleted
+                 FROM mail_messages
+                 WHERE id IN ({}) AND account_id = ?{} AND is_deleted = 0
+                 ORDER BY date DESC LIMIT 100",
+                placeholders.join(","), ids.len() + 1
+            );
+
+            if let Ok(mut msg_stmt) = conn.prepare(&sql) {
+                let mut dyn_params: Vec<Box<dyn rusqlite::types::ToSql>> = ids.iter()
+                    .map(|id| Box::new(*id) as Box<dyn rusqlite::types::ToSql>).collect();
+                dyn_params.push(Box::new(account_id));
+                let refs: Vec<&dyn rusqlite::types::ToSql> = dyn_params.iter().map(|p| p.as_ref()).collect();
+
+                let rows: Vec<MailMessageSummary> = msg_stmt.query_map(refs.as_slice(), map_summary)?
+                    .filter_map(|r| r.ok()).collect();
+                if !rows.is_empty() {
+                    return Ok(rows);
+                }
+            }
+        }
+    }
+
+    // Fallback: LIKE search
     let search = format!("%{}%", query);
     let mut stmt = conn.prepare(
         "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
@@ -556,7 +590,135 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
            AND (subject LIKE ?2 OR from_name LIKE ?2 OR from_email LIKE ?2 OR body_text LIKE ?2)
          ORDER BY date DESC LIMIT 100"
     )?;
-    let messages = stmt.query_map(params![account_id, search], map_summary)?
+    let messages: Vec<MailMessageSummary> = stmt.query_map(params![account_id, search], map_summary)?
         .filter_map(|r| r.ok()).collect();
     Ok(messages)
+}
+
+// ---- Flag Reconciliation ----
+
+/// Get local flag state for reconciliation: (msg_id, remote_uid, is_read, is_starred, updated_at_ts)
+pub fn get_local_flag_state(
+    pool: &DbPool,
+    account_id: i64,
+    folder_id: i64,
+) -> Result<Vec<(i64, i64, bool, bool, i64)>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT m.id, m.remote_uid, m.is_read, m.is_starred,
+                CAST(strftime('%s', COALESCE(m.updated_at, m.created_at)) AS INTEGER)
+         FROM mail_messages m
+         JOIN mail_message_folders mf ON m.id = mf.message_id
+         WHERE m.account_id = ?1 AND mf.folder_id = ?2 AND m.is_deleted = 0"
+    )?;
+    let results = stmt.query_map(params![account_id, folder_id], |row| {
+        Ok((row.get(0)?, row.get::<_, i64>(1)?, row.get::<_, i32>(2)? != 0, row.get::<_, i32>(3)? != 0, row.get(4)?))
+    })?.filter_map(|r| r.ok()).collect();
+    Ok(results)
+}
+
+/// Set starred flag directly (used by reconciliation, not toggle)
+pub fn set_starred(pool: &DbPool, message_id: i64, is_starred: bool) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE mail_messages SET is_starred = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![is_starred as i32, message_id],
+    )?;
+    Ok(())
+}
+
+// ---- Folder Cursor ----
+
+pub fn update_folder_cursor(
+    pool: &DbPool,
+    folder_id: i64,
+    uid_validity: Option<i64>,
+    highest_modseq: Option<i64>,
+    last_uid: Option<i32>,
+) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut updates = Vec::new();
+    let mut param_values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+
+    if let Some(v) = uid_validity {
+        updates.push("uid_validity = ?".to_string());
+        param_values.push(Box::new(v));
+    }
+    if let Some(v) = highest_modseq {
+        updates.push("highest_modseq = ?".to_string());
+        param_values.push(Box::new(v));
+    }
+    if let Some(v) = last_uid {
+        updates.push("last_uid = ?".to_string());
+        param_values.push(Box::new(v as i64));
+    }
+
+    if updates.is_empty() {
+        return Ok(());
+    }
+
+    param_values.push(Box::new(folder_id));
+    let query = format!("UPDATE mail_folders SET {} WHERE id = ?", updates.join(", "));
+    let param_refs: Vec<&dyn rusqlite::types::ToSql> = param_values.iter().map(|p| p.as_ref()).collect();
+    conn.execute(&query, param_refs.as_slice())?;
+    Ok(())
+}
+
+pub fn get_folder_cursor(pool: &DbPool, folder_id: i64) -> Result<Option<(Option<i64>, Option<i64>, Option<i32>)>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let result = conn.query_row(
+        "SELECT uid_validity, highest_modseq, last_uid FROM mail_folders WHERE id = ?1",
+        params![folder_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    );
+    match result {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+// ---- FTS ----
+
+pub fn fts_insert(pool: &DbPool, message_id: i64, subject: &str, from_name: &str, from_email: &str, body_text: &str) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    // Delete existing if any
+    conn.execute("DELETE FROM mail_fts WHERE rowid = ?1", params![message_id])?;
+    // Insert into FTS
+    conn.execute(
+        "INSERT INTO mail_fts(rowid, subject, from_name, from_email, body_text) VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![message_id, subject, from_name, from_email, body_text],
+    )?;
+    Ok(())
+}
+
+pub fn fts_delete(pool: &DbPool, message_id: i64) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute("DELETE FROM mail_fts WHERE rowid = ?1", params![message_id])?;
+    Ok(())
+}
+
+// ---- Pending Ops Summary ----
+
+pub fn get_pending_ops_summary(pool: &DbPool) -> Result<serde_json::Value> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let pending: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mail_pending_ops WHERE status = 'pending'", [],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let failed: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mail_pending_ops WHERE status = 'failed'", [],
+        |row| row.get(0),
+    ).unwrap_or(0);
+    let retrying: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mail_pending_ops WHERE status = 'retrying'", [],
+        |row| row.get(0),
+    ).unwrap_or(0);
+
+    Ok(serde_json::json!({
+        "pending_count": pending,
+        "failed_count": failed,
+        "retrying_count": retrying,
+        "total_active": pending + retrying,
+    }))
 }

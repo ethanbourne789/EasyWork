@@ -4,5 +4,6 @@ pub mod smtp;
 pub mod sync;
 pub mod parser;
 pub mod thread;
+pub mod reconcile;
 
 pub use models::*;

@@ -18,6 +18,9 @@ import { ShadowDomEmail } from "@/components/ShadowDomEmail"
 import { ThreadView } from "@/components/ThreadView"
 import { ThreadItem } from "@/components/ThreadItem"
 import { ContactAutocomplete } from "@/components/ContactAutocomplete"
+import { RichTextEditor } from "@/components/RichTextEditor"
+import { SearchFilters, type SearchFiltersState } from "@/components/SearchFilters"
+import { PendingOpsPanel } from "@/components/PendingOpsPanel"
 import { useComposeDraft } from "@/hooks/useComposeDraft"
 import { useMailShortcuts } from "@/hooks/useMailShortcuts"
 
@@ -290,6 +293,7 @@ function ComposeDialog() {
   const [bcc, setBcc] = useState(composeData?.bcc || initialDraft?.bcc || "")
   const [subject, setSubject] = useState(composeData?.subject || initialDraft?.subject || "")
   const [body, setBody] = useState(composeData?.body || initialDraft?.body || "")
+  const [bodyHtml, setBodyHtml] = useState("")
   const [showCc, setShowCc] = useState(!!(composeData?.cc || initialDraft?.cc))
   const [showBcc, setShowBcc] = useState(!!(composeData?.bcc || initialDraft?.bcc))
   const [sending, setSending] = useState(false)
@@ -320,7 +324,7 @@ function ComposeDialog() {
     try {
       const result = await mailIpc.sendMail({
         account_id: activeAccountId, to, subject, body_text: body,
-        body_html: undefined, cc: cc || undefined, bcc: bcc || undefined,
+        body_html: bodyHtml || undefined, cc: cc || undefined, bcc: bcc || undefined,
         in_reply_to: composeData?.inReplyTo, references: composeData?.references,
       })
       setSendResult(result)
@@ -361,7 +365,11 @@ function ComposeDialog() {
             <span className="text-xs text-surface-400 w-12 shrink-0">{t("mail.subject")}</span>
             <input type="text" placeholder={t("mail.subject")} value={subject} onChange={e => setSubject(e.target.value)} className="flex-1 h-10 px-2 border-0 text-sm focus:outline-none" />
           </div>
-          <textarea placeholder={t("mail.body")} value={body} onChange={e => setBody(e.target.value)} rows={12} className="w-full px-2 py-3 border-0 text-sm focus:outline-none resize-none" />
+          <RichTextEditor
+            content={body}
+            onChange={(html, text) => { setBody(text); setBodyHtml(html) }}
+            placeholder={t("mail.body")}
+          />
           {draftIndicator && <div className="text-xs text-surface-400 italic">{draftIndicator}</div>}
           {sendResult && (
             <div className={`flex items-center gap-2 p-3 rounded-lg text-sm ${sendResult.success ? "bg-emerald-50 text-emerald-700" : "bg-red-50 text-red-700"}`}>
@@ -428,6 +436,9 @@ function EmailPage() {
   const searchInputRef = useRef<HTMLInputElement>(null)
   const { hasDraft, loadDraft, clearDraft } = useComposeDraft()
   const [showDraftRecovery, setShowDraftRecovery] = useState(hasDraft)
+  const [searchFilters, setSearchFilters] = useState<SearchFiltersState>({
+    from: "", to: "", subject: "", dateFrom: "", dateTo: "", hasAttachment: false, folderId: null,
+  })
 
   // Load folders and unread counts
   useEffect(() => {
@@ -567,15 +578,35 @@ function EmailPage() {
     }
   }, [activeAccountId, activeFolder])
 
-  // Display messages
-  const displayMessages = starredFilter
-    ? messages.filter(m => m.is_starred)
-    : messages.length > 0 ? messages : (activeAccountId ? [] : demoEmails.map((e, i) => ({
-        id: i + 1, account_id: 0, remote_uid: i + 1,
-        subject: e.subject, from_name: e.fromName, from_email: e.from,
-        date: e.date, is_read: e.read, is_starred: e.starred,
-        has_attachment: e.hasAttachment, size: 0,
-      })))
+  // Display messages with frontend filters
+  const displayMessages = useMemo(() => {
+    let msgs = starredFilter
+      ? messages.filter(m => m.is_starred)
+      : messages.length > 0 ? messages : (activeAccountId ? [] : demoEmails.map((e, i) => ({
+          id: i + 1, account_id: 0, remote_uid: i + 1,
+          subject: e.subject, from_name: e.fromName, from_email: e.from,
+          date: e.date, is_read: e.read, is_starred: e.starred,
+          has_attachment: e.hasAttachment, size: 0,
+        })))
+
+    // Apply search filters on frontend (only for pre-fetched data)
+    if (searchFilters.from) {
+      msgs = msgs.filter(m => m.from_name.toLowerCase().includes(searchFilters.from.toLowerCase()) || m.from_email.toLowerCase().includes(searchFilters.from.toLowerCase()))
+    }
+    if (searchFilters.subject) {
+      msgs = msgs.filter(m => m.subject.toLowerCase().includes(searchFilters.subject.toLowerCase()))
+    }
+    if (searchFilters.hasAttachment) {
+      msgs = msgs.filter(m => m.has_attachment)
+    }
+    if (searchFilters.dateFrom) {
+      msgs = msgs.filter(m => m.date >= searchFilters.dateFrom)
+    }
+    if (searchFilters.dateTo) {
+      msgs = msgs.filter(m => m.date.split("T")[0] <= searchFilters.dateTo)
+    }
+    return msgs
+  }, [messages, starredFilter, activeAccountId, searchFilters])
 
   const selectedMessage = selectedMessageId ? displayMessages.find(m => m.id === selectedMessageId) : null
 
@@ -660,12 +691,15 @@ function EmailPage() {
               {/* Message list */}
               <div className="w-96 shrink-0 border-r border-surface-200 bg-white overflow-auto">
                 <div className="p-2">
-                  <div className="relative">
-                    <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
-                    <input ref={searchInputRef} type="text" placeholder={t("mail.search")} value={searchQuery}
-                      onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
-                      className="w-full h-8 pl-8 pr-8 text-xs bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500" />
-                    {searchQuery && <button onClick={() => { setSearchQuery(""); handleRefresh() }} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600"><X size={12} /></button>}
+                  <div className="flex items-center gap-2">
+                    <div className="relative flex-1">
+                      <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-surface-400" />
+                      <input ref={searchInputRef} type="text" placeholder={t("mail.search")} value={searchQuery}
+                        onChange={e => setSearchQuery(e.target.value)} onKeyDown={e => e.key === "Enter" && handleSearch()}
+                        className="w-full h-8 pl-8 pr-8 text-xs bg-surface-50 border border-surface-200 rounded-lg focus:outline-none focus:ring-1 focus:ring-primary-500" />
+                      {searchQuery && <button onClick={() => { setSearchQuery(""); handleRefresh() }} className="absolute right-2 top-1/2 -translate-y-1/2 text-surface-400 hover:text-surface-600"><X size={12} /></button>}
+                    </div>
+                    <SearchFilters filters={searchFilters} onChange={setSearchFilters} onClear={() => setSearchFilters({ from: "", to: "", subject: "", dateFrom: "", dateTo: "", hasAttachment: false, folderId: null })} folders={dbFolders} />
                   </div>
                 </div>
                 <div className="divide-y divide-surface-100">
@@ -777,6 +811,7 @@ function EmailPage() {
 
       {composeOpen && <ComposeDialog />}
       {showDraftRecovery && <DraftRecoveryDialog onRecover={handleDraftRecover} onDiscard={handleDraftDiscard} />}
+      <PendingOpsPanel />
     </div>
   )
 }

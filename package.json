@@ -12,6 +12,11 @@
   "dependencies": {
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-router": "^1.170.15",
+    "@tanstack/react-virtual": "^3.14.2",
+    "@tiptap/extension-placeholder": "^3.26.0",
+    "@tiptap/pm": "^3.26.0",
+    "@tiptap/react": "^3.26.0",
+    "@tiptap/starter-kit": "^3.26.0",
     "clsx": "^2.1.1",
     "i18next": "^26.3.1",
     "lucide-react": "^1.17.0",
