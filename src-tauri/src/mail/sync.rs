@@ -94,52 +94,81 @@ async fn poll_all_accounts(
         };
 
         match sync_inbox_with_cursor(pool, &mut session, account_id, days).await {
-            Ok(n) => { total_new += n; synced_accounts += 1; backoff.remove(&account_id); }
+            Ok(n) => { total_new += n; synced_accounts += 1; }
             Err(e) => {
-                log::warn!("Poll sync failed for {}: {}", account.email, e);
-                let fails = backoff.entry(account_id).or_insert(0);
-                *fails = (*fails).saturating_add(1).min(10);
+                log::warn!("Inbox sync failed for {}: {}", account.email, e);
             }
         }
+
+        // Sync all other user folders (Sent, Drafts, Archive, etc.)
+        let folders = match mail::imap::list_folders(&mut session).await {
+            Ok(f) => f,
+            Err(e) => {
+                log::warn!("Folder list failed for {}: {}", account.email, e);
+                let _ = mail::imap::logout(session).await;
+                let fails = backoff.entry(account_id).or_insert(0);
+                *fails = (*fails).saturating_add(1).min(10);
+                continue;
+            }
+        };
+
+        for (remote_id, name, role) in &folders {
+            if role == "inbox" || role == "trash" || role == "junk" {
+                continue; // INBOX already done; trash/junk don't need syncing
+            }
+            match sync_folder_with_cursor(pool, &mut session, account_id, remote_id, role, days).await {
+                Ok(n) => { total_new += n; }
+                Err(e) => log::debug!("Folder '{}' sync: {}", remote_id, e),
+            }
+        }
+
+        // Mark success
+        backoff.remove(&account_id);
         let _ = mail::imap::logout(session).await;
     }
     Ok((synced_accounts, total_new))
 }
 
-/// Sync INBOX using folder cursor for incremental update.
-async fn sync_inbox_with_cursor(
+/// Sync a specific folder using folder cursor for incremental update.
+async fn sync_folder_with_cursor(
     pool: &DbPool,
     session: &mut mail::imap::ImapSession,
     account_id: i64,
+    folder_name: &str,
+    folder_role: &str,
     period_days: i64,
 ) -> Result<usize, String> {
-    let inbox_folder = MailFolder {
-        id: None, account_id, remote_id: "INBOX".into(), name: "INBOX".into(),
-        role: "inbox".into(), folder_type: "system".into(),
+    // Ensure the folder exists in local DB
+    let folder_obj = MailFolder {
+        id: None, account_id,
+        remote_id: folder_name.into(),
+        name: folder_name.into(),
+        role: folder_role.into(),
+        folder_type: "user".into(),
     };
-    let folder_db_id = ops::insert_folder(pool, &inbox_folder).map_err(|e| e.to_string())?;
+    let folder_db_id = ops::insert_folder(pool, &folder_obj).map_err(|e| e.to_string())?;
 
-    // Check cursor for incremental sync
+    // Get cursor for incremental sync
     let cursor = ops::get_folder_cursor(pool, folder_db_id).unwrap_or(None);
     let last_uid = cursor.and_then(|c| c.2).unwrap_or(0);
 
     // Select folder and check for new UIDs
-    let mailbox = mail::imap::select_folder(session, "INBOX").await
-        .map_err(|e| format!("Select INBOX failed: {}", e))?;
+    let mailbox = mail::imap::select_folder(session, folder_name).await
+        .map_err(|e| format!("Select '{}' failed: {}", folder_name, e))?;
 
     // Update cursor with UIDVALIDITY
     let _ = ops::update_folder_cursor(pool, folder_db_id, mailbox.uid_validity.map(|v| v as i64), None, None);
 
-    // If we have a cursor, only fetch UIDs > last_uid
+    // Determine which UIDs to fetch
     let uids: Vec<u32> = if last_uid > 0 {
-        mail::imap::fetch_uids_since(session, "INBOX", period_days).await
-            .map_err(|e| format!("UID search failed: {}", e))?
+        mail::imap::fetch_uids_since(session, folder_name, period_days).await
+            .map_err(|e| format!("UID search in '{}' failed: {}", folder_name, e))?
             .into_iter()
             .filter(|&u| u > last_uid as u32)
             .collect()
     } else {
-        mail::imap::fetch_uids_since(session, "INBOX", period_days).await
-            .map_err(|e| format!("UID search failed: {}", e))?
+        mail::imap::fetch_uids_since(session, folder_name, period_days).await
+            .map_err(|e| format!("UID search in '{}' failed: {}", folder_name, e))?
     };
 
     if uids.is_empty() { return Ok(0); }
@@ -151,11 +180,11 @@ async fn sync_inbox_with_cursor(
     if new_uids.is_empty() { return Ok(0); }
 
     let mut total_new = 0usize;
-    let mut max_new_uid = last_uid as u32;
+    let mut max_new_uid = 0u32;
 
     for chunk in new_uids.chunks(50) {
         let raw_msgs = mail::imap::fetch_messages_raw_batch(session, chunk).await
-            .map_err(|e| format!("Batch fetch failed: {}", e))?;
+            .map_err(|e| format!("Batch fetch for '{}' failed: {}", folder_name, e))?;
 
         for (uid, raw) in raw_msgs {
             if let Ok(parsed) = mail::parser::parse_raw_message(&raw) {
@@ -180,9 +209,7 @@ async fn sync_inbox_with_cursor(
 
                 if let Ok(msg_id) = ops::insert_message(pool, &msg) {
                     let _ = ops::insert_message_folder(pool, msg_id, folder_db_id);
-                    // Index in FTS
                     let _ = ops::fts_insert(pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
-                    // Store attachments
                     if !parsed.attachments.is_empty() {
                         let app_data_dir = std::env::current_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
                         let attach_dir = app_data_dir.join("mail_attachments").join(msg_id.to_string());
@@ -201,15 +228,20 @@ async fn sync_inbox_with_cursor(
         }
     }
 
-    // Update cursor
     if total_new > 0 {
         let _ = ops::update_folder_cursor(pool, folder_db_id, None, None, Some(max_new_uid as i32));
     }
-
-    let state = serde_json::json!({ "last_sync_at": chrono::Utc::now().to_rfc3339(), "messages_synced": total_new, "period_days": period_days });
-    let _ = ops::update_sync_state(pool, account_id, &state.to_string());
-
     Ok(total_new)
+}
+
+/// Sync INBOX using folder cursor for incremental update.
+async fn sync_inbox_with_cursor(
+    pool: &DbPool,
+    session: &mut mail::imap::ImapSession,
+    account_id: i64,
+    period_days: i64,
+) -> Result<usize, String> {
+    sync_folder_with_cursor(pool, session, account_id, "INBOX", "inbox", period_days).await
 }
 
 /// Periodic flag reconciliation across all accounts.
@@ -278,10 +310,64 @@ async fn execute_single_pending_op(
 
     let result = match op.op_type.as_str() {
         "mark_read" => {
-            // TODO: IMAP STORE +FLAGS (\Seen) - needs remote_uid mapping
+            // Parse payload: remote_uid and is_read
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&op.payload) {
+                let remote_uid = payload["remote_uid"].as_i64().unwrap_or(0) as u32;
+                let is_read = payload["is_read"].as_bool().unwrap_or(true);
+                if remote_uid > 0 {
+                    let flags = if is_read { "+FLAGS (\\Seen)" } else { "-FLAGS (\\Seen)" };
+                    log::info!("Executing pending mark_read: UID {} -> {}", remote_uid, flags);
+                    mail::imap::store_flags(&mut session, remote_uid, flags).await
+                        .map_err(|e| format!("IMAP STORE failed: {}", e))?;
+                }
+            }
             Ok(())
         }
-        "delete" | "archive" => Ok(()),
+        "delete" => {
+            // Parse payload: remote_uid
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&op.payload) {
+                let remote_uid = payload["remote_uid"].as_i64().unwrap_or(0) as u32;
+                let msg_id = op.message_id.unwrap_or(0);
+                if remote_uid > 0 {
+                    // Mark as \Deleted on server, then expunge
+                    log::info!("Executing pending delete: UID {}", remote_uid);
+                    // Select INBOX (assumes message is in INBOX)
+                    let _ = mail::imap::select_folder(&mut session, "INBOX").await
+                        .map_err(|e| format!("Select INBOX failed: {}", e))?;
+                    mail::imap::store_flags(&mut session, remote_uid, "+FLAGS (\\Deleted)").await
+                        .map_err(|e| format!("IMAP STORE +Deleted failed: {}", e))?;
+                    mail::imap::expunge(&mut session).await
+                        .map_err(|e| format!("IMAP EXPUNGE failed: {}", e))?;
+                    // Also hard-delete from local DB
+                    if msg_id > 0 {
+                        let _ = ops::hard_delete_messages(pool, &[msg_id]);
+                    }
+                }
+            }
+            Ok(())
+        }
+        "archive" => {
+            // Parse payload: remote_uid
+            if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&op.payload) {
+                let remote_uid = payload["remote_uid"].as_i64().unwrap_or(0) as u32;
+                if remote_uid > 0 {
+                    log::info!("Executing pending archive: UID {} -> [Gmail]/All Mail or Archive", remote_uid);
+                    // Try common archive folder names
+                    for try_folder in &["[Gmail]/All Mail", "Archive", "Archives", "INBOX.Archive"] {
+                        match mail::imap::copy_and_delete(&mut session, "INBOX", remote_uid, try_folder).await {
+                            Ok(()) => return Ok(()),
+                            Err(e) => log::debug!("Archive to '{}' failed: {}", try_folder, e),
+                        }
+                    }
+                    // If all fail, just delete from inbox
+                    mail::imap::store_flags(&mut session, remote_uid, "+FLAGS (\\Deleted)").await
+                        .map_err(|e| format!("IMAP STORE +Deleted (archive fallback) failed: {}", e))?;
+                    mail::imap::expunge(&mut session).await
+                        .map_err(|e| format!("IMAP EXPUNGE (archive fallback) failed: {}", e))?;
+                }
+            }
+            Ok(())
+        }
         other => { log::debug!("Unknown pending op: {}", other); Ok(()) }
     };
 

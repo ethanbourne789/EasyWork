@@ -20,6 +20,8 @@ export interface SendMailRequest {
   body_html?: string
   in_reply_to?: string
   references?: string[]
+  /** Optional attachments: each item has filename, content_type, data_base64 (base64-encoded binary) */
+  attachments?: { filename: string; content_type: string; data_base64: string }[]
 }
 
 export interface SendResult {

@@ -2,6 +2,7 @@ use tauri::State;
 use crate::db::ops;
 use crate::db::DbPool;
 use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact};
+use base64::Engine;
 
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SyncResult {
@@ -24,6 +25,15 @@ pub struct SendMailRequest {
     pub body_html: Option<String>,
     pub in_reply_to: Option<String>,
     pub references: Option<Vec<String>>,
+    /// Optional attachments: vec of { filename, content_type, data (base64) }
+    pub attachments: Option<Vec<AttachmentItem>>,
+}
+
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct AttachmentItem {
+    pub filename: String,
+    pub content_type: String,
+    pub data_base64: String,
 }
 
 #[derive(serde::Serialize, serde::Deserialize)]
@@ -72,13 +82,10 @@ pub async fn update_account(
     pool: State<'_, DbPool>,
     account: MailAccount,
 ) -> Result<(), String> {
-    if let Some(id) = account.id {
-        ops::delete_account(&pool, id).map_err(|e| e.to_string())?;
-        ops::insert_account(&pool, &account).map_err(|e| e.to_string())?;
-        Ok(())
-    } else {
-        Err("Account ID is required for update".into())
+    if account.id.is_none() {
+        return Err("Account ID is required for update".into());
     }
+    ops::update_account(&pool, &account).map_err(|e| e.to_string())
 }
 
 #[tauri::command]
@@ -150,7 +157,27 @@ pub async fn mark_message_read(
     message_id: i64,
     is_read: bool,
 ) -> Result<(), String> {
-    ops::mark_read(&pool, message_id, is_read).map_err(|e| e.to_string())
+    ops::mark_read(&pool, message_id, is_read).map_err(|e| e.to_string())?;
+
+    // Create pending op for IMAP remote sync
+    if let Ok(Some((account_id, remote_uid, _subject))) = ops::get_message_remote_info(&pool, message_id) {
+        let payload = serde_json::json!({
+            "remote_uid": remote_uid,
+            "is_read": is_read,
+        }).to_string();
+        let op = mail::PendingOp {
+            id: None,
+            account_id,
+            message_id: Some(message_id),
+            op_type: "mark_read".into(),
+            payload,
+            status: "pending".into(),
+            last_error: None,
+            attempts: 0,
+        };
+        let _ = ops::insert_pending_op(&pool, &op);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -166,7 +193,26 @@ pub async fn delete_message(
     pool: State<'_, DbPool>,
     message_id: i64,
 ) -> Result<(), String> {
-    ops::soft_delete_message(&pool, message_id).map_err(|e| e.to_string())
+    ops::soft_delete_message(&pool, message_id).map_err(|e| e.to_string())?;
+
+    // Create pending op for IMAP remote sync
+    if let Ok(Some((account_id, remote_uid, _subject))) = ops::get_message_remote_info(&pool, message_id) {
+        let payload = serde_json::json!({
+            "remote_uid": remote_uid,
+        }).to_string();
+        let op = mail::PendingOp {
+            id: None,
+            account_id,
+            message_id: Some(message_id),
+            op_type: "delete".into(),
+            payload,
+            status: "pending".into(),
+            last_error: None,
+            attempts: 0,
+        };
+        let _ = ops::insert_pending_op(&pool, &op);
+    }
+    Ok(())
 }
 
 #[tauri::command]
@@ -174,7 +220,26 @@ pub async fn archive_message(
     pool: State<'_, DbPool>,
     message_id: i64,
 ) -> Result<(), String> {
-    ops::archive_message(&pool, message_id).map_err(|e| e.to_string())
+    ops::archive_message(&pool, message_id).map_err(|e| e.to_string())?;
+
+    // Create pending op for IMAP remote sync
+    if let Ok(Some((account_id, remote_uid, _subject))) = ops::get_message_remote_info(&pool, message_id) {
+        let payload = serde_json::json!({
+            "remote_uid": remote_uid,
+        }).to_string();
+        let op = mail::PendingOp {
+            id: None,
+            account_id,
+            message_id: Some(message_id),
+            op_type: "archive".into(),
+            payload,
+            status: "pending".into(),
+            last_error: None,
+            attempts: 0,
+        };
+        let _ = ops::insert_pending_op(&pool, &op);
+    }
+    Ok(())
 }
 
 // ==================== Send Mail ====================
@@ -190,19 +255,38 @@ pub async fn send_mail(
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Account {} not found", request.account_id))?;
 
-    // Normalize to_name: extract from "Name <email>" format if needed
     let from_name = request.to_name.clone();
-    let (to_addr, to_name) = if let Some(start) = request.to.find('<') {
-        if let Some(end) = request.to.find('>') {
-            let name = request.to[..start].trim().trim_matches('"').to_string();
-            let addr = request.to[start + 1..end].to_string();
-            (addr, if name.is_empty() { None } else { Some(name) })
-        } else {
-            (request.to.clone(), from_name.clone())
-        }
+
+    // Parse recipients into lists
+    let to_list: Vec<String> = if request.to.contains(';') {
+        request.to.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect()
     } else {
-        (request.to.clone(), from_name.clone())
+        vec![request.to.clone()]
     };
+
+    let cc_list: Vec<String> = request.cc.as_ref()
+        .map(|cc| cc.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+
+    let bcc_list: Vec<String> = request.bcc.as_ref()
+        .map(|bcc| bcc.split(';').map(|s| s.trim().to_string()).filter(|s| !s.is_empty()).collect())
+        .unwrap_or_default();
+
+    // Prepare attachments (decode from base64)
+    let mut attachments = Vec::new();
+    if let Some(items) = &request.attachments {
+        for item in items {
+            let data = base64::Engine::decode(
+                &base64::engine::general_purpose::STANDARD,
+                &item.data_base64,
+            ).map_err(|e| format!("附件解码失败: {}", e))?;
+            attachments.push(mail::smtp::MailAttachment {
+                filename: item.filename.clone(),
+                content_type: item.content_type.clone(),
+                data,
+            });
+        }
+    }
 
     match mail::smtp::send_mail(
         &account.smtp_host,
@@ -211,14 +295,17 @@ pub async fn send_mail(
         &password,
         &account.email,
         from_name.as_deref(),
-        &to_addr,
-        to_name.as_deref(),
+        &to_list,
+        &cc_list,
+        &bcc_list,
         &request.subject,
         &request.body_text,
         request.body_html.as_deref(),
+        &attachments,
     ).await {
         Ok(()) => {
-            log::info!("Mail sent successfully from {}", account.email);
+            log::info!("Mail sent successfully from {} (to={}, cc={}, bcc={}, attachments={})",
+                account.email, to_list.len(), cc_list.len(), bcc_list.len(), attachments.len());
             Ok(SendResult { success: true, error: None })
         }
         Err(e) => {

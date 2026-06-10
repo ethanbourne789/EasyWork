@@ -101,7 +101,7 @@ pub fn run() {
 
             // ---- System Tray (desktop only) ----
             #[cfg(desktop)]
-            setup_tray(app)?;
+            setup_tray(app.handle())?;
 
             // ---- Auto-fetch scheduler ----
             let pool_for_fetch = pool.clone();

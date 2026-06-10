@@ -1,17 +1,22 @@
 use rusqlite::{params, Result};
 use crate::db::DbPool;
-use crate::mail::{MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact};
+use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact};
 
 pub fn insert_account(pool: &DbPool, account: &MailAccount) -> Result<i64> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    let encoded_pw = base64_encode(account.password.as_bytes());
+    let pw_b64 = mail::crypto::encrypt_password(&account.password)
+        .unwrap_or_else(|e| {
+            log::warn!("Password encryption failed, using base64: {}", e);
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, account.password.as_bytes())
+        });
+    let encrypted_pw: Vec<u8> = pw_b64.into_bytes();
     conn.execute(
         "INSERT INTO mail_accounts (email, provider, imap_host, imap_port, smtp_host, smtp_port, username, encrypted_password, use_tls, sync_interval_secs, sync_period_days)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
             account.email, account.provider, account.imap_host,
             account.imap_port, account.smtp_host, account.smtp_port,
-            account.username, encoded_pw,
+            account.username, encrypted_pw,
             account.use_tls as i32, account.sync_interval_secs, account.sync_period_days
         ],
     )?;
@@ -38,8 +43,13 @@ pub fn get_account_with_password(pool: &DbPool, account_id: i64) -> Result<Optio
         params![account_id],
         |row| {
             let encrypted: Vec<u8> = row.get(8)?;
-            let password = base64_decode(&encrypted)
-                .and_then(|b| String::from_utf8(b).ok())
+            // Try AES-GCM decryption first, fall back to base64 for legacy data
+            let password = mail::crypto::decrypt_password(&encrypted)
+                .or_else(|_| {
+                    base64_decode(&encrypted)
+                        .and_then(|b| String::from_utf8(b).ok())
+                        .ok_or_else(|| "both decryptions failed".to_string())
+                })
                 .unwrap_or_default();
             Ok((
                 MailAccount {
@@ -94,6 +104,32 @@ pub fn list_accounts(pool: &DbPool) -> Result<Vec<MailAccount>> {
 pub fn delete_account(pool: &DbPool, id: i64) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute("DELETE FROM mail_accounts WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn update_account(pool: &DbPool, account: &MailAccount) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let pw_b64 = mail::crypto::encrypt_password(&account.password)
+        .unwrap_or_else(|e| {
+            log::warn!("Password encryption failed, using base64: {}", e);
+            base64::Engine::encode(&base64::engine::general_purpose::STANDARD, account.password.as_bytes())
+        });
+    let encrypted_pw: Vec<u8> = pw_b64.into_bytes();
+    conn.execute(
+        "UPDATE mail_accounts SET
+            email = ?1, provider = ?2, imap_host = ?3, imap_port = ?4,
+            smtp_host = ?5, smtp_port = ?6, username = ?7, encrypted_password = ?8,
+            use_tls = ?9, sync_interval_secs = ?10, sync_period_days = ?11,
+            updated_at = datetime('now')
+         WHERE id = ?12",
+        params![
+            account.email, account.provider, account.imap_host,
+            account.imap_port, account.smtp_host, account.smtp_port,
+            account.username, encrypted_pw,
+            account.use_tls as i32, account.sync_interval_secs, account.sync_period_days,
+            account.id,
+        ],
+    )?;
     Ok(())
 }
 
@@ -262,6 +298,21 @@ pub fn soft_delete_message(pool: &DbPool, message_id: i64) -> Result<()> {
         params![message_id],
     )?;
     Ok(())
+}
+
+/// Get account_id and remote_uid for a message (used by pending ops).
+pub fn get_message_remote_info(pool: &DbPool, message_id: i64) -> Result<Option<(i64, i64, String)>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let result = conn.query_row(
+        "SELECT account_id, remote_uid, subject FROM mail_messages WHERE id = ?1 AND is_deleted = 0",
+        params![message_id],
+        |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, String>(2)?)),
+    );
+    match result {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
 }
 
 pub fn hard_delete_messages(pool: &DbPool, message_ids: &[i64]) -> Result<()> {
