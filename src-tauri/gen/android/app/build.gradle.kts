@@ -69,3 +69,8 @@ dependencies {
 }
 
 apply(from = "tauri.build.gradle.kts")
+
+// Pre-built libapp_lib.so is in jniLibs — skip Rust rebuild
+tasks.matching { it.name.startsWith("rustBuild") }.configureEach {
+    enabled = false
+}
