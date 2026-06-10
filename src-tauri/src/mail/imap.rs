@@ -1,8 +1,10 @@
-use async_native_tls::TlsConnector;
-use async_net::TcpStream;
+use std::sync::Arc;
+use tokio_rustls::TlsConnector;
+use rustls::pki_types::ServerName;
 use futures::{StreamExt, TryStreamExt};
+use tokio_util::compat::TokioAsyncReadCompatExt;
 
-pub type ImapSession = async_imap::Session<async_native_tls::TlsStream<TcpStream>>;
+pub type ImapSession = async_imap::Session<tokio_util::compat::Compat<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>>;
 
 pub async fn connect(
     host: &str,
@@ -10,9 +12,18 @@ pub async fn connect(
     username: &str,
     password: &str,
 ) -> Result<ImapSession, Box<dyn std::error::Error + Send + Sync>> {
-    let tcp = TcpStream::connect((host, port)).await?;
-    let tls = TlsConnector::new();
-    let tls_stream = tls.connect(host, tcp).await?;
+    let tcp = tokio::net::TcpStream::connect((host, port)).await?;
+
+    // Build rustls TLS config (safe defaults, no client auth)
+    let root_store: rustls::RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
+    let config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    let connector = TlsConnector::from(Arc::new(config));
+    let domain = ServerName::try_from(host.to_string())?;
+    let tls_stream = connector.connect(domain, tcp).await?;
+    // Wrap tokio TlsStream in compat layer for futures traits (async-imap requires futures::AsyncRead+Write)
+    let tls_stream = tls_stream.compat();
 
     let client = async_imap::Client::new(tls_stream);
     let session = client.login(username, password).await.map_err(|e| e.0)?;

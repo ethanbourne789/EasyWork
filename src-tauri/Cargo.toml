@@ -27,11 +27,14 @@ rusqlite = { version = "0.32", features = ["bundled", "vtab"] }
 r2d2 = "0.8"
 r2d2_sqlite = "0.25"
 async-imap = "0.9"
-async-native-tls = "0.5"
+tokio-rustls = "0.26"
+rustls = "0.23"
+webpki-roots = "0.26"
 async-net = "2"
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
-lettre = { version = "0.11", features = ["tokio1-rustls-tls", "tokio1-native-tls", "builder", "smtp-transport"] }
+tokio-util = { version = "0.7", features = ["compat"] }
+lettre = { version = "0.11", default-features = false, features = ["tokio1-rustls-tls", "builder", "smtp-transport", "hostname"] }
 keyring = { version = "3", features = ["windows-native"] }
 chrono = { version = "0.4", features = ["serde"] }
 aes-gcm = "0.10"

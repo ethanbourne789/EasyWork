@@ -1,0 +1,20 @@
+# Android NDK toolchain configuration for cross-compilation
+# NDK: 27.0.12077973 | Host: windows-x86_64
+# These paths are used by cargo when cross-compiling for Android targets.
+
+[target.aarch64-linux-android]
+linker = "C:\\Users\\JA Solar\\AppData\\Local\\Android\\Sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android21-clang.cmd"
+
+[target.armv7-linux-androideabi]
+linker = "C:\\Users\\JA Solar\\AppData\\Local\\Android\\Sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\armv7a-linux-androideabi21-clang.cmd"
+
+[target.x86_64-linux-android]
+linker = "C:\\Users\\JA Solar\\AppData\\Local\\Android\\Sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\x86_64-linux-android21-clang.cmd"
+
+[target.i686-linux-android]
+linker = "C:\\Users\\JA Solar\\AppData\\Local\\Android\\Sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\i686-linux-android21-clang.cmd"
+
+# Environment variables for C compiler when building native deps for target
+[env]
+CC_aarch64-linux-android = "C:\\Users\\JA Solar\\AppData\\Local\\Android\\Sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android21-clang.cmd"
+AR_aarch64-linux-android = "C:\\Users\\JA Solar\\AppData\\Local\\Android\\Sdk\\ndk\\27.0.12077973\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\llvm-ar.exe"

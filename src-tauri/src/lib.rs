@@ -4,6 +4,9 @@ mod commands;
 
 use tauri::{
     Emitter, Manager, WindowEvent,
+};
+#[cfg(desktop)]
+use tauri::{
     menu::{MenuBuilder, MenuItemBuilder},
     tray::TrayIconBuilder,
 };
@@ -11,19 +14,65 @@ use tauri_plugin_notification::NotificationExt;
 use std::sync::atomic::{AtomicBool, Ordering};
 use std::sync::Arc;
 
+/// Desktop-only: set up system tray icon and menu
+#[cfg(desktop)]
+fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> {
+    use tauri::menu::{MenuBuilder, MenuItemBuilder};
+    use tauri::tray::TrayIconBuilder;
+
+    let show_item = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
+    let fetch_item = MenuItemBuilder::with_id("fetch", "立即收取邮件").build(app)?;
+    let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
+
+    let menu = MenuBuilder::new(app)
+        .item(&show_item)
+        .item(&fetch_item)
+        .separator()
+        .item(&quit_item)
+        .build()?;
+
+    let _tray = TrayIconBuilder::new()
+        .icon(app.default_window_icon().unwrap().clone())
+        .menu(&menu)
+        .on_menu_event(move |app, event| {
+            match event.id().as_ref() {
+                "show" => {
+                    if let Some(window) = app.get_webview_window("main") {
+                        let _ = window.show();
+                        let _ = window.set_focus();
+                    }
+                }
+                "fetch" => {
+                    let handle = app.clone();
+                    tauri::async_runtime::spawn(async move {
+                        let pool = handle.state::<db::DbPool>().inner().clone();
+                        let accounts = db::ops::list_accounts(&pool).unwrap_or_default();
+                        for account in &accounts {
+                            if let Some(id) = account.id {
+                                log::info!("Tray fetch: syncing account {}", id);
+                                let _ = commands::mail::sync_account_impl(
+                                    pool.clone(), id,
+                                ).await;
+                            }
+                        }
+                    });
+                }
+                "quit" => {
+                    app.exit(0);
+                }
+                _ => {}
+            }
+        })
+        .build(app)?;
+    Ok(())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     // Track whether a "close to tray" event is in progress
     let closing_to_tray = Arc::new(AtomicBool::new(false));
 
     tauri::Builder::default()
-        .plugin(tauri_plugin_single_instance::init(|app, _args, _cwd| {
-            // Focus the existing window when a second instance is launched
-            if let Some(window) = app.get_webview_window("main") {
-                let _ = window.show();
-                let _ = window.set_focus();
-            }
-        }))
         .plugin(tauri_plugin_notification::init())
         .setup(move |app| {
             if cfg!(debug_assertions) {
@@ -50,51 +99,9 @@ pub fn run() {
                 mail::sync::start_sync_worker(pool_clone).await;
             });
 
-            // ---- System Tray ----
-            let show_item = MenuItemBuilder::with_id("show", "显示主窗口").build(app)?;
-            let fetch_item = MenuItemBuilder::with_id("fetch", "立即收取邮件").build(app)?;
-            let quit_item = MenuItemBuilder::with_id("quit", "退出").build(app)?;
-
-            let menu = MenuBuilder::new(app)
-                .item(&show_item)
-                .item(&fetch_item)
-                .separator()
-                .item(&quit_item)
-                .build()?;
-
-            let tray_icon = TrayIconBuilder::new()
-                .icon(app.default_window_icon().unwrap().clone())
-                .menu(&menu)
-                .on_menu_event(move |app, event| {
-                    match event.id().as_ref() {
-                        "show" => {
-                            if let Some(window) = app.get_webview_window("main") {
-                                let _ = window.show();
-                                let _ = window.set_focus();
-                            }
-                        }
-                        "fetch" => {
-                            let handle = app.clone();
-                            tauri::async_runtime::spawn(async move {
-                                let pool = handle.state::<db::DbPool>().inner().clone();
-                                let accounts = db::ops::list_accounts(&pool).unwrap_or_default();
-                                for account in &accounts {
-                                    if let Some(id) = account.id {
-                                        log::info!("Tray fetch: syncing account {}", id);
-                                        let _ = commands::mail::sync_account_impl(
-                                            pool.clone(), id,
-                                        ).await;
-                                    }
-                                }
-                            });
-                        }
-                        "quit" => {
-                            app.exit(0);
-                        }
-                        _ => {}
-                    }
-                })
-                .build(app)?;
+            // ---- System Tray (desktop only) ----
+            #[cfg(desktop)]
+            setup_tray(app)?;
 
             // ---- Auto-fetch scheduler ----
             let pool_for_fetch = pool.clone();
