@@ -32,5 +32,8 @@ src-tauri/icons/
 # Portable binary (built artifacts)
 portable/
 
+# AI agent workspace (local config/memory, not part of source)
+.workbuddy/
+
 # Generated square logo (used to generate icons)
 logo-square.png

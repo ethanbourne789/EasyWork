@@ -640,6 +640,25 @@ function EmailPage() {
 
   const lang = localStorage.getItem("easywork-lang") || "zh"
 
+  // Load accounts on mount — critical: activeAccountId starts as null and no other
+  // component loads accounts automatically. Without this, the auto-sync useEffect
+  // never fires and the inbox stays empty until the user opens Settings.
+  useEffect(() => {
+    const initAccounts = async () => {
+      try {
+        const ba = await mailIpc.listAccounts()
+        if (ba.length > 0) {
+          // setAccounts will set activeAccountId to first account (since it's null),
+          // which triggers the auto-sync useEffect via [activeAccountId] dependency.
+          useMailStore.getState().setAccounts(ba)
+        }
+      } catch {
+        // silently ignore — user can add accounts via Settings
+      }
+    }
+    initAccounts()
+  }, [])
+
   // Auto-collapse sidebar on laptop / smaller screens
   useEffect(() => {
     const handleResize = () => {
@@ -649,10 +668,10 @@ function EmailPage() {
     return () => window.removeEventListener("resize", handleResize)
   }, [])
 
-  // Load folders (re-fetch when switching accounts)
+  // Load folders (re-fetch when switching accounts — after initial auto-sync)
   useEffect(() => {
-    if (activeAccountId && hasRunAutoSync.current) {
-      // Only re-fetch if auto-sync already ran (skip first load, auto-sync handles it)
+    if (activeAccountId && syncedAccountIds.current.has(activeAccountId)) {
+      // Re-fetch folders when switching to an already-synced account
       mailIpc.listFolders(activeAccountId).then(folders => {
         setDbFolders(folders)
         mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
@@ -664,32 +683,47 @@ function EmailPage() {
     }
   }, [activeAccountId, setFolderUnreadCounts])
 
-  // ---- Auto-sync on startup & load messages from DB ----
-  const hasRunAutoSync = useRef(false)
+  // ---- Auto-sync on account change (initial load & account switching) ----
+  // Uses per-account tracking so each account gets its first sync exactly once.
+  const syncedAccountIds = useRef<Set<number>>(new Set())
 
   useEffect(() => {
-    if (!activeAccountId || hasRunAutoSync.current) return
-    hasRunAutoSync.current = true
+    if (!activeAccountId) return
+
+    const isFirstSynced = syncedAccountIds.current.has(activeAccountId)
+    if (!isFirstSynced) {
+      syncedAccountIds.current = new Set(syncedAccountIds.current).add(activeAccountId)
+    }
 
     const doAutoSync = async () => {
-      setSyncStatus({ syncing: true, lastResult: null, lastError: null })
+      if (!isFirstSynced) {
+        setSyncStatus({ syncing: true, lastResult: null, lastError: null })
+      }
 
-      // Wait a brief moment for folders to load, then fetch
+      // Wait a brief moment for any prior effects to settle
       await new Promise(r => setTimeout(r, 500))
 
-      // 1. Load existing messages from DB immediately
+      // Load folders from DB
       const folders = await mailIpc.listFolders(activeAccountId).catch(() => [] as mailIpc.MailFolder[])
       setDbFolders(folders)
+
+      // Refresh unread counts
+      mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
+        const map: Record<number, number> = {}
+        counts.forEach(([fid, c]) => { map[fid] = c })
+        setFolderUnreadCounts(map)
+      }).catch(() => {})
 
       const inbox = folders.find(f => f.role === "inbox")
       const folderId: number | undefined = inbox?.id ?? undefined
 
+      // Load existing messages from DB immediately
       try {
         const existing = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
         setMessages(existing)
       } catch {}
 
-      // 2. Trigger incremental sync in background
+      // Trigger incremental sync in background
       try {
         const result = await mailIpc.syncAccount(activeAccountId)
         if (result.messages_new > 0) {
@@ -698,7 +732,7 @@ function EmailPage() {
         // Reload messages after sync
         const refreshed = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
         setMessages(refreshed)
-        // Refresh unread counts
+        // Refresh unread counts again after sync
         mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
           const map: Record<number, number> = {}
           counts.forEach(([fid, c]) => { map[fid] = c })
@@ -832,11 +866,6 @@ function EmailPage() {
     onRefresh: () => handleSync(),
     onSearch: () => searchInputRef.current?.focus(),
   })
-
-  // Auto-refresh on mount
-  useEffect(() => {
-    if (activeAccountId) { handleSync() }
-  }, [activeAccountId])
 
   // Thread groups
   const threadGroups = useMemo(() => {
