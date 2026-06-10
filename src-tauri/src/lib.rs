@@ -71,6 +71,7 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
 
 // ---- Tauri Commands for global-shortcut & autostart ----
 
+#[cfg(desktop)]
 #[tauri::command]
 async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
     let manager = app.state::<tauri_plugin_autostart::AutoLaunchManager>();
@@ -83,6 +84,7 @@ async fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), Strin
     Ok(())
 }
 
+#[cfg(desktop)]
 #[tauri::command]
 async fn get_autostart(app: tauri::AppHandle) -> Result<bool, String> {
     let manager = app.state::<tauri_plugin_autostart::AutoLaunchManager>();
@@ -108,11 +110,15 @@ pub fn run() {
 
     tauri::Builder::default()
         .plugin(tauri_plugin_notification::init())
-        .plugin(tauri_plugin_autostart::init(
-            tauri_plugin_autostart::MacosLauncher::LaunchAgent,
-            Some(vec![]),
-        ))
         .setup(move |app| {
+            // ---- Autostart plugin (desktop only) ----
+            #[cfg(desktop)]
+            app.handle().plugin(
+                tauri_plugin_autostart::init(
+                    tauri_plugin_autostart::MacosLauncher::LaunchAgent,
+                    Some(vec![]),
+                )
+            ).ok();
             if cfg!(debug_assertions) {
                 app.handle().plugin(
                     tauri_plugin_log::Builder::default()
@@ -292,7 +298,9 @@ pub fn run() {
             commands::mail::get_remote_images_enabled,
             commands::mail::set_remote_images_enabled,
             // System
+            #[cfg(desktop)]
             set_autostart,
+            #[cfg(desktop)]
             get_autostart,
             get_global_shortcut,
             set_global_shortcut,
