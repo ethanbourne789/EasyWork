@@ -93,5 +93,59 @@
     "phone": "电话",
     "group": "分组",
     "notes": "备注"
+  },
+  "sidebar": {
+    "dashboard": "仪表盘",
+    "kanban": "看板",
+    "calendar": "日历",
+    "email": "邮箱",
+    "notes": "笔记",
+    "stocks": "股票",
+    "accounting": "记账",
+    "sports": "运动",
+    "logs": "日志",
+    "settings": "设置"
+  },
+  "theme": {
+    "light": "浅色",
+    "dark": "深色",
+    "system": "跟随系统"
+  },
+  "settings": {
+    "title": "设置",
+    "subtitle": "管理应用偏好设置",
+    "appearance": "外观",
+    "appearanceDesc": "主题模式、字体大小与语言",
+    "themeMode": "主题模式",
+    "fontSize": "字体大小",
+    "language": "语言",
+    "languageDesc": "界面显示语言，更改后即时生效",
+    "notifications": "通知",
+    "notificationsDesc": "消息提醒与推送设置",
+    "data": "数据管理",
+    "dataDesc": "导入导出、缓存清理",
+    "shortcuts": "快捷键",
+    "shortcutsDesc": "查看和自定义键盘快捷键",
+    "about": "关于",
+    "aboutDesc": "版本信息与更新",
+    "small": "小 (13px)",
+    "medium": "中 (14px)",
+    "large": "大 (16px)",
+    "chinese": "简体中文",
+    "english": "English"
+  },
+  "common": {
+    "search": "搜索模块、任务、笔记...",
+    "save": "保存",
+    "cancel": "取消",
+    "confirm": "确认",
+    "delete": "删除",
+    "edit": "编辑",
+    "add": "添加",
+    "close": "关闭",
+    "back": "返回",
+    "more": "更多",
+    "loading": "加载中...",
+    "noData": "暂无数据"
   }
 }

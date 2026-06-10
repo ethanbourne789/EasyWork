@@ -12,36 +12,40 @@ function NotesPage() {
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">笔记</h1>
+          <h1 className="text-2xl font-bold tracking-tight dark:text-white">笔记</h1>
           <p className="text-surface-500 text-sm mt-1">Markdown 知识库</p>
         </div>
         <Button><Plus size={16} />新建笔记</Button>
       </div>
 
-      <div className="flex gap-4">
-        {/* Folder Sidebar */}
-        <Card className="w-44 shrink-0 self-start">
-          <CardContent className="p-3 space-y-1">
-            {folders.map((folder, i) => (
-              <button
-                key={folder}
-                className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
-                  i === 0
-                    ? "bg-primary-50 text-primary-700 font-medium"
-                    : "text-surface-600 hover:bg-surface-100"
-                }`}
-              >
-                <Folder size={15} />
-                <span>{folder}</span>
-                {i === 0 && (
-                  <span className="ml-auto text-xs bg-surface-200 text-surface-600 px-1.5 py-0.5 rounded-full">
-                    {demoNotes.length}
-                  </span>
-                )}
-              </button>
-            ))}
-          </CardContent>
-        </Card>
+      <div className="flex flex-col lg:flex-row gap-4">
+        {/* Folder sidebar — horizontal tabs on mobile, sidebar on desktop */}
+        <div className="lg:w-44 shrink-0">
+          <Card>
+            <CardContent className="p-1 lg:p-3">
+              <div className="flex lg:flex-col gap-0.5 overflow-x-auto lg:overflow-visible">
+                {folders.map((folder, i) => (
+                  <button
+                    key={folder}
+                    className={`flex items-center gap-2 px-3 py-2 rounded-lg text-sm transition-colors whitespace-nowrap ${
+                      i === 0
+                        ? "bg-primary-50 text-primary-700 font-medium"
+                        : "text-surface-600 hover:bg-surface-100"
+                    }`}
+                  >
+                    <Folder size={15} className="shrink-0" />
+                    <span className="hidden lg:inline">{folder}</span>
+                    {i === 0 && (
+                      <span className="ml-auto text-xs bg-surface-200 text-surface-600 px-1.5 py-0.5 rounded-full">
+                        {demoNotes.length}
+                      </span>
+                    )}
+                  </button>
+                ))}
+              </div>
+            </CardContent>
+          </Card>
+        </div>
 
         {/* Notes Grid */}
         <div className="flex-1 grid grid-cols-1 md:grid-cols-2 gap-4">

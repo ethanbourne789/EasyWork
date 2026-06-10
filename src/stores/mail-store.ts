@@ -113,6 +113,8 @@ interface MailState {
   // Folders
   folderUnreadCounts: Record<number, number>
   setFolderUnreadCounts: (counts: Record<number, number>) => void
+  decrementFolderUnread: (folderId: number) => void
+  incrementFolderUnread: (folderId: number) => void
 }
 
 export const useMailStore = create<MailState>((set) => ({
@@ -195,4 +197,18 @@ export const useMailStore = create<MailState>((set) => ({
 
   folderUnreadCounts: {},
   setFolderUnreadCounts: (counts) => set({ folderUnreadCounts: counts }),
+  decrementFolderUnread: (folderId) =>
+    set((s) => ({
+      folderUnreadCounts: {
+        ...s.folderUnreadCounts,
+        [folderId]: Math.max(0, (s.folderUnreadCounts[folderId] || 0) - 1),
+      },
+    })),
+  incrementFolderUnread: (folderId) =>
+    set((s) => ({
+      folderUnreadCounts: {
+        ...s.folderUnreadCounts,
+        [folderId]: (s.folderUnreadCounts[folderId] || 0) + 1,
+      },
+    })),
 }))

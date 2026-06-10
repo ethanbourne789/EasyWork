@@ -28,14 +28,14 @@ function AccountingPage() {
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">记账</h1>
+          <h1 className="text-2xl font-bold tracking-tight dark:text-white">记账</h1>
           <p className="text-surface-500 text-sm mt-1">6月财务概览</p>
         </div>
         <Button><Plus size={16} />记一笔</Button>
       </div>
 
       {/* Summary Cards */}
-      <div className="grid grid-cols-3 gap-4">
+      <div className="grid grid-cols-1 sm:grid-cols-3 gap-4">
         <Card className="bg-emerald-50/50 border-emerald-200">
           <CardContent className="p-5">
             <div className="flex items-center gap-3">

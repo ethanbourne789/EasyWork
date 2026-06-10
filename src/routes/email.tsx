@@ -20,7 +20,6 @@ import { ThreadItem } from "@/components/ThreadItem"
 import { ContactAutocomplete } from "@/components/ContactAutocomplete"
 import { RichTextEditor } from "@/components/RichTextEditor"
 import { SearchFilters, type SearchFiltersState } from "@/components/SearchFilters"
-import { PendingOpsPanel } from "@/components/PendingOpsPanel"
 import { useComposeDraft } from "@/hooks/useComposeDraft"
 import { useMailShortcuts } from "@/hooks/useMailShortcuts"
 
@@ -424,9 +423,10 @@ function EmailPage() {
     messages, selectedMessageId, messageBody,
     selectMessage, markRead, toggleStar, removeMessage,
     activeFolder, setActiveFolder, openCompose, composeOpen, accounts,
-    activeAccountId, setMessages, setLoadingMessages,
+    activeAccountId, activeFolderId, setMessages, setLoadingMessages,
     syncStatus, setSyncStatus, setMessageBody,
     searchQuery, setSearchQuery, folderUnreadCounts, setFolderUnreadCounts,
+    decrementFolderUnread,
   } = useMailStore()
 
   const [dbFolders, setDbFolders] = useState<mailIpc.MailFolder[]>([])
@@ -440,7 +440,10 @@ function EmailPage() {
   const [showDraftRecovery, setShowDraftRecovery] = useState(hasDraft)
   const [showSettings, setShowSettings] = useState(false)
   const [showContacts, setShowContacts] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(true)
+  const [sidebarOpen, setSidebarOpen] = useState(() => {
+    if (typeof window === "undefined") return true
+    return window.innerWidth >= 1440
+  })
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [showMobileList, setShowMobileList] = useState(true)
   const [searchFilters, setSearchFilters] = useState<SearchFiltersState>({
@@ -448,6 +451,15 @@ function EmailPage() {
   })
 
   const lang = localStorage.getItem("easywork-lang") || "zh"
+
+  // Auto-collapse sidebar on laptop / smaller screens
+  useEffect(() => {
+    const handleResize = () => {
+      if (window.innerWidth < 1440) setSidebarOpen(false)
+    }
+    window.addEventListener("resize", handleResize)
+    return () => window.removeEventListener("resize", handleResize)
+  }, [])
 
   // Load folders
   useEffect(() => {
@@ -497,13 +509,19 @@ function EmailPage() {
       folderId = folder?.id ?? dbFolders.find(f => f.role === "inbox")?.id ?? undefined
       const allMessages = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
       setMessages(allMessages)
+      // Refresh unread counts after sync
+      mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
+        const map: Record<number, number> = {}
+        counts.forEach(([fid, c]) => { map[fid] = c })
+        setFolderUnreadCounts(map)
+      }).catch(() => {})
       setSyncStatus({ syncing: false, lastSyncAt: new Date().toLocaleTimeString() })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setToast({ message: `同步失败: ${msg}`, type: "error" })
       setSyncStatus({ syncing: false })
     }
-  }, [activeAccountId, activeFolder, dbFolders, setMessages, setSyncStatus])
+  }, [activeAccountId, activeFolder, dbFolders, setMessages, setSyncStatus, setFolderUnreadCounts])
 
   // Search
   const handleSearch = useCallback(async () => {
@@ -662,7 +680,7 @@ function EmailPage() {
                       isActive ? "bg-primary-50 text-primary-700 font-medium" : "text-surface-600 hover:bg-surface-100"
                     }`}>
                     <span className="flex items-center gap-2 truncate"><Icon size={15} />{getFolderLabel(f.role, f.name, f.remote_id, lang)}</span>
-                    {count > 0 && <span className="text-[10px] bg-primary-500 text-white px-1.5 py-0.5 rounded-full shrink-0 font-medium">{count}</span>}
+                    {count > 0 && <span className="min-w-[18px] h-[18px] flex items-center justify-center text-[10px] bg-primary-500 text-white px-1 rounded-full shrink-0 font-semibold shadow-sm animate-badge-pop">{count > 99 ? "99+" : count}</span>}
                   </button>
                 )
               })
@@ -757,7 +775,7 @@ function EmailPage() {
                         isSelected={selectedMessageId === latest.id}
                         onClick={() => {
                           if (replyCount > 0 && (latest as any).thread_id) { setThreadViewId((latest as any).thread_id) }
-                          else { handleSelectMessage(latest.id); if (!latest.is_read) { markRead(latest.id, true); mailIpc.markMessageRead(latest.id, true).catch(() => {}) } }
+                          else { handleSelectMessage(latest.id); if (!latest.is_read) { markRead(latest.id, true); if (activeFolderId) decrementFolderUnread(activeFolderId); mailIpc.markMessageRead(latest.id, true).catch(() => {}) } }
                         }}
                         onStar={() => { toggleStar(latest.id); mailIpc.toggleMessageStar(latest.id).catch(() => {}) }}
                       />
@@ -765,7 +783,7 @@ function EmailPage() {
                   })
                 ) : displayMessages.map(msg => (
                   <div key={msg.id}
-                    onClick={() => { handleSelectMessage(msg.id); if (!msg.is_read) { markRead(msg.id, true); mailIpc.markMessageRead(msg.id, true).catch(() => {}) } }}
+                    onClick={() => { handleSelectMessage(msg.id); if (!msg.is_read) { markRead(msg.id, true); if (activeFolderId) decrementFolderUnread(activeFolderId); mailIpc.markMessageRead(msg.id, true).catch(() => {}) } }}
                     className={`flex items-start gap-2 lg:gap-3 px-3 lg:px-4 py-2.5 lg:py-3 cursor-pointer transition-colors hover:bg-surface-50 ${selectedMessageId === msg.id ? "bg-primary-50/50" : ""} ${!msg.is_read ? "bg-blue-50/30" : ""}`}>
                     <button onClick={e => { e.stopPropagation(); toggleStar(msg.id); mailIpc.toggleMessageStar(msg.id).catch(() => {}) }}>
                       <Star size={13} className={msg.is_starred ? "text-amber-400 fill-amber-400" : "text-surface-300"} />
@@ -859,19 +877,23 @@ function EmailPage() {
       {showSettings && <AccountSettingsModal onClose={() => setShowSettings(false)} />}
       {showContacts && <ContactsModal onClose={() => setShowContacts(false)} />}
 
-      <PendingOpsPanel />
     </div>
   )
 }
 
 // Sidebar folder button helper
-function SidebarFolderBtn({ icon: Icon, label, active, onClick }: { icon: typeof Inbox; label: string; active: boolean; onClick: () => void }) {
+function SidebarFolderBtn({ icon: Icon, label, active, count, onClick }: { icon: typeof Inbox; label: string; active: boolean; count?: number; onClick: () => void }) {
   return (
     <button onClick={onClick}
       className={`flex items-center justify-between w-full px-3 py-2 rounded-lg text-sm transition-colors ${
         active ? "bg-primary-50 text-primary-700 font-medium" : "text-surface-600 hover:bg-surface-100"
       }`}>
       <span className="flex items-center gap-2 truncate"><Icon size={15} />{label}</span>
+      {count !== undefined && count > 0 && (
+        <span className="min-w-[18px] h-[18px] flex items-center justify-center text-[10px] bg-primary-500 text-white px-1 rounded-full shrink-0 font-semibold shadow-sm">
+          {count > 99 ? "99+" : count}
+        </span>
+      )}
     </button>
   )
 }

@@ -93,5 +93,59 @@
     "phone": "Phone",
     "group": "Group",
     "notes": "Notes"
+  },
+  "sidebar": {
+    "dashboard": "Dashboard",
+    "kanban": "Kanban",
+    "calendar": "Calendar",
+    "email": "Email",
+    "notes": "Notes",
+    "stocks": "Stocks",
+    "accounting": "Accounting",
+    "sports": "Sports",
+    "logs": "Logs",
+    "settings": "Settings"
+  },
+  "theme": {
+    "light": "Light",
+    "dark": "Dark",
+    "system": "System"
+  },
+  "settings": {
+    "title": "Settings",
+    "subtitle": "Manage app preferences",
+    "appearance": "Appearance",
+    "appearanceDesc": "Theme, font size and language",
+    "themeMode": "Theme Mode",
+    "fontSize": "Font Size",
+    "language": "Language",
+    "languageDesc": "Interface language, changes take effect immediately",
+    "notifications": "Notifications",
+    "notificationsDesc": "Message alerts and push settings",
+    "data": "Data Management",
+    "dataDesc": "Import, export and cache management",
+    "shortcuts": "Shortcuts",
+    "shortcutsDesc": "View and customize keyboard shortcuts",
+    "about": "About",
+    "aboutDesc": "Version info and updates",
+    "small": "Small (13px)",
+    "medium": "Medium (14px)",
+    "large": "Large (16px)",
+    "chinese": "简体中文",
+    "english": "English"
+  },
+  "common": {
+    "search": "Search modules, tasks, notes...",
+    "save": "Save",
+    "cancel": "Cancel",
+    "confirm": "Confirm",
+    "delete": "Delete",
+    "edit": "Edit",
+    "add": "Add",
+    "close": "Close",
+    "back": "Back",
+    "more": "More",
+    "loading": "Loading...",
+    "noData": "No data"
   }
 }

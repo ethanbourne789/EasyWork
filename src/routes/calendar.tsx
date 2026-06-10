@@ -20,7 +20,7 @@ function CalendarPage() {
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">日历</h1>
+          <h1 className="text-2xl font-bold tracking-tight dark:text-white">日历</h1>
           <p className="text-surface-500 text-sm mt-1">2026年6月</p>
         </div>
         <div className="flex items-center gap-2">

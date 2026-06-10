@@ -1,97 +1,145 @@
+import { useState } from "react"
 import { createFileRoute } from "@tanstack/react-router"
+import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
+import { useThemeStore } from "@/stores/theme-store"
 import {
-  Monitor,
-  Sun,
-  Database,
-  Keyboard,
-  Bell,
-  Globe,
-  Info,
-  ChevronRight,
+  Monitor, Sun, Moon, Database, Keyboard, Bell, Globe, Info, ChevronRight, Check,
 } from "lucide-react"
 
+const themeOptions = [
+  { key: "system", icon: Monitor },
+  { key: "light", icon: Sun },
+  { key: "dark", icon: Moon },
+] as const
+
+const langOptions = [
+  { key: "zh", labelKey: "settings.chinese" },
+  { key: "en", labelKey: "settings.english" },
+] as const
+
 function SettingsPage() {
+  const { t, i18n } = useTranslation()
+  const { theme, setTheme } = useThemeStore()
+  const [themeOpen, setThemeOpen] = useState(false)
+  const [langOpen, setLangOpen] = useState(false)
+
+  const handleLanguageChange = (lang: string) => {
+    i18n.changeLanguage(lang)
+    localStorage.setItem("easywork-lang", lang)
+    setLangOpen(false)
+  }
+
+  const currentLang = i18n.language?.startsWith("en") ? "en" : "zh"
+
   return (
     <div className="space-y-6 max-w-[800px]">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">设置</h1>
-        <p className="text-surface-500 text-sm mt-1">管理应用配置和偏好</p>
+        <h1 className="text-2xl font-bold tracking-tight dark:text-white">{t("settings.title")}</h1>
+        <p className="text-surface-500 text-sm mt-1 dark:text-surface-400">{t("settings.subtitle")}</p>
       </div>
 
       {/* Appearance */}
-      <Card>
+      <Card className="dark:bg-surface-800 dark:border-surface-700">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 dark:text-white">
             <Sun size={18} className="text-amber-500" />
-            外观
+            {t("settings.appearance")}
           </CardTitle>
-          <CardDescription>自定义应用主题和显示</CardDescription>
+          <CardDescription className="dark:text-surface-400">{t("settings.appearanceDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
-          {[
-            { label: "主题模式", value: "跟随系统", icon: Monitor },
-            { label: "字体大小", value: "中 (14px)", icon: Keyboard },
-            { label: "语言", value: "简体中文", icon: Globe },
-          ].map((item) => (
-            <div key={item.label} className="flex items-center justify-between py-2">
+          {/* Theme mode selector */}
+          <div className="relative">
+            <button
+              onClick={() => { setThemeOpen(!themeOpen); setLangOpen(false) }}
+              className="flex items-center justify-between w-full py-2"
+            >
               <div className="flex items-center gap-3">
-                <item.icon size={17} className="text-surface-400" />
-                <span className="text-sm">{item.label}</span>
+                <Monitor size={17} className="text-surface-400" />
+                <span className="text-sm dark:text-surface-200">{t("settings.themeMode")}</span>
               </div>
               <div className="flex items-center gap-2">
-                <span className="text-sm text-surface-500">{item.value}</span>
+                <span className="text-sm text-surface-500 dark:text-surface-400">{t(`theme.${theme}`)}</span>
                 <ChevronRight size={14} className="text-surface-300" />
               </div>
-            </div>
-          ))}
-        </CardContent>
-      </Card>
+            </button>
+            {themeOpen && (
+              <div className="absolute right-0 top-10 z-50 w-44 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg py-1">
+                {themeOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => { setTheme(opt.key); setThemeOpen(false) }}
+                    className="flex items-center justify-between w-full px-3 py-2 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 dark:text-surface-200"
+                  >
+                    <span className="flex items-center gap-2">
+                      <opt.icon size={15} />
+                      {t(`theme.${opt.key}`)}
+                    </span>
+                    {theme === opt.key && <Check size={14} className="text-primary-500" />}
+                  </button>
+                ))}
+              </div>
+            )}
+          </div>
 
-      {/* Data */}
-      <Card>
-        <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Database size={18} className="text-primary-500" />
-            数据管理
-          </CardTitle>
-          <CardDescription>数据库、备份与同步</CardDescription>
-        </CardHeader>
-        <CardContent className="space-y-4">
+          {/* Font size */}
           <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm font-medium">数据库位置</p>
-              <p className="text-xs text-surface-400">~/easywork/data.db</p>
+            <div className="flex items-center gap-3">
+              <Keyboard size={17} className="text-surface-400" />
+              <span className="text-sm dark:text-surface-200">{t("settings.fontSize")}</span>
             </div>
-            <Badge variant="success">运行中</Badge>
-          </div>
-          <div className="flex items-center justify-between py-2">
-            <div>
-              <p className="text-sm font-medium">自动备份</p>
-              <p className="text-xs text-surface-400">每日 03:00 自动备份到本地</p>
+            <div className="flex items-center gap-2">
+              <span className="text-sm text-surface-500 dark:text-surface-400">{t("settings.medium")}</span>
+              <ChevronRight size={14} className="text-surface-300" />
             </div>
-            <Badge variant="info">已启用</Badge>
           </div>
-          <div className="flex gap-2">
-            <Button variant="outline" size="sm">立即备份</Button>
-            <Button variant="outline" size="sm">恢复数据</Button>
-            <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50 border-red-200">
-              清空所有数据
-            </Button>
+
+          {/* Language selector */}
+          <div className="relative">
+            <button
+              onClick={() => { setLangOpen(!langOpen); setThemeOpen(false) }}
+              className="flex items-center justify-between w-full py-2"
+            >
+              <div className="flex items-center gap-3">
+                <Globe size={17} className="text-surface-400" />
+                <span className="text-sm dark:text-surface-200">{t("settings.language")}</span>
+              </div>
+              <div className="flex items-center gap-2">
+                <span className="text-sm text-surface-500 dark:text-surface-400">
+                  {currentLang === "zh" ? t("settings.chinese") : t("settings.english")}
+                </span>
+                <ChevronRight size={14} className="text-surface-300" />
+              </div>
+            </button>
+            {langOpen && (
+              <div className="absolute right-0 top-10 z-50 w-44 bg-white dark:bg-surface-800 border border-surface-200 dark:border-surface-700 rounded-lg shadow-lg py-1">
+                {langOptions.map((opt) => (
+                  <button
+                    key={opt.key}
+                    onClick={() => handleLanguageChange(opt.key)}
+                    className="flex items-center justify-between w-full px-3 py-2 text-sm hover:bg-surface-100 dark:hover:bg-surface-700 dark:text-surface-200"
+                  >
+                    <span>{t(opt.labelKey)}</span>
+                    {currentLang === opt.key && <Check size={14} className="text-primary-500" />}
+                  </button>
+                ))}
+              </div>
+            )}
           </div>
         </CardContent>
       </Card>
 
       {/* Notifications */}
-      <Card>
+      <Card className="dark:bg-surface-800 dark:border-surface-700">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
+          <CardTitle className="flex items-center gap-2 dark:text-white">
             <Bell size={18} className="text-amber-500" />
-            通知
+            {t("settings.notifications")}
           </CardTitle>
-          <CardDescription>管理提醒和系统通知</CardDescription>
+          <CardDescription className="dark:text-surface-400">{t("settings.notificationsDesc")}</CardDescription>
         </CardHeader>
         <CardContent className="space-y-3">
           {[
@@ -101,10 +149,10 @@ function SettingsPage() {
             { label: "运动目标达成", enabled: true },
           ].map((item) => (
             <div key={item.label} className="flex items-center justify-between py-2">
-              <span className="text-sm">{item.label}</span>
+              <span className="text-sm dark:text-surface-200">{item.label}</span>
               <div
                 className={`w-9 h-5 rounded-full transition-colors cursor-pointer relative ${
-                  item.enabled ? "bg-primary-600" : "bg-surface-300"
+                  item.enabled ? "bg-primary-600" : "bg-surface-300 dark:bg-surface-600"
                 }`}
               >
                 <div
@@ -118,35 +166,75 @@ function SettingsPage() {
         </CardContent>
       </Card>
 
-      {/* About */}
-      <Card>
+      {/* Data */}
+      <Card className="dark:bg-surface-800 dark:border-surface-700">
         <CardHeader>
-          <CardTitle className="flex items-center gap-2">
-            <Info size={18} className="text-surface-400" />
-            关于
+          <CardTitle className="flex items-center gap-2 dark:text-white">
+            <Database size={18} className="text-primary-500" />
+            {t("settings.data")}
           </CardTitle>
+          <CardDescription className="dark:text-surface-400">{t("settings.dataDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-4">
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="text-sm font-medium dark:text-surface-200">数据库位置</p>
+              <p className="text-xs text-surface-400">~/easywork/data.db</p>
+            </div>
+            <Badge variant="success">运行中</Badge>
+          </div>
+          <div className="flex items-center justify-between py-2">
+            <div>
+              <p className="text-sm font-medium dark:text-surface-200">自动备份</p>
+              <p className="text-xs text-surface-400">每日 03:00 自动备份到本地</p>
+            </div>
+            <Badge variant="info">已启用</Badge>
+          </div>
+          <div className="flex flex-wrap gap-2">
+            <Button variant="outline" size="sm">立即备份</Button>
+            <Button variant="outline" size="sm">恢复数据</Button>
+            <Button variant="outline" size="sm" className="text-red-600 hover:text-red-700 hover:bg-red-50 dark:hover:bg-red-950 border-red-200">
+              清空所有数据
+            </Button>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* About */}
+      <Card className="dark:bg-surface-800 dark:border-surface-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 dark:text-white">
+            <Info size={18} className="text-surface-400" />
+            {t("settings.about")}
+          </CardTitle>
+          <CardDescription className="dark:text-surface-400">{t("settings.aboutDesc")}</CardDescription>
         </CardHeader>
         <CardContent>
           <div className="space-y-2 text-sm">
             <div className="flex justify-between py-1">
-              <span className="text-surface-500">版本</span>
-              <span className="font-medium">v0.1.0-alpha</span>
+              <span className="text-surface-500 dark:text-surface-400">版本</span>
+              <span className="font-medium dark:text-surface-200">v0.1.0-alpha</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-surface-500">技术栈</span>
-              <span className="font-medium">Tauri 2.0 + React + Rust</span>
+              <span className="text-surface-500 dark:text-surface-400">技术栈</span>
+              <span className="font-medium dark:text-surface-200">Tauri 2.0 + React + Rust</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-surface-500">构建日期</span>
-              <span className="font-medium">2026-06-10</span>
+              <span className="text-surface-500 dark:text-surface-400">构建日期</span>
+              <span className="font-medium dark:text-surface-200">2026-06-10</span>
             </div>
             <div className="flex justify-between py-1">
-              <span className="text-surface-500">开发者</span>
-              <span className="font-medium">Ethan</span>
+              <span className="text-surface-500 dark:text-surface-400">开发者</span>
+              <span className="font-medium dark:text-surface-200">Ethan</span>
             </div>
           </div>
         </CardContent>
       </Card>
+
+      {/* Click-outside handlers */}
+      {(themeOpen || langOpen) && (
+        <div className="fixed inset-0 z-40" onClick={() => { setThemeOpen(false); setLangOpen(false) }} />
+      )}
     </div>
   )
 }

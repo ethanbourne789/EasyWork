@@ -8,7 +8,7 @@ function StocksPage() {
   return (
     <div className="space-y-6 max-w-[1400px]">
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">股票</h1>
+        <h1 className="text-2xl font-bold tracking-tight dark:text-white">股票</h1>
         <p className="text-surface-500 text-sm mt-1">自选股行情追踪 — 演示数据（数据延迟15分钟）</p>
       </div>
 

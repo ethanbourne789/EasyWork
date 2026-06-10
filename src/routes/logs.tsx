@@ -16,7 +16,7 @@ function LogsPage() {
     <div className="space-y-6 max-w-[1400px]">
       <div className="flex items-center justify-between">
         <div>
-          <h1 className="text-2xl font-bold tracking-tight">系统日志</h1>
+          <h1 className="text-2xl font-bold tracking-tight dark:text-white">系统日志</h1>
           <p className="text-surface-500 text-sm mt-1">实时应用运行记录</p>
         </div>
         <div className="flex items-center gap-2">

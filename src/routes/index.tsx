@@ -39,7 +39,7 @@ function DashboardPage() {
     <div className="space-y-6 max-w-[1400px]">
       {/* Page title */}
       <div>
-        <h1 className="text-2xl font-bold tracking-tight">仪表盘</h1>
+        <h1 className="text-2xl font-bold tracking-tight dark:text-white">仪表盘</h1>
         <p className="text-surface-500 text-sm mt-1">
           欢迎回来，Ethan。今日概述一览。
         </p>
