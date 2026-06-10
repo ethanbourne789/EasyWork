@@ -1,5 +1,5 @@
 import { useState } from "react"
-import { SlidersHorizontal, X, Filter, Calendar } from "lucide-react"
+import { SlidersHorizontal, Filter, Calendar } from "lucide-react"
 import type { MailFolder } from "@/lib/mail-ipc"
 
 export interface SearchFiltersState {

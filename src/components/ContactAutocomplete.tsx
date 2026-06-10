@@ -22,7 +22,6 @@ export function ContactAutocomplete({
   className = "",
 }: ContactAutocompleteProps) {
   const [showDropdown, setShowDropdown] = useState(false)
-  const [cursorPos, setCursorPos] = useState(0)
   const inputRef = useRef<HTMLInputElement>(null)
   const dropdownRef = useRef<HTMLDivElement>(null)
 
@@ -74,7 +73,6 @@ export function ContactAutocomplete({
         onChange={e => {
           onChange(e.target.value)
           setShowDropdown(true)
-          setCursorPos(e.target.selectionStart || 0)
         }}
         onFocus={() => lastSegment.length > 0 && setShowDropdown(true)}
         placeholder={placeholder}

@@ -20,7 +20,7 @@
     "search": "搜索邮件...",
     "loadMore": "加载更多",
     "noMessages": "收件箱为空",
-    "noMessagesHint": "点击"立即同步"从 IMAP 服务器拉取邮件",
+    "noMessagesHint": "点击「立即同步」从 IMAP 服务器拉取邮件",
     "noAccount": "未配置邮箱账户",
     "noAccountHint": "请在账户管理中配置您的邮箱",
     "configure": "配置",
