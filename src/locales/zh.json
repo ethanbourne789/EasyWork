@@ -52,7 +52,15 @@
     "draftRecoveryMsg": "您有一封未发送的草稿，是否继续编辑？",
     "discard": "放弃",
     "continue": "继续编辑",
-    "attachments": "个附件"
+    "attachments": "个附件",
+    "signature": "签名",
+    "signatureEdit": "编辑签名",
+    "signaturePlaceholder": "输入您的邮件签名...",
+    "signatureSettings": "邮件签名设置",
+    "signatureSettingsHint": "编辑您的邮件签名，支持富文本格式和图片。保存后将在新邮件中自动附加。",
+    "signatureClear": "清除签名",
+    "manageSignature": "管理签名",
+    "done": "完成"
   },
   "account": {
     "title": "账户管理",
@@ -92,7 +100,9 @@
     "email": "邮箱",
     "phone": "电话",
     "group": "分组",
-    "notes": "备注"
+    "notes": "备注",
+    "export": "导出CSV",
+    "import": "导入CSV"
   },
   "sidebar": {
     "dashboard": "仪表盘",
@@ -120,6 +130,18 @@
     "fontSize": "字体大小",
     "language": "语言",
     "languageDesc": "界面显示语言，更改后即时生效",
+    "closeBehavior": "关闭行为",
+    "closeBehaviorDesc": "点击窗口关闭按钮时的行为",
+    "minimizeToTray": "最小化到系统托盘",
+    "minimizeToTrayHint": "点击关闭时隐藏到系统托盘，后台继续运行",
+    "exitOnClose": "直接关闭退出软件",
+    "exitOnCloseHint": "点击关闭时直接退出程序",
+    "autoFetch": "邮件自动收取",
+    "autoFetchDesc": "定时自动收取新邮件",
+    "autoFetchHint": "设置后应用将在后台自动检查新邮件并通知",
+    "minutes": "分钟",
+    "hours": "小时",
+    "apply": "应用",
     "notifications": "通知",
     "notificationsDesc": "消息提醒与推送设置",
     "data": "数据管理",

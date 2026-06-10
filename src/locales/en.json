@@ -52,7 +52,15 @@
     "draftRecoveryMsg": "You have an unsent draft. Would you like to continue editing?",
     "discard": "Discard",
     "continue": "Continue",
-    "attachments": "attachments"
+    "attachments": "attachments",
+    "signature": "Signature",
+    "signatureEdit": "Edit signature",
+    "signaturePlaceholder": "Enter your email signature...",
+    "signatureSettings": "Email Signature Settings",
+    "signatureSettingsHint": "Edit your email signature with rich text and images. It will be automatically appended to new emails.",
+    "signatureClear": "Clear signature",
+    "manageSignature": "Manage signature",
+    "done": "Done"
   },
   "account": {
     "title": "Account Management",
@@ -92,7 +100,9 @@
     "email": "Email",
     "phone": "Phone",
     "group": "Group",
-    "notes": "Notes"
+    "notes": "Notes",
+    "export": "Export CSV",
+    "import": "Import CSV"
   },
   "sidebar": {
     "dashboard": "Dashboard",
@@ -120,6 +130,18 @@
     "fontSize": "Font Size",
     "language": "Language",
     "languageDesc": "Interface language, changes take effect immediately",
+    "closeBehavior": "Close Behavior",
+    "closeBehaviorDesc": "What happens when you close the window",
+    "minimizeToTray": "Minimize to System Tray",
+    "minimizeToTrayHint": "Hide to system tray and continue running in background",
+    "exitOnClose": "Exit Application",
+    "exitOnCloseHint": "Close the application completely",
+    "autoFetch": "Auto-fetch Email",
+    "autoFetchDesc": "Periodically fetch new emails in background",
+    "autoFetchHint": "The app will check for new emails and notify you automatically",
+    "minutes": "minutes",
+    "hours": "hours",
+    "apply": "Apply",
     "notifications": "Notifications",
     "notificationsDesc": "Message alerts and push settings",
     "data": "Data Management",

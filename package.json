@@ -13,6 +13,7 @@
     "@tailwindcss/vite": "^4.3.0",
     "@tanstack/react-router": "^1.170.15",
     "@tanstack/react-virtual": "^3.14.2",
+    "@tiptap/extension-image": "^3.26.0",
     "@tiptap/extension-placeholder": "^3.26.0",
     "@tiptap/pm": "^3.26.0",
     "@tiptap/react": "^3.26.0",

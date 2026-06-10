@@ -239,15 +239,29 @@ pub async fn list_message_attachments(
     message_id: i64,
 ) -> Result<Vec<serde_json::Value>, String> {
     let attachments = ops::list_attachments(&pool, message_id).map_err(|e| e.to_string())?;
-    Ok(attachments.into_iter().map(|(id, filename, content_type, size, local_path)| {
+    Ok(attachments.into_iter().map(|(id, filename, content_type, size, local_path, content_id)| {
         serde_json::json!({
             "id": id,
             "filename": filename,
             "content_type": content_type,
             "size": size,
             "local_path": local_path,
+            "content_id": content_id,
         })
     }).collect())
+}
+
+// ==================== File Operations ====================
+
+#[tauri::command]
+pub async fn open_file(path: String) -> Result<(), String> {
+    open::that(&path).map_err(|e| format!("打开文件失败: {}", e))
+}
+
+#[tauri::command]
+pub async fn read_file_as_base64(path: String) -> Result<String, String> {
+    let data = std::fs::read(&path).map_err(|e| format!("读取文件失败: {}", e))?;
+    Ok(base64::Engine::encode(&base64::engine::general_purpose::STANDARD, &data))
 }
 
 // ==================== Contacts ====================
@@ -276,6 +290,14 @@ pub async fn delete_contact(
     ops::delete_contact(&pool, id).map_err(|e| e.to_string())
 }
 
+#[tauri::command]
+pub async fn update_contact(
+    pool: State<'_, DbPool>,
+    contact: MailContact,
+) -> Result<(), String> {
+    ops::update_contact(&pool, &contact).map_err(|e| e.to_string())
+}
+
 // ==================== Sync ====================
 
 #[tauri::command]
@@ -300,9 +322,10 @@ pub async fn test_connection(
     }
 }
 
-#[tauri::command]
-pub async fn sync_account(
-    pool: State<'_, DbPool>,
+// ---- Sync implementation (shared between command and tray) ----
+
+pub async fn sync_account_impl(
+    pool: DbPool,
     account_id: i64,
 ) -> Result<SyncResult, String> {
     log::info!("Starting sync for account {}", account_id);
@@ -396,10 +419,6 @@ pub async fn sync_account(
             let chunk_uids: Vec<i64> = raw_msgs.iter().map(|(uid, _)| *uid as i64).collect();
             let existing_uids = ops::get_existing_remote_uids(&pool, account_id, &chunk_uids)
                 .unwrap_or_default();
-            log::info!(
-                "Folder '{}' chunk: {} bodies, {} already in DB",
-                folder_name, raw_msgs.len(), existing_uids.len()
-            );
 
             for (uid, raw) in raw_msgs {
                 if existing_uids.contains(&(uid as i64)) {
@@ -440,10 +459,7 @@ pub async fn sync_account(
                         match ops::insert_message(&pool, &msg) {
                             Ok(msg_id) => {
                                 let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
-                                // FTS index
                                 let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
-
-                                // Store attachments
                                 if !parsed.attachments.is_empty() {
                                     let app_data_dir = std::env::current_dir()
                                         .unwrap_or_else(|_| std::path::PathBuf::from("."));
@@ -454,12 +470,8 @@ pub async fn sync_account(
                                         let local_path = attach_dir.join(&safe_name);
                                         let _ = std::fs::write(&local_path, &att.content);
                                         let _ = ops::insert_attachment(
-                                            &pool, msg_id,
-                                            &att.filename,
-                                            &att.content_type,
-                                            att.size as i64,
-                                            &local_path.to_string_lossy(),
-                                            "",
+                                            &pool, msg_id, &att.filename, &att.content_type,
+                                            att.size as i64, &local_path.to_string_lossy(), "",
                                         );
                                     }
                                 }
@@ -467,19 +479,13 @@ pub async fn sync_account(
                             }
                             Err(e) => {
                                 total_failed_insert += 1;
-                                log::warn!(
-                                    "Failed to insert message uid={} from='{}' subject='{}': {}",
-                                    uid, msg.from_email, msg.subject, e
-                                );
+                                log::warn!("Failed to insert message uid={}: {}", uid, e);
                             }
                         }
                     }
                     Err(e) => {
                         total_failed_parse += 1;
-                        log::warn!(
-                            "Failed to parse message uid={} ({} bytes): {}",
-                            uid, raw.len(), e
-                        );
+                        log::warn!("Failed to parse message uid={}: {}", uid, e);
                     }
                 }
             }
@@ -496,8 +502,8 @@ pub async fn sync_account(
     let _ = mail::imap::logout(session).await;
 
     log::info!(
-        "Sync complete for account {}: {} folders, {} new / {} total fetched ({} parsed, {} parse-fail, {} insert-fail), period={}d",
-        account_id, folder_db_ids.len(), total_new, total_all, total_parsed, total_failed_parse, total_failed_insert, period_days
+        "Sync complete for account {}: {} folders, {} new / {} total",
+        account_id, folder_db_ids.len(), total_new, total_all
     );
 
     Ok(SyncResult {
@@ -507,6 +513,48 @@ pub async fn sync_account(
         messages_total: total_all,
         error: None,
     })
+}
+
+#[tauri::command]
+pub async fn sync_account(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<SyncResult, String> {
+    sync_account_impl(pool.inner().clone(), account_id).await
+}
+
+// ==================== Config & Tray Commands ====================
+
+#[tauri::command]
+pub async fn get_auto_fetch_interval(pool: State<'_, DbPool>) -> Result<i64, String> {
+    Ok(ops::get_config(&pool, "auto_fetch_interval")
+        .and_then(|v| v.parse().ok())
+        .unwrap_or(300))
+}
+
+#[tauri::command]
+pub async fn set_auto_fetch_interval(pool: State<'_, DbPool>, interval_secs: i64) -> Result<(), String> {
+    ops::set_config(&pool, "auto_fetch_interval", &interval_secs.to_string());
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_close_behavior(pool: State<'_, DbPool>) -> Result<String, String> {
+    Ok(ops::get_config(&pool, "close_behavior").unwrap_or_else(|| "minimize".to_string()))
+}
+
+#[tauri::command]
+pub async fn set_close_behavior(pool: State<'_, DbPool>, behavior: String) -> Result<(), String> {
+    if behavior != "minimize" && behavior != "exit" {
+        return Err("无效的关闭行为，支持: minimize, exit".into());
+    }
+    ops::set_config(&pool, "close_behavior", &behavior);
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn get_unread_count(pool: State<'_, DbPool>, account_id: i64) -> Result<i64, String> {
+    Ok(ops::get_unread_message_count(&pool, account_id))
 }
 
 // ==================== Reconciliation ====================

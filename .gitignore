@@ -31,3 +31,6 @@ src-tauri/icons/
 
 # Portable binary (built artifacts)
 portable/
+
+# Generated square logo (used to generate icons)
+logo-square.png

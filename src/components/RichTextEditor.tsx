@@ -1,24 +1,31 @@
 import { useEditor, EditorContent } from "@tiptap/react"
 import StarterKit from "@tiptap/starter-kit"
 import Placeholder from "@tiptap/extension-placeholder"
+import Image from "@tiptap/extension-image"
 import {
   Bold, Italic, Strikethrough, Code, List, ListOrdered,
-  Quote, Undo, Redo, Heading1, Heading2,
+  Quote, Undo, Redo, Heading1, Heading2, ImageIcon,
 } from "lucide-react"
 
 interface RichTextEditorProps {
   content: string
   onChange: (html: string, text: string) => void
   placeholder?: string
+  /** 是否显示图片上传按钮 */
+  showImageButton?: boolean
 }
 
-export function RichTextEditor({ content, onChange, placeholder = "邮件内容..." }: RichTextEditorProps) {
+export function RichTextEditor({ content, onChange, placeholder = "邮件内容...", showImageButton }: RichTextEditorProps) {
   const editor = useEditor({
     extensions: [
       StarterKit.configure({
         heading: { levels: [1, 2] },
       }),
       Placeholder.configure({ placeholder }),
+      Image.configure({
+        inline: true,
+        allowBase64: true,
+      }),
     ],
     content,
     onUpdate: ({ editor }) => {
@@ -32,6 +39,25 @@ export function RichTextEditor({ content, onChange, placeholder = "邮件内容.
   })
 
   if (!editor) return null
+
+  const handleImageUpload = () => {
+    const input = document.createElement("input")
+    input.type = "file"
+    input.accept = "image/*"
+    input.multiple = true
+    input.onchange = () => {
+      const files = Array.from(input.files || [])
+      files.forEach(file => {
+        const reader = new FileReader()
+        reader.onload = (e) => {
+          const dataUrl = e.target?.result as string
+          editor.chain().focus().setImage({ src: dataUrl }).run()
+        }
+        reader.readAsDataURL(file)
+      })
+    }
+    input.click()
+  }
 
   return (
     <div className="border border-surface-200 rounded-lg overflow-hidden">
@@ -66,6 +92,14 @@ export function RichTextEditor({ content, onChange, placeholder = "邮件内容.
         <ToolbarBtn onClick={() => editor.chain().focus().toggleBlockquote().run()} active={editor.isActive("blockquote")} title="引用">
           <Quote size={15} />
         </ToolbarBtn>
+        {showImageButton && (
+          <>
+            <div className="w-px h-4 bg-surface-300 mx-1" />
+            <ToolbarBtn onClick={handleImageUpload} title="插入图片">
+              <ImageIcon size={15} />
+            </ToolbarBtn>
+          </>
+        )}
         <div className="flex-1" />
         <ToolbarBtn onClick={() => editor.chain().focus().undo().run()} title="撤销">
           <Undo size={15} />

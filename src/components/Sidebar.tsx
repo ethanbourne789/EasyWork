@@ -3,7 +3,6 @@ import { Link, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { useSidebarStore } from "@/stores/sidebar-store"
 import { cn } from "@/lib/utils"
-import logoImg from "@/assets/logo.png"
 import {
   LayoutDashboard, Columns3, Calendar, Mail, StickyNote,
   TrendingUp, PiggyBank, Dumbbell, ScrollText, Settings,
@@ -46,18 +45,6 @@ export function Sidebar() {
         collapsed ? "w-16" : "w-56"
       )}
     >
-      {/* Logo */}
-      <div className="flex items-center h-14 px-3 border-b border-surface-100 dark:border-surface-800">
-        {!collapsed ? (
-          <div className="flex items-center gap-2">
-            <img src={logoImg} alt="EasyWork" className="w-7 h-7 rounded-lg" />
-            <span className="font-bold text-base text-primary-600 dark:text-primary-400 tracking-tight">EasyWork</span>
-          </div>
-        ) : (
-          <img src={logoImg} alt="E" className="w-7 h-7 rounded-lg mx-auto" />
-        )}
-      </div>
-
       {/* Navigation */}
       <nav className="flex-1 py-3 px-2 space-y-0.5 overflow-y-auto">
         {navItems.map((item) => {

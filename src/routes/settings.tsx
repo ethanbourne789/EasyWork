@@ -1,12 +1,14 @@
-import { useState } from "react"
+import { useState, useEffect } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useThemeStore } from "@/stores/theme-store"
+import * as mailIpc from "@/lib/mail-ipc"
 import {
   Monitor, Sun, Moon, Database, Keyboard, Bell, Globe, Info, ChevronRight, Check,
+  LogOut, Minimize2, Mail, Clock,
 } from "lucide-react"
 
 const themeOptions = [
@@ -25,6 +27,48 @@ function SettingsPage() {
   const { theme, setTheme } = useThemeStore()
   const [themeOpen, setThemeOpen] = useState(false)
   const [langOpen, setLangOpen] = useState(false)
+
+  // Close behavior & auto-fetch
+  const [closeBehavior, setCloseBehaviorState] = useState<"minimize" | "exit">("minimize")
+  const [_autoFetchInterval, setAutoFetchIntervalState] = useState(300)
+  const [fetchIntervalInput, setFetchIntervalInput] = useState("5")
+  const [fetchIntervalUnit, setFetchIntervalUnit] = useState<"minutes" | "hours">("minutes")
+
+  useEffect(() => {
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (isTauri) {
+      mailIpc.getCloseBehavior().then((v: string) => setCloseBehaviorState(v as "minimize" | "exit")).catch(() => {})
+      mailIpc.getAutoFetchInterval().then(async (secs: number) => {
+        setAutoFetchIntervalState(secs)
+        if (secs >= 3600) {
+          setFetchIntervalInput(String(secs / 3600))
+          setFetchIntervalUnit("hours")
+        } else {
+          setFetchIntervalInput(String(secs / 60))
+          setFetchIntervalUnit("minutes")
+        }
+      }).catch(() => {})
+    }
+  }, [])
+
+  const handleCloseBehaviorChange = async (behavior: "minimize" | "exit") => {
+    setCloseBehaviorState(behavior)
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (isTauri) {
+      await mailIpc.setCloseBehavior(behavior).catch(() => {})
+    }
+  }
+
+  const handleAutoFetchChange = async () => {
+    const val = parseInt(fetchIntervalInput, 10)
+    if (isNaN(val) || val <= 0) return
+    const secs = fetchIntervalUnit === "hours" ? val * 3600 : val * 60
+    setAutoFetchIntervalState(secs)
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (isTauri) {
+      await mailIpc.setAutoFetchInterval(secs).catch(() => {})
+    }
+  }
 
   const handleLanguageChange = (lang: string) => {
     i18n.changeLanguage(lang)
@@ -129,6 +173,86 @@ function SettingsPage() {
               </div>
             )}
           </div>
+        </CardContent>
+      </Card>
+
+      {/* Close Behavior */}
+      <Card className="dark:bg-surface-800 dark:border-surface-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 dark:text-white">
+            <LogOut size={18} className="text-surface-500" />
+            {t("settings.closeBehavior")}
+          </CardTitle>
+          <CardDescription className="dark:text-surface-400">{t("settings.closeBehaviorDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent className="space-y-3">
+          <div className="flex items-center justify-between py-2">
+            <div className="flex items-center gap-3">
+              <Minimize2 size={17} className="text-surface-400" />
+              <div>
+                <span className="text-sm dark:text-surface-200">{t("settings.minimizeToTray")}</span>
+                <p className="text-xs text-surface-400 dark:text-surface-500">{t("settings.minimizeToTrayHint")}</p>
+              </div>
+            </div>
+            <button
+              onClick={() => handleCloseBehaviorChange(closeBehavior === "minimize" ? "exit" : "minimize")}
+              className={`relative w-9 h-5 rounded-full transition-colors ${
+                closeBehavior === "minimize" ? "bg-primary-600" : "bg-surface-300 dark:bg-surface-600"
+              }`}
+            >
+              <div className={`absolute top-0.5 w-4 h-4 rounded-full bg-white shadow-sm transition-transform ${
+                closeBehavior === "minimize" ? "translate-x-4" : "translate-x-0.5"
+              }`} />
+            </button>
+          </div>
+          <div className="flex items-center justify-between py-2 opacity-60">
+            <div className="flex items-center gap-3">
+              <LogOut size={17} className="text-surface-400" />
+              <div>
+                <span className="text-sm dark:text-surface-200">{t("settings.exitOnClose")}</span>
+                <p className="text-xs text-surface-400 dark:text-surface-500">{t("settings.exitOnCloseHint")}</p>
+              </div>
+            </div>
+            <div className={`w-9 h-5 rounded-full ${closeBehavior === "exit" ? "bg-primary-600" : "bg-surface-300 dark:bg-surface-600"} flex items-center px-0.5 ${closeBehavior === "exit" ? "justify-end" : "justify-start"}`}>
+              <div className="w-4 h-4 rounded-full bg-white shadow-sm" />
+            </div>
+          </div>
+        </CardContent>
+      </Card>
+
+      {/* Auto Fetch */}
+      <Card className="dark:bg-surface-800 dark:border-surface-700">
+        <CardHeader>
+          <CardTitle className="flex items-center gap-2 dark:text-white">
+            <Mail size={18} className="text-primary-500" />
+            {t("settings.autoFetch")}
+          </CardTitle>
+          <CardDescription className="dark:text-surface-400">{t("settings.autoFetchDesc")}</CardDescription>
+        </CardHeader>
+        <CardContent>
+          <div className="flex items-center gap-2">
+            <input
+              type="number"
+              min="1"
+              value={fetchIntervalInput}
+              onChange={e => setFetchIntervalInput(e.target.value)}
+              className="w-20 h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-transparent dark:text-surface-200"
+            />
+            <select
+              value={fetchIntervalUnit}
+              onChange={e => setFetchIntervalUnit(e.target.value as "minutes" | "hours")}
+              className="h-9 px-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-transparent dark:text-surface-200"
+            >
+              <option value="minutes">{t("settings.minutes")}</option>
+              <option value="hours">{t("settings.hours")}</option>
+            </select>
+            <Button size="sm" onClick={handleAutoFetchChange} disabled={!fetchIntervalInput}>
+              <Clock size={14} />{t("settings.apply")}
+            </Button>
+          </div>
+          <p className="text-xs text-surface-400 dark:text-surface-500 mt-2">
+            {t("settings.autoFetchHint")}
+          </p>
         </CardContent>
       </Card>
 

@@ -41,6 +41,7 @@ export interface AttachmentInfo {
   content_type: string
   size: number
   local_path: string
+  content_id: string
 }
 
 export interface MessageHeaders {
@@ -161,6 +162,14 @@ export async function listMessageAttachments(
   return tauriInvoke<AttachmentInfo[]>("list_message_attachments", { messageId })
 }
 
+export async function openFile(path: string): Promise<void> {
+  return tauriInvoke("open_file", { path })
+}
+
+export async function readFileAsBase64(path: string): Promise<string> {
+  return tauriInvoke<string>("read_file_as_base64", { path })
+}
+
 // ==================== Folders ====================
 
 export async function folderUnreadCounts(
@@ -181,4 +190,26 @@ export async function listContacts(accountId: number): Promise<MailContact[]> {
 
 export async function deleteContact(id: number): Promise<void> {
   return tauriInvoke("delete_contact", { id })
+}
+
+export async function updateContact(contact: MailContact): Promise<void> {
+  return tauriInvoke("update_contact", { contact })
+}
+
+// ==================== Config ====================
+
+export async function getAutoFetchInterval(): Promise<number> {
+  return tauriInvoke<number>("get_auto_fetch_interval")
+}
+
+export async function setAutoFetchInterval(intervalSecs: number): Promise<void> {
+  return tauriInvoke("set_auto_fetch_interval", { intervalSecs })
+}
+
+export async function getCloseBehavior(): Promise<string> {
+  return tauriInvoke<string>("get_close_behavior")
+}
+
+export async function setCloseBehavior(behavior: string): Promise<void> {
+  return tauriInvoke("set_close_behavior", { behavior })
 }

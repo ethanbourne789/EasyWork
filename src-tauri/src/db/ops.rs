@@ -460,18 +460,46 @@ pub fn insert_attachment(
     Ok(conn.last_insert_rowid())
 }
 
-pub fn list_attachments(pool: &DbPool, message_id: i64) -> Result<Vec<(i64, String, String, i64, String)>> {
+pub fn list_attachments(pool: &DbPool, message_id: i64) -> Result<Vec<(i64, String, String, i64, String, String)>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare(
-        "SELECT id, filename, content_type, size, local_path FROM mail_attachments WHERE message_id = ?1"
+        "SELECT id, filename, content_type, size, local_path, content_id FROM mail_attachments WHERE message_id = ?1"
     )?;
     let attachments = stmt.query_map(params![message_id], |row| {
-        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?))
+        Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5).unwrap_or_default()))
     })?.filter_map(|r| r.ok()).collect();
     Ok(attachments)
 }
 
-// ---- Contacts ----
+// ---- App Config ----
+
+pub fn get_config(pool: &DbPool, key: &str) -> Option<String> {
+    let conn = pool.get().ok()?;
+    conn.query_row(
+        "SELECT value FROM app_config WHERE key = ?1",
+        params![key],
+        |row| row.get(0),
+    ).ok()
+}
+
+pub fn set_config(pool: &DbPool, key: &str, value: &str) {
+    if let Ok(conn) = pool.get() {
+        let _ = conn.execute(
+            "INSERT OR REPLACE INTO app_config (key, value) VALUES (?1, ?2)",
+            params![key, value],
+        );
+    }
+}
+
+pub fn get_unread_message_count(pool: &DbPool, account_id: i64) -> i64 {
+    if let Ok(conn) = pool.get() {
+        conn.query_row(
+            "SELECT COUNT(*) FROM mail_messages WHERE account_id = ?1 AND is_read = 0 AND is_deleted = 0",
+            params![account_id],
+            |row| row.get(0),
+        ).unwrap_or(0)
+    } else { 0 }
+}
 
 pub fn insert_contact(pool: &DbPool, contact: &MailContact) -> Result<i64> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
@@ -505,6 +533,15 @@ pub fn list_contacts(pool: &DbPool, account_id: i64) -> Result<Vec<MailContact>>
 pub fn delete_contact(pool: &DbPool, id: i64) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute("DELETE FROM mail_contacts WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn update_contact(pool: &DbPool, contact: &MailContact) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE mail_contacts SET name=?1, email=?2, phone=?3, group_name=?4, notes=?5 WHERE id=?6",
+        params![contact.name, contact.email, contact.phone, contact.group_name, contact.notes, contact.id],
+    )?;
     Ok(())
 }
 

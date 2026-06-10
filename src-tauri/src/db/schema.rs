@@ -114,6 +114,12 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         CREATE INDEX IF NOT EXISTS idx_mail_pending_ops_status ON mail_pending_ops(status);
         CREATE INDEX IF NOT EXISTS idx_mail_contacts_account_id ON mail_contacts(account_id);
 
+        -- App config (key-value store)
+        CREATE TABLE IF NOT EXISTS app_config (
+            key TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+
         -- FTS5 full-text search index
         CREATE VIRTUAL TABLE IF NOT EXISTS mail_fts USING fts5(
             subject, from_name, from_email, body_text,

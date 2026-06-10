@@ -1,8 +1,10 @@
-import { useRef, useEffect } from "react"
+import { useRef, useEffect, useState, useCallback } from "react"
 
 interface ShadowDomEmailProps {
   html: string
   className?: string
+  /** Map of content_id (without angle brackets) → data URL for inline images */
+  cidMap?: Record<string, string>
 }
 
 /**
@@ -10,28 +12,37 @@ interface ShadowDomEmailProps {
  * email CSS from leaking into the application and to provide
  * basic XSS isolation.
  *
- * The Shadow DOM is created via attachShadow({ mode: "open" })
- * and the HTML is set via innerHTML on the shadow root.
+ * Supports:
+ * - CID inline image replacement
+ * - Remote image blocking (click to show)
  */
-export function ShadowDomEmail({ html, className }: ShadowDomEmailProps) {
+export function ShadowDomEmail({ html, className, cidMap }: ShadowDomEmailProps) {
   const containerRef = useRef<HTMLDivElement>(null)
   const shadowRootRef = useRef<ShadowRoot | null>(null)
+  const [showRemoteImages, setShowRemoteImages] = useState(false)
 
-  useEffect(() => {
+  const renderContent = useCallback(() => {
     const container = containerRef.current
     if (!container) return
 
-    // Create shadow root only once
     if (!shadowRootRef.current) {
       shadowRootRef.current = container.attachShadow({ mode: "open" })
     }
 
     const shadow = shadowRootRef.current
-
-    // Sanitize: remove scripts, event handlers, and iframes
     const sanitized = sanitizeHtml(html)
 
-    // Reset base styles to ensure readable content in any theme
+    // Replace cid: references with data URLs
+    const withCid = cidMap ? replaceCidRefs(sanitized, cidMap) : sanitized
+
+    // Block remote images if not allowed
+    const finalHtml = showRemoteImages ? withCid : blockRemoteImages(withCid)
+
+    const hasRemoteImages = !showRemoteImages && hasRemoteImgTags(withCid)
+
+    // Check for blocked images after rendering
+    const checkBlocked = hasRemoteImages
+
     shadow.innerHTML = `
       <style>
         :host {
@@ -72,11 +83,61 @@ export function ShadowDomEmail({ html, className }: ShadowDomEmailProps) {
           padding: 6px 10px;
         }
       </style>
-      ${sanitized}
+      ${checkBlocked ? `<div id="remote-img-bar" style="background:#f3f4f6;border:1px solid #e5e7eb;border-radius:6px;padding:6px 12px;margin-bottom:8px;font-size:12px;color:#6b7280;display:flex;align-items:center;gap:8px;">
+        <span>🖼️ 邮件中包含远程图片</span>
+        <button id="show-images-btn" style="background:#2563eb;color:white;border:none;border-radius:4px;padding:4px 10px;font-size:12px;cursor:pointer;">显示图片</button>
+      </div>` : ""}
+      ${finalHtml}
     `
-  }, [html])
+
+    // Attach event listener for "show images" button
+    if (checkBlocked) {
+      const btn = shadow.querySelector("#show-images-btn")
+      if (btn) {
+        btn.addEventListener("click", () => setShowRemoteImages(true))
+      }
+    }
+  }, [html, cidMap, showRemoteImages])
+
+  useEffect(() => {
+    renderContent()
+  }, [renderContent])
 
   return <div ref={containerRef} className={className} />
+}
+
+/**
+ * Replace <img src="cid:xxx"> with inline data URLs from the cidMap.
+ */
+function replaceCidRefs(html: string, cidMap: Record<string, string>): string {
+  return html.replace(/<img\s[^>]*src\s*=\s*["']cid:([^"']+)["'][^>]*\/?>/gi, (match, cid) => {
+    const dataUrl = cidMap[cid] || cidMap[`<${cid}>`]
+    if (dataUrl) {
+      return match.replace(/src\s*=\s*["']cid:[^"']+["']/i, `src="${dataUrl}"`)
+    }
+    return match.replace(/src\s*=\s*["']cid:[^"']+["']/i, 'src=""')
+  })
+}
+
+/**
+ * Check if the HTML has any remote img tags (non-data, non-cid after replacement).
+ */
+function hasRemoteImgTags(html: string): boolean {
+  const imgRegex = /<img\s[^>]*src\s*=\s*["'](?!data:|cid:)([^"']+)["']/gi
+  return imgRegex.test(html)
+}
+
+/**
+ * Replace remote image src with a placeholder to block tracking pixels.
+ */
+function blockRemoteImages(html: string): string {
+  return html.replace(/<img\s[^>]*src\s*=\s*["'](?!data:|cid:)([^"']+)["']([^>]*)\/?>/gi, (_match, _src, rest) => {
+    return `<img src="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' width='1' height='1'/%3E" data-remote-src="${escapeAttr(_src)}"${rest || ""} />`
+  })
+}
+
+function escapeAttr(s: string): string {
+  return s.replace(/&/g, "&amp;").replace(/"/g, "&quot;").replace(/</g, "&lt;").replace(/>/g, "&gt;")
 }
 
 /**
@@ -88,16 +149,11 @@ export function ShadowDomEmail({ html, className }: ShadowDomEmailProps) {
  */
 function sanitizeHtml(html: string): string {
   return html
-    // Remove script tags and their content
     .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    // Remove on* event handlers
     .replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    // Remove javascript: URLs
     .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
     .replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src="#"')
-    // Remove iframes
     .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-    // Remove <object> and <embed>
     .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
     .replace(/<embed\b[^>]*\/?>/gi, "")
 }

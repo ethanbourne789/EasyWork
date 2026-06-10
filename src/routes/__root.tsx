@@ -3,7 +3,6 @@ import { useTranslation } from "react-i18next"
 import { Sidebar } from "@/components/Sidebar"
 import { ThemeToggle } from "@/components/ThemeToggle"
 import { Bell, Search } from "lucide-react"
-import logoImg from "@/assets/logo.png"
 
 function RootLayout() {
   const { t } = useTranslation()
@@ -30,7 +29,6 @@ function RootLayout() {
               <Bell size={18} />
               <span className="absolute top-1.5 right-1.5 w-2 h-2 bg-red-500 rounded-full" />
             </button>
-            <img src={logoImg} alt="E" className="w-7 h-7 rounded-lg" />
           </div>
         </header>
 
