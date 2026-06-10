@@ -1,6 +1,17 @@
 <resources xmlns:tools="http://schemas.android.com/tools">
-    <!-- Base application theme. -->
+    <!-- Edge-to-edge theme: transparent system bars, content handles insets via CSS -->
     <style name="Theme.app" parent="Theme.MaterialComponents.DayNight.NoActionBar">
-        <!-- Customize your theme here. -->
+        <!-- Transparent status bar — content draws behind, CSS adds safe-area padding -->
+        <item name="android:statusBarColor">@android:color/transparent</item>
+        <item name="android:navigationBarColor">@android:color/transparent</item>
+        <!-- Light status bar icons for day mode (dark icons on light content) -->
+        <item name="android:windowLightStatusBar">true</item>
+        <!-- Disable default insets fitting — we handle via CSS env(safe-area-inset-*) -->
+        <item name="android:windowTranslucentStatus">false</item>
+        <item name="android:windowTranslucentNavigation">false</item>
+        <!-- Let activity handle window insets via enableEdgeToEdge() -->
+        <item name="android:fitsSystemWindows">false</item>
+        <!-- Android 15+ edge-to-edge enforced; opt in for gesture navigation overlap -->
+        <item name="android:windowOptOutEdgeToEdgeEnforcement" tools:ignore="NewApi">false</item>
     </style>
 </resources>
