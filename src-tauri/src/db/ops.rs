@@ -113,7 +113,17 @@ pub fn list_accounts(pool: &DbPool) -> Result<Vec<MailAccount>> {
 
 pub fn delete_account(pool: &DbPool, id: i64) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    // Explicitly delete cascading data because PRAGMA foreign_keys=ON
+    // is only set on the initial connection, not on pooled connections.
+    conn.execute("DELETE FROM mail_attachments WHERE message_id IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
+    conn.execute("DELETE FROM mail_message_folders WHERE message_id IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
+    conn.execute("DELETE FROM mail_fts WHERE rowid IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
+    conn.execute("DELETE FROM mail_messages WHERE account_id = ?1", params![id])?;
+    conn.execute("DELETE FROM mail_folders WHERE account_id = ?1", params![id])?;
+    conn.execute("DELETE FROM mail_pending_ops WHERE account_id = ?1", params![id])?;
+    conn.execute("DELETE FROM mail_contacts WHERE account_id = ?1", params![id])?;
     conn.execute("DELETE FROM mail_accounts WHERE id = ?1", params![id])?;
+    log::info!("Deleted account {} and all associated data", id);
     Ok(())
 }
 
