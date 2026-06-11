@@ -145,6 +145,8 @@ pub fn update_account(pool: &DbPool, account: &MailAccount) -> Result<()> {
 
 pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    // ── Dedup Layer 1: By remote_uid (IMAP UID) ──
     let existing: Option<i64> = conn.query_row(
         "SELECT id FROM mail_messages WHERE account_id = ?1 AND remote_uid = ?2",
         params![msg.account_id, msg.remote_uid],
@@ -162,22 +164,95 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
                 msg.has_attachment as i32, msg.size, msg.date, id
             ],
         )?;
-        Ok(id)
-    } else {
-        conn.execute(
-            "INSERT INTO mail_messages (account_id, remote_uid, message_id_header, subject, from_name, from_email,
-             to_list, cc_list, date, body_text, body_html, is_read, is_starred, has_attachment, size, thread_id)
-             VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16)",
-            params![
-                msg.account_id, msg.remote_uid, msg.message_id_header,
-                msg.subject, msg.from_name, msg.from_email, msg.to_list, msg.cc_list,
-                msg.date, msg.body_text, msg.body_html,
-                msg.is_read as i32, msg.is_starred as i32,
-                msg.has_attachment as i32, msg.size, msg.thread_id
-            ],
-        )?;
-        Ok(conn.last_insert_rowid())
+        log::debug!("Dedup by UID: updated existing message id={} (account={}, uid={})", id, msg.account_id, msg.remote_uid);
+        return Ok(id);
     }
+
+    // ── Dedup Layer 2: By Message-ID ──
+    // Catches IMAP server UID reassignment (e.g. QQ Mail re-indexing)
+    if !msg.message_id_header.is_empty() {
+        let existing_by_msgid: Option<i64> = conn.query_row(
+            "SELECT id FROM mail_messages WHERE account_id = ?1 AND message_id_header = ?2",
+            params![msg.account_id, msg.message_id_header],
+            |row| row.get(0),
+        ).ok();
+
+        if let Some(id) = existing_by_msgid {
+            // Same Message-ID, different UID → server re-assigned UID, update and reuse
+            conn.execute(
+                "UPDATE mail_messages SET remote_uid=?1, subject=?2, from_name=?3, from_email=?4,
+                 to_list=?5, cc_list=?6, date=?7, body_text=?8, body_html=?9,
+                 is_read=?10, is_starred=?11, has_attachment=?12, size=?13, thread_id=?14,
+                 updated_at=datetime('now')
+                 WHERE id=?15",
+                params![
+                    msg.remote_uid, msg.subject, msg.from_name, msg.from_email,
+                    msg.to_list, msg.cc_list, msg.date, msg.body_text, msg.body_html,
+                    msg.is_read as i32, msg.is_starred as i32,
+                    msg.has_attachment as i32, msg.size, msg.thread_id, id
+                ],
+            )?;
+            log::info!(
+                "Dedup by Message-ID: updated UID {}→{} for existing message id={} (account={})",
+                msg.remote_uid, msg.remote_uid, id, msg.account_id
+            );
+            return Ok(id);
+        }
+    }
+
+    // ── Dedup Layer 3: By content hash (subject + from + date) ──
+    // Last-resort catch for emails with missing/invalid Message-ID
+    {
+        let hash = compute_content_hash(&msg.subject, &msg.from_email, &msg.date);
+        let existing_by_hash: Option<i64> = conn.query_row(
+            "SELECT m.id FROM mail_messages m
+             WHERE m.account_id = ?1 AND m.content_hash = ?2
+             LIMIT 1",
+            params![msg.account_id, hash],
+            |row| row.get(0),
+        ).ok();
+
+        if let Some(id) = existing_by_hash {
+            conn.execute(
+                "UPDATE mail_messages SET remote_uid=?1, thread_id=?2, updated_at=datetime('now')
+                 WHERE id=?3",
+                params![msg.remote_uid, msg.thread_id, id],
+            )?;
+            log::info!("Dedup by content hash: updated UID for existing message id={} (account={})", id, msg.account_id);
+            return Ok(id);
+        }
+    }
+
+    // ── New message ──
+    let hash = compute_content_hash(&msg.subject, &msg.from_email, &msg.date);
+    conn.execute(
+        "INSERT INTO mail_messages (account_id, remote_uid, message_id_header, subject, from_name, from_email,
+         to_list, cc_list, date, body_text, body_html, is_read, is_starred, has_attachment, size, thread_id, content_hash)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+        params![
+            msg.account_id, msg.remote_uid, msg.message_id_header,
+            msg.subject, msg.from_name, msg.from_email, msg.to_list, msg.cc_list,
+            msg.date, msg.body_text, msg.body_html,
+            msg.is_read as i32, msg.is_starred as i32,
+            msg.has_attachment as i32, msg.size, msg.thread_id, hash
+        ],
+    )?;
+    let new_id = conn.last_insert_rowid();
+    log::debug!("New message inserted: id={} (account={}, uid={})", new_id, msg.account_id, msg.remote_uid);
+    Ok(new_id)
+}
+
+/// Compute a content hash for dedup: SHA256 of (subject|from_email|date).
+fn compute_content_hash(subject: &str, from_email: &str, date: &str) -> String {
+    use sha2::{Sha256, Digest};
+    let mut hasher = Sha256::new();
+    hasher.update(subject.as_bytes());
+    hasher.update(b"|");
+    hasher.update(from_email.as_bytes());
+    hasher.update(b"|");
+    hasher.update(date.as_bytes());
+    let result = hasher.finalize();
+    hex::encode(&result[..8]) // first 8 hex chars for a short, unique-enough hash
 }
 
 pub fn update_message_thread_id(pool: &DbPool, message_id: i64, thread_id: &str) -> Result<()> {

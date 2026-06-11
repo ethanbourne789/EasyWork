@@ -140,12 +140,13 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         )?;
     }
 
-    // Migration: add is_deleted, deleted_at, thread_id columns
+    // Migration: add is_deleted, deleted_at, thread_id, content_hash columns
     for (col, def) in [
         ("is_deleted", "INTEGER NOT NULL DEFAULT 0"),
         ("deleted_at", "TEXT"),
         ("thread_id", "TEXT NOT NULL DEFAULT ''"),
         ("updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))"),
+        ("content_hash", "TEXT NOT NULL DEFAULT ''"),
     ] {
         let has = conn
             .prepare(&format!("SELECT {} FROM mail_messages LIMIT 0", col))
@@ -193,7 +194,10 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     // so the index creation is placed here, after the migration block.
     let _ = conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_mail_messages_thread_id ON mail_messages(thread_id);
-         CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);"
+         CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
+         CREATE INDEX IF NOT EXISTS idx_mail_messages_content_hash ON mail_messages(content_hash);
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_messages_msgid ON mail_messages(account_id, message_id_header)
+             WHERE message_id_header != '';"
     );
 
     Ok(())
