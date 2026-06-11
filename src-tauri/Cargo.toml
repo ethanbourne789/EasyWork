@@ -16,12 +16,18 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.2", features = [] }
 
 [features]
-# Default features: compile OpenSSL from source on every platform.
-# This eliminates cross-platform OpenSSL version mismatches, removes the
-# Android NDK cross-compile headaches, and means no user/developer ever has
-# to install system OpenSSL packages or fiddle with perl versions.
-# See MEMORY.md "IMAP TLS 选型" for the analysis behind this choice.
-default = ["native-tls-vendored"]
+# Default: enable TLS via rustls (works everywhere, no external dependencies).
+# With rustls, IMAP/SMTP TLS is handled without OpenSSL, avoiding cross-compile
+# headaches for Android and platform-specific OpenSSL quirks.
+#
+# Optional: "desktop-native-tls" switches IMAP TLS to native-tls (schannel on
+# Windows, Security.framework on macOS, OpenSSL on Linux). Enable this only
+# if you need the OS trust store for corporate/internal PKI scenarios.
+default = []
+
+# native-tls with vendored OpenSSL (desktop-only; requires Perl+make for
+# cross-compilation to Android)
+desktop-native-tls = ["native-tls-vendored", "dep:native-tls", "dep:tokio-native-tls"]
 native-tls-vendored = ["native-tls/vendored"]
 
 [dependencies]
@@ -45,8 +51,8 @@ webpki-roots = "1.0"
 # Windows uses schannel, macOS uses Security.framework,
 # Linux/Android use OpenSSL (compiled from source via the `vendored` feature,
 # see [features] above — same approach as Delta Chat's chatmail/core)
-native-tls = "0.2"
-tokio-native-tls = "0.3"
+native-tls = { version = "0.2", optional = true }
+tokio-native-tls = { version = "0.3", optional = true }
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }

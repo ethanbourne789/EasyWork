@@ -21,7 +21,7 @@ pub async fn stock_watchlist_add(
     pool: State<'_, DbPool>,
     item: StockWatchItem,
 ) -> Result<i64, String> {
-    watchlist_add(&pool, &item).map_err(|e| e.to_string())
+    watchlist_add(&pool, &item)
 }
 
 #[tauri::command]

@@ -2,11 +2,17 @@ use std::time::{Duration, Instant};
 use futures::{StreamExt, TryStreamExt};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-/// IMAP session using native-tls (schannel on Windows, OpenSSL on Linux/Android, Security.framework on macOS).
-/// Mirrors curl's SSL behaviour — works reliably with QQ/K8s/163 IMAP servers.
-/// On Android, OpenSSL is compiled from source (vendored feature).
+// ── TLS backend selection ──────────────────────────────────────────
+// Android: use rustls (no vendored OpenSSL headache)
+// Desktop (native-tls feature): use native-tls (OS trust store)
+#[cfg(feature = "desktop-native-tls")]
 pub type ImapSession = async_imap::Session<
     tokio_util::compat::Compat<tokio_native_tls::TlsStream<tokio::net::TcpStream>>
+>;
+
+#[cfg(not(feature = "desktop-native-tls"))]
+pub type ImapSession = async_imap::Session<
+    tokio_util::compat::Compat<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>
 >;
 
 /// Timeout per individual step (TCP, TLS, LOGIN)
@@ -84,48 +90,99 @@ async fn connection_attempt(
         host, peer_addr, tcp_elapsed.as_secs_f64()
     );
 
-    // ── Step 2: TLS handshake (10s timeout) using native-tls ──
-    let tls_start = Instant::now();
-    log::info!("IMAP Step 2/3: TLS handshake (native-tls) with {}:{} ...", host, port);
+    // ── Step 2: TLS handshake (10s timeout) ──
+    #[cfg(feature = "desktop-native-tls")]
+    let tls_stream = {
+        let tls_start = Instant::now();
+        log::info!("IMAP Step 2/3: TLS handshake (native-tls) with {}:{} ...", host, port);
 
-    // native-tls uses the OS trust store:
-    // - Windows: schannel (built-in, handles renegotiation)
-    // - macOS: Security.framework
-    // - Linux/Android: OpenSSL (Android uses vendored build)
-    let tls_connector = native_tls::TlsConnector::builder()
-        .build()
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            log::error!("IMAP TLS: failed to build native connector: {}", e);
-            format!("TLS 初始化失败: {}", e).into()
-        })?;
-    let tls_connector = tokio_native_tls::TlsConnector::from(tls_connector);
+        // native-tls uses the OS trust store:
+        // - Windows: schannel (built-in, handles renegotiation)
+        // - macOS: Security.framework
+        // - Linux: OpenSSL (vendored build)
+        let tls_connector = native_tls::TlsConnector::builder()
+            .build()
+            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                log::error!("IMAP TLS: failed to build native connector: {}", e);
+                format!("TLS 初始化失败: {}", e).into()
+            })?;
+        let tls_connector = tokio_native_tls::TlsConnector::from(tls_connector);
 
-    let tls_future = tls_connector.connect(host, tcp);
-    let tls_stream = tokio::select! {
-        t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            log::error!(
-                "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
-                host, port, tls_start.elapsed().as_secs_f64(), e
-            );
-            format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
-        })?,
-        _ = tokio::time::sleep(STEP_TIMEOUT) => {
-            let elapsed = tls_start.elapsed();
-            log::error!(
-                "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
-                host, port, elapsed.as_secs_f64()
-            );
-            return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
-        }
+        let tls_future = tls_connector.connect(host, tcp);
+        let stream: tokio_native_tls::TlsStream<tokio::net::TcpStream> = tokio::select! {
+            t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                log::error!(
+                    "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
+                    host, port, tls_start.elapsed().as_secs_f64(), e
+                );
+                format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
+            })?,
+            _ = tokio::time::sleep(STEP_TIMEOUT) => {
+                let elapsed = tls_start.elapsed();
+                log::error!(
+                    "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
+                    host, port, elapsed.as_secs_f64()
+                );
+                return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
+            }
+        };
+
+        let tls_elapsed = tls_start.elapsed();
+        log::info!(
+            "IMAP Step 2/3 OK: TLS handshake (native-tls) complete in {:.3}s",
+            tls_elapsed.as_secs_f64()
+        );
+
+        stream.compat()
     };
 
-    let tls_elapsed = tls_start.elapsed();
-    log::info!(
-        "IMAP Step 2/3 OK: TLS handshake (native-tls) complete in {:.3}s",
-        tls_elapsed.as_secs_f64()
-    );
+    #[cfg(not(feature = "desktop-native-tls"))]
+    let tls_stream = {
+        let tls_start = Instant::now();
+        log::info!("IMAP Step 2/3: TLS handshake (rustls) with {}:{} ...", host, port);
 
-    let tls_stream = tls_stream.compat();
+        // rustls with webpki-roots: no system dependencies, works on Android
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+        let config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+        let tls_connector = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
+
+        let server_name = host.to_string();
+        let tls_future = tls_connector.connect(
+            rustls::pki_types::ServerName::try_from(server_name.clone())
+                .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                    format!("无效的服务器主机名 '{}': {:?}", host, e).into()
+                })?,
+            tcp,
+        );
+        let stream: tokio_rustls::client::TlsStream<tokio::net::TcpStream> = tokio::select! {
+            t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                log::error!(
+                    "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
+                    host, port, tls_start.elapsed().as_secs_f64(), e
+                );
+                format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
+            })?,
+            _ = tokio::time::sleep(STEP_TIMEOUT) => {
+                let elapsed = tls_start.elapsed();
+                log::error!(
+                    "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
+                    host, port, elapsed.as_secs_f64()
+                );
+                return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
+            }
+        };
+
+        let tls_elapsed = tls_start.elapsed();
+        log::info!(
+            "IMAP Step 2/3 OK: TLS handshake (rustls) complete in {:.3}s",
+            tls_elapsed.as_secs_f64()
+        );
+
+        stream.compat()
+    };
 
     // ── Step 3: IMAP LOGIN (10s timeout) ──
     let login_start = Instant::now();

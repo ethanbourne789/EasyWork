@@ -1,16 +1,14 @@
 import { useState, useEffect, useRef, useCallback } from "react"
 import { createFileRoute } from "@tanstack/react-router"
 import {
-  Card, CardContent, CardHeader, CardTitle,
+  Card, CardContent,
 } from "@/components/ui/card"
-import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
 import {
   Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter,
 } from "@/components/ui/dialog"
 import { Label } from "@/components/ui/label"
-import type { StockWatchItem, StockTrade, StockPosition } from "./stocks"
 import * as stockIpc from "@/lib/stock-ipc"
 import * as stockService from "@/lib/stock-service"
 import type { SinaQuote, KLinePoint } from "@/lib/stock-service"
@@ -44,24 +42,68 @@ export interface StockPosition {
   avg_cost: number
 }
 
-// ==================== K-Line Chart ====================
+type ChartType = "intraday" | "daily" | "weekly"
+type ViewMode = "tile" | "list"
+
+const chartTypeOptions: { label: string; value: ChartType }[] = [
+  { label: "分时", value: "intraday" },
+  { label: "日K", value: "daily" },
+  { label: "周K", value: "weekly" },
+]
+
+/** Map chart type to scale value for fetchKLine */
+function getScale(chartType: ChartType): number | string {
+  switch (chartType) {
+    case "intraday": return 5       // 5-min bars for intraday
+    case "daily":    return 240     // daily
+    case "weekly":   return "week"
+  }
+}
+
+// ==================== Mini SVG Line Chart ====================
+
+function MiniChart({ prices, chartType, isUp }: { prices: number[]; chartType: ChartType; isUp: boolean }) {
+  if (prices.length < 2) return null
+  const w = 160, h = 60, pad = 2
+  const min = Math.min(...prices)
+  const max = Math.max(...prices)
+  const range = max - min || 1
+  const points = prices.map((p, i) => {
+    const x = pad + (i / (prices.length - 1)) * (w - pad * 2)
+    const y = h - pad - ((p - min) / range) * (h - pad * 2)
+    return `${x.toFixed(1)},${y.toFixed(1)}`
+  }).join(" ")
+  const color = chartType === "intraday" ? "#3b82f6" : (isUp ? "#ef4444" : "#22c55e")
+  const fillColor = chartType === "intraday" ? "rgba(59,130,246,0.08)" : (isUp ? "rgba(239,68,68,0.08)" : "rgba(34,197,94,0.08)")
+  const areaPoints = `${points} ${(w - pad).toFixed(1)},${(h - pad).toFixed(1)} ${pad},${(h - pad).toFixed(1)}`
+  return (
+    <svg width={w} height={h} viewBox={`0 0 ${w} ${h}`} className="flex-shrink-0">
+      <polygon points={areaPoints} fill={fillColor} />
+      <polyline points={points} fill="none" stroke={color} strokeWidth="1.5" strokeLinecap="round" strokeLinejoin="round" />
+    </svg>
+  )
+}
+
+// ==================== Full K-Line Chart ====================
 
 function KLineChart({
   symbol,
   marketType,
+  defaultScale,
 }: {
   symbol: string
   marketType: string
+  defaultScale?: number | string
 }) {
   const chartRef = useRef<HTMLDivElement>(null)
   const chartInst = useRef<any>(null)
   const [kData, setKData] = useState<KLinePoint[]>([])
-  const [scale, setScale] = useState<number>(240) // 240 = daily
+  const [scale, setScale] = useState<number | string>(defaultScale ?? 240)
 
   useEffect(() => {
     let cancelled = false
     ;(async () => {
-      const data = await stockService.fetchKLine(symbol, marketType, scale, 120)
+      const data = await stockService.fetchKLine(symbol, marketType, scale as any, 120)
       if (!cancelled) setKData(data)
     })()
     return () => { cancelled = true }
@@ -76,53 +118,74 @@ function KLineChart({
       const chart = echarts.init(chartRef.current, "light", { renderer: "canvas" })
       chartInst.current = chart
       const dates = kData.map((p) => p.date)
-      const values = kData.map((p) => [p.open, p.close, p.low, p.high])
-      const volumes = kData.map((p) => p.volume)
+      const isIntraday = typeof scale === "number" && scale < 240
 
-      chart.setOption({
-        tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
-        grid: [
-          { left: 60, right: 20, top: 40, height: "60%" },
-          { left: 60, right: 20, top: "72%", height: "18%" },
-        ],
-        xAxis: [
-          { type: "category", data: dates, gridIndex: 0, axisLabel: { show: false } },
-          { type: "category", data: dates, gridIndex: 1 },
-        ],
-        yAxis: [
-          { scale: true, gridIndex: 0 },
-          { scale: true, gridIndex: 1 },
-        ],
-        series: [
-          {
-            type: "candlestick",
-            data: values,
-            itemStyle: {
-              color: "#ef4444",       // red = close > open (Chinese style)
-              color0: "#22c55e",     // green = close < open
-              borderColor: "#ef4444",
-              borderColor0: "#22c55e",
-            },
-            gridIndex: 0,
-          },
-          {
-            type: "bar",
-            data: volumes,
-            itemStyle: {
-              color: (params: any) => {
-                const idx = params.dataIndex
-                if (idx > 0) {
-                  return kData[idx]!.close >= kData[idx]!.open
-                    ? "rgba(239,68,68,0.6)"
-                    : "rgba(34,197,94,0.6)"
-                }
-                return "rgba(239,68,68,0.6)"
+      if (isIntraday) {
+        // Intraday: line chart (分时)
+        const closes = kData.map((p) => p.close)
+        chart.setOption({
+          tooltip: { trigger: "axis" },
+          grid: { left: 50, right: 20, top: 20, bottom: 30 },
+          xAxis: { type: "category", data: dates, axisLabel: { rotate: 45, fontSize: 10 } },
+          yAxis: { scale: true },
+          series: [{
+            type: "line",
+            data: closes,
+            smooth: true,
+            showSymbol: false,
+            lineStyle: { width: 2, color: "#3b82f6" },
+            areaStyle: { color: "rgba(59,130,246,0.1)" },
+          }],
+        })
+      } else {
+        // Daily / Weekly / Monthly: candlestick
+        const values = kData.map((p) => [p.open, p.close, p.low, p.high])
+        const volumes = kData.map((p) => p.volume)
+        chart.setOption({
+          tooltip: { trigger: "axis", axisPointer: { type: "cross" } },
+          grid: [
+            { left: 60, right: 20, top: 40, height: "60%" },
+            { left: 60, right: 20, top: "72%", height: "18%" },
+          ],
+          xAxis: [
+            { type: "category", data: dates, gridIndex: 0, axisLabel: { show: false } },
+            { type: "category", data: dates, gridIndex: 1 },
+          ],
+          yAxis: [
+            { scale: true, gridIndex: 0 },
+            { scale: true, gridIndex: 1 },
+          ],
+          series: [
+            {
+              type: "candlestick",
+              data: values,
+              itemStyle: {
+                color: "#ef4444",
+                color0: "#22c55e",
+                borderColor: "#ef4444",
+                borderColor0: "#22c55e",
               },
+              gridIndex: 0,
             },
-            gridIndex: 1,
-          },
-        ],
-      })
+            {
+              type: "bar",
+              data: volumes,
+              itemStyle: {
+                color: (params: any) => {
+                  const idx = params.dataIndex
+                  if (idx > 0) {
+                    return kData[idx]!.close >= kData[idx]!.open
+                      ? "rgba(239,68,68,0.6)"
+                      : "rgba(34,197,94,0.6)"
+                  }
+                  return "rgba(239,68,68,0.6)"
+                },
+              },
+              gridIndex: 1,
+            },
+          ],
+        })
+      }
     })
     return () => {
       cancelled = true
@@ -131,20 +194,21 @@ function KLineChart({
         chartInst.current = null
       }
     }
-  }, [kData])
+  }, [kData, scale])
 
   return (
     <div className="mt-3">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-xs text-surface-500">K线：</span>
-        {[
-          { label: "日线", v: 240 },
-          { label: "周线", v: "week" as any },
-          { label: "月线", v: "month" as any },
-        ].map((opt) => (
+        <span className="text-xs text-surface-500">周期：</span>
+          {[
+            { label: "分时", v: 5 },
+            { label: "日线", v: 240 },
+            { label: "周线", v: "week" },
+            { label: "月线", v: "month" },
+          ].map((opt) => (
           <button
             key={String(opt.v)}
-            onClick={() => setScale(opt.v as number)}
+            onClick={() => setScale(opt.v)}
             className={`text-xs px-2 py-0.5 rounded ${
               scale === opt.v
                 ? "bg-primary-500 text-white"
@@ -171,6 +235,51 @@ function QuotesTab() {
   const [addMarket, setAddMarket] = useState<"a_stock" | "crypto">("a_stock")
   const [expandedSymbol, setExpandedSymbol] = useState<string | null>(null)
 
+  // View mode & chart type
+  const [viewMode, setViewMode] = useState<ViewMode>("tile")
+  const [chartType, setChartType] = useState<ChartType>("intraday")
+
+  // Mini chart data for tile view
+  const [chartDataMap, setChartDataMap] = useState<Record<string, number[]>>({})
+
+  // Auto-lookup stock info when symbol changes
+  const [quotePreview, setQuotePreview] = useState<SinaQuote | null>(null)
+  const [searchLoading, setSearchLoading] = useState(false)
+  const searchTimerRef = useRef<ReturnType<typeof setTimeout> | null>(null)
+
+  const doSearch = useCallback(async (symbol: string, market: string) => {
+    if (!symbol.trim()) { setQuotePreview(null); return }
+    setSearchLoading(true)
+    try {
+      const quotes = await stockService.fetchQuotes([
+        { symbol: symbol.trim(), market_type: market },
+      ])
+      const found = quotes.find(
+        (q) => q.symbol.endsWith(symbol.trim()) || q.symbol === symbol.trim()
+      )
+      if (found) {
+        setQuotePreview(found)
+        setAddName(found.name)
+      } else {
+        setQuotePreview(null)
+      }
+    } catch {
+      setQuotePreview(null)
+    }
+    setSearchLoading(false)
+  }, [])
+
+  useEffect(() => {
+    if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    if (!addSymbol.trim()) { setQuotePreview(null); return }
+    searchTimerRef.current = setTimeout(() => {
+      doSearch(addSymbol, addMarket)
+    }, 500)
+    return () => {
+      if (searchTimerRef.current) clearTimeout(searchTimerRef.current)
+    }
+  }, [addSymbol, addMarket, doSearch])
+
   const loadWatchlist = useCallback(async () => {
     setLoading(true)
     try {
@@ -182,7 +291,7 @@ function QuotesTab() {
 
   useEffect(() => { loadWatchlist() }, [loadWatchlist])
 
-  // Periodically fetch real-time quotes from Sina
+  // Periodically fetch real-time quotes
   useEffect(() => {
     if (watchlist.length === 0) return
     let cancelled = false
@@ -200,9 +309,42 @@ function QuotesTab() {
       } catch (e) { console.warn("获取行情失败", e) }
     }
     fetch()
-    const id = setInterval(fetch, 8_000) // every 8s
+    const id = setInterval(fetch, 8_000)
     return () => { cancelled = true; clearInterval(id) }
   }, [watchlist.length])
+
+  // Fetch mini chart data for tile view
+  useEffect(() => {
+    if (watchlist.length === 0 || viewMode === "list") { setChartDataMap({}); return }
+    let cancelled = false
+    const fetchAll = async () => {
+      const result: Record<string, number[]> = {}
+      const scale = getScale(chartType)
+      for (const w of watchlist) {
+        if (cancelled) break
+        try {
+          const data = await stockService.fetchKLine(w.symbol, w.market_type, scale as any, 60)
+          if (!cancelled && data.length > 0) {
+            // For line chart, use close prices
+            result[w.symbol] = data.map(d => d.close)
+            // For intraday, only show today's data
+            if (chartType === "intraday") {
+              const today = new Date().toISOString().slice(0, 10)
+              const todayData = data.filter(d => d.date.startsWith(today))
+              if (todayData.length > 0) {
+                result[w.symbol] = todayData.map(d => d.close)
+              }
+            }
+          }
+        } catch (e) { console.warn("获取K线数据失败", w.symbol, e) }
+      }
+      if (!cancelled) setChartDataMap(result)
+    }
+    fetchAll()
+    // Refresh chart data periodically (every 60s for intraday)
+    const id = chartType === "intraday" ? setInterval(fetchAll, 60_000) : undefined
+    return () => { cancelled = true; if (id) clearInterval(id) }
+  }, [watchlist.length, chartType, viewMode])
 
   const handleAdd = async () => {
     if (!addSymbol.trim()) return
@@ -216,8 +358,11 @@ function QuotesTab() {
       setShowAdd(false)
       setAddSymbol("")
       setAddName("")
+      setQuotePreview(null)
       loadWatchlist()
-    } catch (e) { console.error("添加失败", e) }
+    } catch (e: any) {
+      alert(e?.toString() || "添加失败")
+    }
   }
 
   const handleRemove = async (symbol: string) => {
@@ -225,16 +370,56 @@ function QuotesTab() {
     catch (e) { console.error("删除失败", e) }
   }
 
+  // ── Render ──
+
   return (
     <div className="space-y-3">
       {/* Toolbar */}
-      <div className="flex items-center justify-between">
-        <h3 className="text-sm font-semibold">自选股行情</h3>
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <div className="flex items-center gap-3">
+          {/* View Toggle */}
+          <div className="flex border border-surface-200 rounded-lg overflow-hidden">
+            <button
+              onClick={() => setViewMode("tile")}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === "tile" ? "bg-primary-500 text-white" : "bg-white text-surface-500 hover:bg-surface-50"
+              }`}
+            >
+              平铺
+            </button>
+            <button
+              onClick={() => setViewMode("list")}
+              className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                viewMode === "list" ? "bg-primary-500 text-white" : "bg-white text-surface-500 hover:bg-surface-50"
+              }`}
+            >
+              列表
+            </button>
+          </div>
+
+          {/* Chart Type Selector (tile only) */}
+          {viewMode === "tile" && (
+            <div className="flex border border-surface-200 rounded-lg overflow-hidden">
+              {chartTypeOptions.map((opt) => (
+                <button
+                  key={opt.value}
+                  onClick={() => setChartType(opt.value)}
+                  className={`px-2.5 py-1 text-xs font-medium transition-colors ${
+                    chartType === opt.value ? "bg-surface-800 text-white" : "bg-white text-surface-500 hover:bg-surface-50"
+                  }`}
+                >
+                  {opt.label}
+                </button>
+              ))}
+            </div>
+          )}
+        </div>
+
         <Button size="sm" onClick={() => setShowAdd(true)}>+ 添加自选</Button>
       </div>
 
       {/* Add Dialog */}
-      <Dialog open={showAdd} onOpenChange={setShowAdd}>
+      <Dialog open={showAdd} onOpenChange={(open) => { setShowAdd(open); if (!open) { setQuotePreview(null); setAddSymbol(""); setAddName(""); } }}>
         <DialogContent className="sm:max-w-[420px]">
           <DialogHeader>
             <DialogTitle>添加自选股</DialogTitle>
@@ -246,7 +431,7 @@ function QuotesTab() {
                   type="radio"
                   name="market"
                   checked={addMarket === "a_stock"}
-                  onChange={() => setAddMarket("a_stock")}
+                  onChange={() => { setAddMarket("a_stock"); setQuotePreview(null) }}
                 />
                 A股
               </label>
@@ -255,25 +440,48 @@ function QuotesTab() {
                   type="radio"
                   name="market"
                   checked={addMarket === "crypto"}
-                  onChange={() => setAddMarket("crypto")}
+                  onChange={() => { setAddMarket("crypto"); setQuotePreview(null) }}
                 />
                 数字货币
               </label>
             </div>
             <div className="space-y-1">
-              <Label>代码</Label>
+              <Label>股票代码</Label>
               <Input
                 value={addSymbol}
-                onChange={(e) => setAddSymbol(e.target.value)}
+                onChange={(e) => { setAddSymbol(e.target.value); setAddName("") }}
                 placeholder={addMarket === "a_stock" ? "600900" : "btcusd"}
               />
+              {searchLoading && (
+                <p className="text-xs text-surface-400 mt-1">正在查询…</p>
+              )}
             </div>
+            {quotePreview && (
+              <div className="rounded-lg border border-primary-200 bg-primary-50 p-3 space-y-1">
+                <div className="flex items-center justify-between">
+                  <span className="font-semibold text-sm">{quotePreview.name}</span>
+                  <span className="font-mono text-xs text-surface-400">{quotePreview.symbol}</span>
+                </div>
+                <div className="flex items-center gap-4 text-sm">
+                  <span className="font-bold text-base">{quotePreview.price.toFixed(2)}</span>
+                  <span className={quotePreview.change >= 0 ? "text-red-600" : "text-green-600"}>
+                    {quotePreview.change >= 0 ? "+" : ""}{quotePreview.change.toFixed(2)}
+                  </span>
+                  <span className={quotePreview.changePercent >= 0 ? "text-red-600" : "text-green-600"}>
+                    {quotePreview.changePercent >= 0 ? "+" : ""}{quotePreview.changePercent.toFixed(2)}%
+                  </span>
+                </div>
+              </div>
+            )}
+            {!quotePreview && addSymbol.trim() && !searchLoading && (
+              <p className="text-xs text-amber-600">未查询到该股票信息，请检查代码是否正确</p>
+            )}
             <div className="space-y-1">
               <Label>名称（可选）</Label>
               <Input
                 value={addName}
                 onChange={(e) => setAddName(e.target.value)}
-                placeholder="留空则自动从行情获取"
+                placeholder="留空则使用股票代码"
               />
             </div>
           </div>
@@ -284,12 +492,83 @@ function QuotesTab() {
         </DialogContent>
       </Dialog>
 
-      {/* Watchlist Table */}
+      {/* Content */}
       {loading ? (
         <div className="text-center py-8 text-surface-400 text-sm">加载中…</div>
       ) : watchlist.length === 0 ? (
         <div className="text-center py-8 text-surface-400 text-sm">暂无自选股，点击「添加自选」开始。</div>
+      ) : viewMode === "tile" ? (
+        /* ═══ Tile View ═══ */
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
+          {watchlist.map((w) => {
+            const q = w.quote
+            const isUp = !q || q.change >= 0
+            const color = isUp ? "text-red-600" : "text-green-600"
+            const prices = chartDataMap[w.symbol] ?? []
+            const isExpanded = expandedSymbol === w.symbol
+
+            return (
+              <Card
+                key={w.symbol}
+                className="cursor-pointer hover:shadow-md transition-shadow overflow-hidden"
+                onClick={() => setExpandedSymbol(isExpanded ? null : w.symbol)}
+              >
+                <CardContent className="p-3">
+                  {/* Header */}
+                  <div className="flex items-center justify-between mb-1">
+                    <div className="min-w-0">
+                      <p className="text-sm font-semibold truncate">{q?.name || w.name}</p>
+                      <p className="text-xs text-surface-400 font-mono">{w.symbol}</p>
+                    </div>
+                    <div className="text-right flex-shrink-0 ml-2">
+                      <p className={`text-base font-bold ${color}`}>
+                        {q ? q.price.toFixed(2) : "—"}
+                      </p>
+                      {q && (
+                        <p className={`text-xs ${color}`}>
+                          {q.change >= 0 ? "+" : ""}{q.changePercent.toFixed(2)}%
+                        </p>
+                      )}
+                    </div>
+                  </div>
+
+                  {/* Mini Chart */}
+                  {prices.length >= 2 && (
+                    <div className="flex justify-center my-1">
+                      <MiniChart prices={prices} chartType={chartType} isUp={isUp} />
+                    </div>
+                  )}
+
+                  {/* Expand indicator */}
+                  <div className="text-center mt-1">
+                    <span className="text-[10px] text-surface-300">
+                      {isExpanded ? "▲ 收起图表" : "▼ 展开图表"}
+                    </span>
+                  </div>
+
+                  {/* Expanded full chart */}
+                  {isExpanded && (
+                    <div className="mt-2 border-t border-surface-100 pt-2" onClick={(e) => e.stopPropagation()}>
+                      <KLineChart symbol={w.symbol} marketType={w.market_type} defaultScale={getScale(chartType)} />
+                    </div>
+                  )}
+
+                  {/* Delete button */}
+                  <div className="mt-1 text-right">
+                    <button
+                      onClick={(e) => { e.stopPropagation(); handleRemove(w.symbol) }}
+                      className="text-[10px] text-surface-300 hover:text-red-500"
+                    >
+                      删除
+                    </button>
+                  </div>
+                </CardContent>
+              </Card>
+            )
+          })}
+        </div>
       ) : (
+        /* ═══ List View ═══ */
         <div className="border border-surface-200 rounded-lg overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-surface-50 text-xs text-surface-500">
@@ -307,11 +586,9 @@ function QuotesTab() {
               {watchlist.map((w) => {
                 const q = w.quote
                 const isUp = !q || q.change >= 0
-                const color = isUp ? "text-red-600" : "text-green-600" // Chinese: red = up
+                const color = isUp ? "text-red-600" : "text-green-600"
                 return (
-                  <>
-                    <tr
-                      key={w.symbol}
+                  <><tr
                       className="border-t border-surface-100 hover:bg-surface-50 cursor-pointer"
                       onClick={() => setExpandedSymbol(expandedSymbol === w.symbol ? null : w.symbol)}
                     >
@@ -327,7 +604,7 @@ function QuotesTab() {
                         {q ? (isUp ? "+" : "") + q.changePercent.toFixed(2) + "%" : "—"}
                       </td>
                       <td className="px-3 py-2 text-right text-xs text-surface-500">
-                        {q ? (q.volume / 100).toFixed(0) + "手" : "—"}
+                        {q ? q.volume.toFixed(0) + "手" : "—"}
                       </td>
                       <td className="px-3 py-2 text-right">
                         <button
@@ -635,7 +912,7 @@ function StocksPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight dark:text-white">股票</h1>
         <p className="text-surface-500 text-sm mt-1">
-          自选股行情追踪 — 数据来源：新浪财经（免费）
+          自选股行情追踪 — 数据来源：腾讯财经（免费）
         </p>
       </div>
 

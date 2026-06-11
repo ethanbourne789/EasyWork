@@ -60,23 +60,6 @@ pub fn init_stock_tables(pool: &DbPool) -> Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_stock_trades_symbol ON stock_trades(symbol);
         CREATE INDEX IF NOT EXISTS idx_stock_trades_traded_at ON stock_trades(traded_at);
-
-        -- read-only view: current positions (calculated from trades)
-        DROP VIEW IF EXISTS stock_positions;
-        CREATE VIEW stock_positions AS
-        SELECT
-            symbol,
-            SUM(CASE WHEN trade_type='buy' THEN quantity ELSE -quantity END) AS total_qty,
-            CASE
-                WHEN SUM(CASE WHEN trade_type='buy' THEN quantity ELSE -quantity END) > 0
-                THEN
-                    (SUM(CASE WHEN trade_type='buy' THEN price*quantity - fee ELSE -(price*quantity + fee) END)
-                    / SUM(CASE WHEN trade_type='buy' THEN quantity ELSE -quantity END)
-                ELSE 0
-            END AS avg_cost
-        FROM stock_trades
-        GROUP BY symbol
-        HAVING total_qty > 0.0001;
         ",
     )?;
 
@@ -85,13 +68,25 @@ pub fn init_stock_tables(pool: &DbPool) -> Result<()> {
 
 // ==================== Watchlist ====================
 
-pub fn watchlist_add(pool: &DbPool, item: &StockWatchItem) -> Result<i64> {
-    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+pub fn watchlist_add(pool: &DbPool, item: &StockWatchItem) -> Result<i64, String> {
+    let conn = pool.get().map_err(|e| format!("DB connection error: {}", e))?;
+    
+    // Check for duplicate
+    let exists: bool = conn.query_row(
+        "SELECT COUNT(*) > 0 FROM stock_watchlist WHERE symbol = ?1",
+        params![item.symbol],
+        |row| row.get(0),
+    ).map_err(|e| format!("Check duplicate error: {}", e))?;
+    
+    if exists {
+        return Err(format!("股票 {} 已在自选列表中", item.symbol));
+    }
+    
     conn.execute(
         "INSERT INTO stock_watchlist (symbol, name, market_type, sort_order)
          VALUES (?1, ?2, ?3, ?4)",
         params![item.symbol, item.name, item.market_type, item.sort_order],
-    )?;
+    ).map_err(|e| format!("Insert error: {}", e))?;
     Ok(conn.last_insert_rowid())
 }
 
@@ -188,26 +183,60 @@ pub fn trades_list(pool: &DbPool, symbol: Option<&str>) -> Result<Vec<StockTrade
 // ==================== Positions ====================
 
 pub fn positions_get(pool: &DbPool) -> Result<Vec<(StockPosition, Option<String>)>> {
-    // Returns (position, name) — name comes from watchlist
+    // Dynamically calculate positions from trades
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    
+    // First, get all symbols with net positive quantity
     let mut stmt = conn.prepare(
-        "SELECT p.symbol, COALESCE(w.name, p.symbol), p.total_qty, p.avg_cost, COALESCE(w.market_type, 'a_stock')
-         FROM stock_positions p
-         LEFT JOIN stock_watchlist w ON p.symbol = w.symbol
-         ORDER BY w.sort_order, p.symbol"
+        "SELECT 
+            symbol,
+            SUM(CASE WHEN trade_type='buy' THEN quantity ELSE (0 - quantity) END) as total_qty
+         FROM stock_trades
+         GROUP BY symbol
+         HAVING total_qty > 0.0001"
     )?;
-    let rows = stmt.query_map([], |row| {
-        let pos = StockPosition {
-            symbol: row.get(0)?,
-            name: row.get(1)?,
-            market_type: row.get(4)?,
-            total_qty: row.get(2)?,
-            avg_cost: row.get(3)?,
-        };
-        let name: Option<String> = row.get(1)?;
-        Ok((pos, name))
-    })?;
+    
+    let symbols: Vec<(String, f64)> = stmt.query_map([], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    })?
+    .collect::<std::result::Result<Vec<_>, _>>()?;
+    
     let mut result = Vec::new();
-    for r in rows { result.push(r?); }
+    
+    for (symbol, total_qty) in symbols {
+        // Calculate avg_cost for this symbol
+        let avg_cost: f64 = conn.query_row(
+            "SELECT 
+                CASE
+                    WHEN SUM(CASE WHEN trade_type='buy' THEN quantity ELSE (0 - quantity) END) > 0
+                    THEN
+                        (SUM(CASE WHEN trade_type='buy' THEN (price*quantity - fee) ELSE (0 - (price*quantity + fee)) END)
+                        / SUM(CASE WHEN trade_type='buy' THEN quantity ELSE (0 - quantity) END))
+                    ELSE 0
+                END
+             FROM stock_trades
+             WHERE symbol = ?1",
+            params![symbol],
+            |row| row.get(0),
+        )?;
+        
+        // Get name and market_type from watchlist
+        let (name, market_type): (Option<String>, Option<String>) = conn.query_row(
+            "SELECT name, market_type FROM stock_watchlist WHERE symbol = ?1",
+            params![symbol],
+            |row| Ok((row.get(0).ok(), row.get(1).ok())),
+        ).unwrap_or((None, None));
+        
+        let position = StockPosition {
+            symbol: symbol.clone(),
+            name: name.unwrap_or(symbol.clone()),
+            market_type: market_type.unwrap_or("a_stock".to_string()),
+            total_qty,
+            avg_cost,
+        };
+        
+        result.push((position.clone(), Some(position.name.clone())));
+    }
+    
     Ok(result)
 }

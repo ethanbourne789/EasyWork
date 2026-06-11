@@ -660,6 +660,7 @@ function ComposeDialog() {
   // from refs; we only write to localStorage when the snapshot actually changes.
   const draftFieldsRef = useRef({ to, cc, bcc, subject, body, activeAccountId })
   const lastSerializedRef = useRef<string>("")
+  const draftIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
     draftFieldsRef.current = { to, cc, bcc, subject, body, activeAccountId }
   })
@@ -710,7 +711,7 @@ function ComposeDialog() {
       })
       setSendResult(result)
       if (result.success) { setSyncStatus({ lastResult: t("mail.sendSuccess") }); clearDraft(); setTimeout(() => closeCompose(), 1500) }
-    } catch (err: unknown) { setSendResult({ success: false, error: err instanceof Error ? err.message : String(err) }) }
+    } catch (err: unknown) { setSendResult({ success: false, error: err instanceof Error ? err.message : String(err), linked_message_id: null, new_message_id: null } as mailIpc.SendResult) }
     finally { setSending(false) }
   }
 

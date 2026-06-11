@@ -7,7 +7,7 @@
 
 // ── Helpers ──
 
-function buildSinaKey(symbol: string, marketType: string): string {
+function buildSinaKey(symbol: string, _marketType: string): string {
   if (symbol.startsWith("sh") || symbol.startsWith("sz")) return symbol
   // Auto-detect: 6xxxx = Shanghai, 0/3xxxx = Shenzhen
   const prefix = symbol.startsWith("6") ? "sh" : "sz"
@@ -34,8 +34,12 @@ export interface SinaQuote {
 }
 
 /**
- * Fetch real-time quotes from Sina.
+ * Fetch real-time quotes from Tencent Finance API (free, no Referer required).
  * `symbols` can be ["600900","002459"] — we auto-prefix sh/sz.
+ *
+ * Tencent API: `https://qt.gtimg.cn/q=sh600900,sz002459`
+ * Returns: v_sh600900="fields...";\nv_sz002459="fields...";
+ * Fields are pipe (~) delimited, GBK encoded.
  */
 export async function fetchQuotes(
   symbols: { symbol: string; market_type: string }[]
@@ -46,39 +50,43 @@ export async function fetchQuotes(
     .map(s => buildSinaKey(s.symbol, s.market_type))
     .join(",")
 
-  const url = `https://hq.sinajs.cn/list=${keys}`
+  const url = `https://qt.gtimg.cn/q=${keys}`
   const resp = await fetch(url)
-  const text = await resp.text()
+  // Tencent returns GBK encoding — decode properly for Chinese names
+  const buffer = await resp.arrayBuffer()
+  const decoder = new TextDecoder("gbk")
+  const text = decoder.decode(buffer)
 
   const quotes: SinaQuote[] = []
-  // Each line: var hq_str_sh600900="长江电力,28.45,0.12,0.42,..."
+  // Each line: v_sh600900="...";\n"
   const lines = text.split("\n")
   for (const line of lines) {
-    const m = line.match(/hq_str_([^=]+)="([^"]*)"/)
+    const m = line.match(/^v_([^=]+)="([^"]*)"/)
     if (!m) continue
     const sym = m[1]
-    const parts = m[2].split(",")
-    if (parts.length < 32) continue
+    const parts = m[2].split("~")
+    if (parts.length < 35) continue
     const price = parseFloat(parts[3]) || 0
-    const closePrev = parseFloat(parts[2]) || 0
+    const closePrev = parseFloat(parts[4]) || 0
     const change = +(price - closePrev).toFixed(4)
     const changePercent = closePrev
       ? +((change / closePrev) * 100).toFixed(4)
       : 0
+    const volumeShares = parseInt(parts[6]) || 0  // Tencent: shares
     quotes.push({
       symbol: sym,
-      name: parts[0],
+      name: parts[1],   // Chinese name decoded from GBK
       price,
-      open: parseFloat(parts[1]) || 0,
+      open: parseFloat(parts[5]) || 0,
       close_prev: closePrev,
       change,
       changePercent,
-      high: parseFloat(parts[4]) || 0,
-      low: parseFloat(parts[5]) || 0,
-      volume: parseInt(parts[8]) || 0,
-      amount: parseInt(parts[9]) || 0,
-      bid: parseFloat(parts[11]) || 0,
-      ask: parseFloat(parts[21]) || 0,
+      high: parseFloat(parts[33]) || 0,
+      low: parseFloat(parts[34]) || 0,
+      volume: Math.round(volumeShares / 100),  // Convert to 手
+      amount: 0,
+      bid: parseFloat(parts[9]) || 0,
+      ask: parseFloat(parts[10]) || 0,
     })
   }
   return quotes
@@ -98,20 +106,27 @@ export interface KLinePoint {
 /**
  * Fetch K-line (candlestick) data from Sina.
  *
- * `scale`: 5 / 15 / 30 / 60 (minutes), or 240 (daily), or "week" / "month".
- * Sina's API actually uses: scale=5/15/30/60/240, ma=5, datalen=N.
+ * Sina's API uses numeric scale values:
+ *   5 / 15 / 30 / 60 (minutes), 240 (daily)
+ * For "week" / "month", we fetch more daily data and aggregate.
  */
 export async function fetchKLine(
   symbol: string,
   marketType: string,
-  scale: number = 240,
+  scale: number | string = 240,
   datalen: number = 120,
 ): Promise<KLinePoint[]> {
   const key = buildSinaKey(symbol, marketType)
+
+  // Handle week/month by aggregating daily data
+  const isWeek = scale === "week" || scale === "month"
+  const actualScale = isWeek ? 240 : scale
+  const actualDatalen = isWeek ? 365 : datalen
+
   const url =
     `https://money.finance.sina.com.cn/quotes_service/api/json_v2.php/` +
     `CN_MarketData.getKLineData?symbol=${key}` +
-    `&scale=${scale}&ma=5&datalen=${datalen}`
+    `&scale=${actualScale}&ma=5&datalen=${actualDatalen}`
 
   const resp = await fetch(url)
   const text = await resp.text()
@@ -120,8 +135,9 @@ export async function fetchKLine(
   const clean = text.replace(/^\uFEFF/, "")
   let raw: any[] = []
   try { raw = JSON.parse(clean) } catch { return [] }
+  if (!Array.isArray(raw) || raw.length === 0) return []
 
-  return raw.map((p: any) => ({
+  let points: KLinePoint[] = raw.map((p: any) => ({
     date: p.day || p.date || "",
     open:  +p.open  || 0,
     close: +p.close || 0,
@@ -129,6 +145,33 @@ export async function fetchKLine(
     low:   +p.low   || 0,
     volume: +p.volume || 0,
   }))
+
+  // Aggregate weekly / monthly if needed
+  if (scale === "week") {
+    points = aggregateKLine(points, 5)  // ~5 trading days per week
+  } else if (scale === "month") {
+    points = aggregateKLine(points, 21) // ~21 trading days per month
+  }
+
+  return points
+}
+
+/** Aggregate daily K-line points into larger periods */
+function aggregateKLine(data: KLinePoint[], groupSize: number): KLinePoint[] {
+  const result: KLinePoint[] = []
+  for (let i = 0; i < data.length; i += groupSize) {
+    const slice = data.slice(i, i + groupSize)
+    if (slice.length === 0) break
+    result.push({
+      date: slice[0].date,
+      open: slice[0].open,
+      close: slice[slice.length - 1].close,
+      high: Math.max(...slice.map(p => p.high)),
+      low: Math.min(...slice.map(p => p.low)),
+      volume: slice.reduce((s, p) => s + p.volume, 0),
+    })
+  }
+  return result
 }
 
 // ── Announcements (scrape helpers — Sina has no clean JSON API) ──
