@@ -147,6 +147,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         ("thread_id", "TEXT NOT NULL DEFAULT ''"),
         ("updated_at", "TEXT NOT NULL DEFAULT (datetime('now'))"),
         ("content_hash", "TEXT NOT NULL DEFAULT ''"),
+        ("date_sort", "TEXT NOT NULL DEFAULT ''"),
     ] {
         let has = conn
             .prepare(&format!("SELECT {} FROM mail_messages LIMIT 0", col))
@@ -196,6 +197,7 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         "CREATE INDEX IF NOT EXISTS idx_mail_messages_thread_id ON mail_messages(thread_id);
          CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
          CREATE INDEX IF NOT EXISTS idx_mail_messages_content_hash ON mail_messages(content_hash);
+         CREATE INDEX IF NOT EXISTS idx_mail_messages_date_sort ON mail_messages(date_sort);
          CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_messages_msgid ON mail_messages(account_id, message_id_header)
              WHERE message_id_header != '';"
     );

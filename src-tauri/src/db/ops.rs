@@ -146,6 +146,9 @@ pub fn update_account(pool: &DbPool, account: &MailAccount) -> Result<()> {
 pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
+    // Compute sortable ISO date from raw date header
+    let date_sort = normalize_date(&msg.date);
+
     // ── Dedup Layer 1: By remote_uid (IMAP UID) ──
     let existing: Option<i64> = conn.query_row(
         "SELECT id FROM mail_messages WHERE account_id = ?1 AND remote_uid = ?2",
@@ -157,11 +160,11 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
         conn.execute(
             "UPDATE mail_messages SET subject=?1, from_name=?2, from_email=?3, to_list=?4, cc_list=?5,
              body_text=?6, body_html=?7, is_read=?8, is_starred=?9, has_attachment=?10, size=?11,
-             date=?12, updated_at=datetime('now') WHERE id=?13",
+             date=?12, date_sort=?13, updated_at=datetime('now') WHERE id=?14",
             params![
                 msg.subject, msg.from_name, msg.from_email, msg.to_list, msg.cc_list,
                 msg.body_text, msg.body_html, msg.is_read as i32, msg.is_starred as i32,
-                msg.has_attachment as i32, msg.size, msg.date, id
+                msg.has_attachment as i32, msg.size, msg.date, date_sort, id
             ],
         )?;
         log::debug!("Dedup by UID: updated existing message id={} (account={}, uid={})", id, msg.account_id, msg.remote_uid);
@@ -181,13 +184,13 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
             // Same Message-ID, different UID → server re-assigned UID, update and reuse
             conn.execute(
                 "UPDATE mail_messages SET remote_uid=?1, subject=?2, from_name=?3, from_email=?4,
-                 to_list=?5, cc_list=?6, date=?7, body_text=?8, body_html=?9,
-                 is_read=?10, is_starred=?11, has_attachment=?12, size=?13, thread_id=?14,
+                 to_list=?5, cc_list=?6, date=?7, date_sort=?8, body_text=?9, body_html=?10,
+                 is_read=?11, is_starred=?12, has_attachment=?13, size=?14, thread_id=?15,
                  updated_at=datetime('now')
-                 WHERE id=?15",
+                 WHERE id=?16",
                 params![
                     msg.remote_uid, msg.subject, msg.from_name, msg.from_email,
-                    msg.to_list, msg.cc_list, msg.date, msg.body_text, msg.body_html,
+                    msg.to_list, msg.cc_list, msg.date, date_sort, msg.body_text, msg.body_html,
                     msg.is_read as i32, msg.is_starred as i32,
                     msg.has_attachment as i32, msg.size, msg.thread_id, id
                 ],
@@ -214,9 +217,9 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
 
         if let Some(id) = existing_by_hash {
             conn.execute(
-                "UPDATE mail_messages SET remote_uid=?1, thread_id=?2, updated_at=datetime('now')
-                 WHERE id=?3",
-                params![msg.remote_uid, msg.thread_id, id],
+                "UPDATE mail_messages SET remote_uid=?1, thread_id=?2, date_sort=?3, updated_at=datetime('now')
+                 WHERE id=?4",
+                params![msg.remote_uid, msg.thread_id, date_sort, id],
             )?;
             log::info!("Dedup by content hash: updated UID for existing message id={} (account={})", id, msg.account_id);
             return Ok(id);
@@ -227,14 +230,14 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
     let hash = compute_content_hash(&msg.subject, &msg.from_email, &msg.date);
     conn.execute(
         "INSERT INTO mail_messages (account_id, remote_uid, message_id_header, subject, from_name, from_email,
-         to_list, cc_list, date, body_text, body_html, is_read, is_starred, has_attachment, size, thread_id, content_hash)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)",
+         to_list, cc_list, date, body_text, body_html, is_read, is_starred, has_attachment, size, thread_id, content_hash, date_sort)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
         params![
             msg.account_id, msg.remote_uid, msg.message_id_header,
             msg.subject, msg.from_name, msg.from_email, msg.to_list, msg.cc_list,
             msg.date, msg.body_text, msg.body_html,
             msg.is_read as i32, msg.is_starred as i32,
-            msg.has_attachment as i32, msg.size, msg.thread_id, hash
+            msg.has_attachment as i32, msg.size, msg.thread_id, hash, date_sort
         ],
     )?;
     let new_id = conn.last_insert_rowid();
@@ -253,6 +256,36 @@ fn compute_content_hash(subject: &str, from_email: &str, date: &str) -> String {
     hasher.update(date.as_bytes());
     let result = hasher.finalize();
     hex::encode(&result[..8]) // first 8 hex chars for a short, unique-enough hash
+}
+
+/// Normalize an email date header string to ISO 8601 format (YYYY-MM-DD HH:MM:SS)
+/// for correct text sorting. Returns empty string if parsing fails.
+pub fn normalize_date(date_str: &str) -> String {
+    if date_str.is_empty() {
+        return String::new();
+    }
+    // Try mailparse::dateparse first (handles RFC 2822 dates with timezone)
+    if let Ok(ts) = mailparse::dateparse(date_str) {
+        // mailparse returns a Unix timestamp
+        // Use chrono to format as ISO 8601
+        if let Some(dt) = chrono::DateTime::from_timestamp(ts, 0) {
+            return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+        }
+    }
+    // Fallback: try common date formats with chrono
+    for fmt in &[
+        "%a, %d %b %Y %H:%M:%S %z",
+        "%d %b %Y %H:%M:%S %z",
+        "%a, %d %b %Y %H:%M:%S %Z",
+        "%d %b %Y %H:%M:%S %Z",
+    ] {
+        if let Ok(dt) = chrono::DateTime::parse_from_str(date_str, fmt) {
+            return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+        }
+    }
+    // At minimum, return a truncated version for basic sorting
+    log::debug!("normalize_date: could not parse '{}'", date_str);
+    String::new()
 }
 
 pub fn update_message_thread_id(pool: &DbPool, message_id: i64, thread_id: &str) -> Result<()> {
@@ -340,12 +373,12 @@ pub fn list_messages(
          FROM mail_messages m
          JOIN mail_message_folders mf ON m.id = mf.message_id
          WHERE m.account_id = ?1 AND mf.folder_id = ?2
-         ORDER BY m.date DESC LIMIT ?3 OFFSET ?4"
+         ORDER BY m.date_sort DESC LIMIT ?3 OFFSET ?4"
     } else {
         "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
                 is_read, is_starred, has_attachment, size, thread_id, is_deleted
          FROM mail_messages WHERE account_id = ?1 AND is_deleted = 0
-         ORDER BY date DESC LIMIT ?2 OFFSET ?3"
+         ORDER BY date_sort DESC LIMIT ?2 OFFSET ?3"
     };
 
     let total: i64 = conn.query_row(
