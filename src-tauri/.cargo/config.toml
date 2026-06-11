@@ -1,6 +1,9 @@
 # Android NDK toolchain configuration for cross-compilation
 # NDK: 28.2.13676358 | Host: windows-x86_64
-# These paths are used by cargo when cross-compiling for Android targets.
+#
+# IMPORTANT: Update these paths to match your Android NDK installation.
+# The NDK path depends on your user account and NDK version.
+# Default location: %LOCALAPPDATA%\Android\Sdk\ndk\<version>\
 
 [target.aarch64-linux-android]
 linker = "C:\\Users\\Admin\\AppData\\Local\\Android\\Sdk\\ndk\\28.2.13676358\\toolchains\\llvm\\prebuilt\\windows-x86_64\\bin\\aarch64-linux-android21-clang.cmd"
