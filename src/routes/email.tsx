@@ -1098,7 +1098,7 @@ function EmailPage() {
     return groups
   }, [messages, starredFilter, searchQuery])
 
-  // Display messages with filters
+  // Display messages with filters (newest first)
   const displayMessages = useMemo(() => {
     let msgs = starredFilter
       ? messages.filter(m => m.is_starred)
@@ -1108,7 +1108,8 @@ function EmailPage() {
     if (searchFilters.hasAttachment) msgs = msgs.filter(m => m.has_attachment)
     if (searchFilters.dateFrom) msgs = msgs.filter(m => m.date >= searchFilters.dateFrom)
     if (searchFilters.dateTo) msgs = msgs.filter(m => m.date.split("T")[0] <= searchFilters.dateTo)
-    return msgs
+    // Sort newest first by date
+    return [...msgs].sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
   }, [messages, starredFilter, activeAccountId, searchFilters])
 
   const selectedMessage = selectedMessageId ? displayMessages.find(m => m.id === selectedMessageId) : null
