@@ -81,7 +81,6 @@ export function ShadowDomEmail({ html, className, cidMap, remoteImagesEnabled = 
           max-width: 100%;
         }
         td, th {
-          border: 1px solid #e5e7eb;
           padding: 6px 10px;
         }
       </style>
