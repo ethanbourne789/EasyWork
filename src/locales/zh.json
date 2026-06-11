@@ -67,6 +67,7 @@
     "subtitle": "管理邮件账户和同步设置",
     "addAccount": "添加账户",
     "emailAddress": "邮箱地址",
+    "displayName": "备注/名称",
     "username": "用户名",
     "password": "密码",
     "imapServer": "IMAP 服务器",

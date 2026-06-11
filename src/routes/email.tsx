@@ -148,8 +148,13 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
   const handleEmailBlur = useCallback(() => {
     const provider = detectProvider(form.email)
+    if (!form.username.trim()) {
+      // Auto-fill display name from email prefix
+      const defaultName = form.email.split("@")[0] || ""
+      setForm(f => ({ ...f, username: defaultName }))
+    }
     if (provider) {
-      setForm(f => ({ ...f, imap_host: provider.imap, imap_port: provider.imapPort, smtp_host: provider.smtp, smtp_port: provider.smtpPort, username: f.email.split("@")[0], provider: "imap" }))
+      setForm(f => ({ ...f, imap_host: provider.imap, imap_port: provider.imapPort, smtp_host: provider.smtp, smtp_port: provider.smtpPort, provider: "imap" }))
     }
   }, [form.email])
 
@@ -158,7 +163,6 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     if (!form.email.includes("@")) { setError("请输入有效的邮箱地址"); return }
     if (!form.imap_host.trim()) { setError("请输入 IMAP 服务器地址"); return }
     if (!form.smtp_host.trim()) { setError("请输入 SMTP 服务器地址"); return }
-    if (!form.username.trim()) { setError("请输入用户名/邮箱账号"); return }
     if (!form.password.trim()) { setError("请输入密码或授权码"); return }
 
     setSaving(true); setError(null); setSyncResult(null)
@@ -209,8 +213,22 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     } finally { setSaving(false) }
   }
 
+  const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+
   const handleRemove = async (id: number) => {
-    try { await mailIpc.deleteAccount(id); removeAccountLocal(id) } catch {}
+    if (id == null) {
+      setError("无法删除：账户 ID 无效")
+      return
+    }
+    try {
+      await mailIpc.deleteAccount(id)
+      removeAccountLocal(id)
+      setError(null)
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error("delete_account failed:", msg)
+      setError(`删除失败: ${msg}`)
+    }
   }
 
   const [editingId, setEditingId] = useState<number | null>(null)
@@ -269,19 +287,41 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
                   <div className="flex items-center gap-3 cursor-pointer" onClick={() => acc.id && setActiveAccountId(acc.id)}>
                     <div className="w-9 h-9 rounded-xl bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold">{acc.email.charAt(0).toUpperCase()}</div>
                     <div>
-                      <p className="font-medium text-sm">{acc.email}</p>
+                      <p className="font-medium text-sm">
+                        {acc.email}
+                        {acc.username && acc.username !== acc.email.split("@")[0] && (
+                          <span className="ml-2 text-xs text-primary-500 bg-primary-50 dark:bg-primary-900/30 dark:text-primary-300 px-1.5 py-0.5 rounded">{acc.username}</span>
+                        )}
+                      </p>
                       <p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">IMAP: {acc.imap_host}:{acc.imap_port}</p>
                     </div>
                   </div>
                   <div className="flex items-center gap-1">
                     {activeAccountId === acc.id && <Badge variant="success">{t("account.current")}</Badge>}
                     <Button variant="ghost" size="icon" onClick={() => startEdit(acc)} title="编辑"><Pencil size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-blue-500" /></Button>
-                    <Button variant="ghost" size="icon" onClick={() => acc.id && handleRemove(acc.id)} title="删除"><Trash2 size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-red-500" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => setDeleteConfirmId(acc.id ?? null)} title="删除"><Trash2 size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-red-500" /></Button>
                   </div>
                 </CardContent>
               </Card>
             ))}
           </>
+        )}
+
+        {deleteConfirmId != null && (
+          <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-3">
+            <p className="text-sm text-red-700 dark:text-red-300 font-medium">
+              确认删除此邮箱账号？<br />
+              <span className="font-normal text-xs">该账号的所有邮件、文件夹和联系人也将被删除，此操作不可撤销。</span>
+            </p>
+            <div className="flex gap-2">
+              <Button size="sm" variant="danger" onClick={() => {
+                const id = deleteConfirmId
+                setDeleteConfirmId(null)
+                handleRemove(id)
+              }}>确认删除</Button>
+              <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(null)}>取消</Button>
+            </div>
+          </div>
         )}
 
         {showAdd && (
@@ -294,7 +334,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
             </div>
             <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onBlur={handleEmailBlur} placeholder="example@gmail.com" className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:focus:ring-primary-400" />
             <div className="grid grid-cols-2 gap-2">
-              <input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder={t("account.username")} className="h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:focus:ring-primary-400" />
+              <input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder={t("account.displayName") + "（如: 工作、个人）"} className="h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:focus:ring-primary-400" />
               <input type="password" value={form.password} onChange={e => setForm(f => ({ ...f, password: e.target.value }))} placeholder={t("account.password")} className="h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:focus:ring-primary-400" />
             </div>
             <div className="grid grid-cols-2 gap-2">

@@ -124,10 +124,6 @@ fn validate_account_input(account: &MailAccount, trace_id: &str) -> Result<(), S
         log::warn!("[{trace_id}] validation: invalid smtp_port {}", account.smtp_port);
         return Err(format!("SMTP 端口无效: {}", account.smtp_port));
     }
-    // Username
-    if account.username.is_empty() {
-        return Err("请输入用户名/邮箱账号".into());
-    }
     // Password
     if account.password.is_empty() {
         return Err("请输入密码或授权码".into());
@@ -379,7 +375,7 @@ pub async fn send_mail(
     match mail::smtp::send_mail(
         &account.smtp_host,
         account.smtp_port,
-        &account.username,
+        &account.email,
         &password,
         &account.email,
         from_name.as_deref(),
@@ -481,14 +477,14 @@ pub async fn test_connection(
 ) -> Result<String, String> {
     let trace_id = crate::logging::trace_id();
     log::info!(
-        "[{trace_id}] test_connection START imap={}:{} user={}",
-        account.imap_host, account.imap_port, account.username,
+        "[{trace_id}] test_connection START imap={}:{} email={}",
+        account.imap_host, account.imap_port, account.email,
     );
 
     let result = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
-        &account.username,
+        &account.email,
         &account.password,
     ).await;
 
@@ -504,6 +500,9 @@ pub async fn test_connection(
             let user_msg = if msg.contains("超时") {
                 log::warn!("[{trace_id}] test_connection TIMEOUT");
                 format!("连接超时: 无法在 15 秒内连接到 {}:{}\n请检查服务器地址和网络连接", account.imap_host, account.imap_port)
+            } else if msg.contains("ILLEGAL.EMAIL") || msg.contains("ILLEGAL_EMAIL") {
+                log::warn!("[{trace_id}] test_connection ILLEGAL_EMAIL");
+                "登录失败: 用户名格式不正确，请使用完整的邮箱地址（如 user@domain.com）作为用户名".into()
             } else if msg.contains("authentication") || msg.contains("AUTHENTICATIONFAILED") || msg.contains("Login") {
                 log::warn!("[{trace_id}] test_connection AUTH_FAILED");
                 "登录失败: 用户名或密码/授权码不正确".into()
@@ -540,7 +539,7 @@ pub async fn sync_account_impl(
     let mut session = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
-        &account.username,
+        &account.email,
         &password,
     )
     .await

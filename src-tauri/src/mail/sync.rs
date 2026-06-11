@@ -83,7 +83,7 @@ async fn poll_all_accounts(
         };
 
         let days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
-        let mut session = match mail::imap::connect(&account.imap_host, account.imap_port, &account.username, &password).await {
+        let mut session = match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password).await {
             Ok(s) => s,
             Err(e) => {
                 log::warn!("Poll sync: IMAP connect failed for {}: {}", account.email, e);
@@ -321,7 +321,7 @@ async fn execute_single_pending_op(
     password: &str,
     op: &PendingOp,
 ) -> Result<(), String> {
-    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.username, password)
+    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.email, password)
         .await.map_err(|e| format!("IMAP connect failed: {}", e))?;
 
     let result = match op.op_type.as_str() {

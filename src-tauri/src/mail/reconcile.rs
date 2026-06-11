@@ -76,7 +76,7 @@ pub async fn reconcile_account(
     let mut session = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
-        &account.username,
+        &account.email,
         password,
     )
     .await

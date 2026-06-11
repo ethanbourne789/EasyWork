@@ -67,6 +67,7 @@
     "subtitle": "Manage email accounts and sync settings",
     "addAccount": "Add Account",
     "emailAddress": "Email Address",
+    "displayName": "Label/Name",
     "username": "Username",
     "password": "Password",
     "imapServer": "IMAP Server",
