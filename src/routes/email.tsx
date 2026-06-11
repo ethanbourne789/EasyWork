@@ -245,6 +245,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
         return
       }
       addAccountLocal({ ...form, id: insertedId })
+      setActiveAccountId(insertedId!)
       mailIpc.syncAccount(insertedId).then(() => {
         mailIpc.fetchMessages(insertedId!).then(msgs => {
           useMailStore.getState().setMessages(msgs)
@@ -252,6 +253,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       }).catch(err => console.warn("syncAccount after add failed:", err))
       setSyncResult("账户已添加，后台同步已启动")
       setShowAdd(false)
+      onClose()
       setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
