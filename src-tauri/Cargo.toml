@@ -32,12 +32,14 @@ async-imap = "0.9"
 tokio-rustls = "0.26"
 rustls = "0.23"
 webpki-roots = "1.0"
-# native-tls for all platforms EXCEPT Android
-# Reason: QQ/163 IMAP requires TLS renegotiation (RFC 5746) which rustls blocks.
-# schannel (Windows) / OpenSSL (Linux) / Security.framework (macOS) handle it natively.
-[target.'cfg(not(target_os = "android"))'.dependencies]
+# native-tls for all platforms.
+# Windows uses schannel, macOS uses Security.framework,
+# Linux/Android use OpenSSL (Android version compiled from source via vendored openssl)
 native-tls = "0.2"
 tokio-native-tls = "0.3"
+# Android: compile OpenSSL from source because the NDK doesn't ship pre-built libssl
+[target.'cfg(target_os = "android")'.dependencies]
+openssl = { version = "0.10", features = ["vendored"] }
 futures = "0.3"
 tokio = { version = "1", features = ["full"] }
 tokio-util = { version = "0.7", features = ["compat"] }
