@@ -1,4 +1,5 @@
 use mailparse::{parse_mail, ParsedMail};
+use chrono::{DateTime, FixedOffset, NaiveDateTime};
 
 #[derive(Debug, Clone)]
 pub struct ParsedMessage {
@@ -39,6 +40,131 @@ fn header_value(headers: &[mailparse::MailHeader<'_>], key: &str) -> String {
         .unwrap_or_default()
 }
 
+/// Normalize an RFC 2822 date header into a clean `YYYY-MM-DD HH:MM:SS` string.
+///
+/// Email senders are inconsistent — examples we see in the wild:
+///   - `Wed, 10 Jun 2026 15:57:48 +0000`
+///   - `Wed, 10 Jun 2026 15:57:48 +0000 (UTC)`        ← Trading 212
+///   - `Tue, 12 May 2026 10:02:24 +0800 (CST)`        ← Chinese senders
+///   - `Tue, 12 May 2026 05:47:52 -0400 (EDT)`        ← US senders
+///   - `Wed, 13 May 2026 06:06:16 GMT`                ← obsolete zone name
+///
+/// We strip the trailing parenthesised zone name first, then use chrono's
+/// RFC 2822 parser which handles numeric offsets. Falls back to a trimmed
+/// prefix if the date is unparseable, and to an empty string if completely
+/// empty (the frontend `formatMailDate` then returns the raw value).
+pub fn normalize_rfc2822_date(raw: &str) -> String {
+    let s = raw.trim();
+    if s.is_empty() {
+        return String::new();
+    }
+    // Strip trailing `(UTC)`, `(CST)`, `(EDT)` etc. — these break chrono parsing.
+    let stripped = if let Some(stripped) = strip_trailing_zone_name(s) {
+        stripped
+    } else {
+        s.to_string()
+    };
+    // Try parsing as RFC 2822 with offset first.
+    if let Ok(dt) = DateTime::parse_from_rfc2822(&stripped) {
+        return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+    }
+    // Try `Wdy, DD Mon YYYY HH:MM:SS ±HHMM` form (common variant).
+    if let Ok(dt) = DateTime::parse_from_str(
+        &stripped,
+        "%a, %d %b %Y %H:%M:%S %z",
+    ) {
+        return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+    }
+    // Try `Wdy, DD Mon YYYY HH:MM:SS Zone` (obsolete, e.g. `GMT`/`UT`) — assume UTC.
+    for fmt in &[
+        "%a, %d %b %Y %H:%M:%S GMT",
+        "%a, %d %b %Y %H:%M:%S UT",
+        "%d %b %Y %H:%M:%S %Z",
+    ] {
+        if let Ok(naive) = NaiveDateTime::parse_from_str(&stripped, fmt) {
+            if let Some(offset) = FixedOffset::east_opt(0) {
+                let dt: DateTime<FixedOffset> = DateTime::from_naive_utc_and_offset(naive, offset);
+                return dt.format("%Y-%m-%d %H:%M:%S").to_string();
+            }
+        }
+    }
+    // Last-resort: keep the original trimmed form so the frontend can still
+    // attempt to display it (and so the user can see what was stored).
+    s.to_string()
+}
+
+#[cfg(test)]
+mod tests {
+    use super::*;
+
+    #[test]
+    fn strips_utc_suffix() {
+        assert_eq!(
+            normalize_rfc2822_date("Wed, 10 Jun 2026 15:57:48 +0000 (UTC)"),
+            "2026-06-10 15:57:48"
+        );
+    }
+
+    #[test]
+    fn strips_cst_suffix() {
+        assert_eq!(
+            normalize_rfc2822_date("Tue, 12 May 2026 10:02:24 +0800 (CST)"),
+            "2026-05-12 10:02:24"
+        );
+    }
+
+    #[test]
+    fn strips_edt_suffix() {
+        assert_eq!(
+            normalize_rfc2822_date("Tue, 12 May 2026 05:47:52 -0400 (EDT)"),
+            "2026-05-12 05:47:52"
+        );
+    }
+
+    #[test]
+    fn handles_gmt_zone_name() {
+        assert_eq!(
+            normalize_rfc2822_date("Wed, 13 May 2026 06:06:16 GMT"),
+            "2026-05-13 06:06:16"
+        );
+    }
+
+    #[test]
+    fn handles_plain_offset() {
+        assert_eq!(
+            normalize_rfc2822_date("Mon, 11 May 2026 20:30:05 +0000"),
+            "2026-05-11 20:30:05"
+        );
+    }
+
+    #[test]
+    fn empty_input() {
+        assert_eq!(normalize_rfc2822_date(""), "");
+    }
+
+    #[test]
+    fn garbage_passes_through() {
+        let out = normalize_rfc2822_date("not a date");
+        assert!(!out.is_empty());
+    }
+}
+
+/// Strip a trailing `(...)` zone abbreviation from an RFC 2822 date string.
+/// Returns None if no such suffix is present.
+fn strip_trailing_zone_name(s: &str) -> Option<String> {
+    let close = s.rfind(')')?; // no closing paren at all
+    let open = s.rfind('(')?;
+    if open >= close || open < s.len() - 6 || open == 0 {
+        return None;
+    }
+    // Require the character just before '(' to be whitespace.
+    let prefix = &s[..open];
+    if !prefix.ends_with(char::is_whitespace) {
+        return None;
+    }
+    Some(prefix.trim_end().to_string())
+}
+
 pub fn parse_raw_message(
     raw: &[u8],
 ) -> Result<ParsedMessage, Box<dyn std::error::Error + Send + Sync>> {
@@ -48,7 +174,7 @@ pub fn parse_raw_message(
     let subject = header_value(headers, "subject");
     let from = header_value(headers, "from");
     let (from_name, from_email) = parse_addr(&from);
-    let date = header_value(headers, "date");
+    let date = normalize_rfc2822_date(&header_value(headers, "date"));
     let message_id = header_value(headers, "message-id");
     let in_reply_to = header_value(headers, "in-reply-to");
     let references: Vec<String> = header_value(headers, "references")

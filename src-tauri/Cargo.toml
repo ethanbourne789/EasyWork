@@ -15,6 +15,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 [build-dependencies]
 tauri-build = { version = "2.6.2", features = [] }
 
+[features]
+# Default features: compile OpenSSL from source on every platform.
+# This eliminates cross-platform OpenSSL version mismatches, removes the
+# Android NDK cross-compile headaches, and means no user/developer ever has
+# to install system OpenSSL packages or fiddle with perl versions.
+# See MEMORY.md "IMAP TLS 选型" for the analysis behind this choice.
+default = ["native-tls-vendored"]
+native-tls-vendored = ["native-tls/vendored"]
+
 [dependencies]
 serde_json = "1.0"
 serde = { version = "1.0", features = ["derive"] }
@@ -34,7 +43,8 @@ rustls = "0.23"
 webpki-roots = "1.0"
 # native-tls for all platforms.
 # Windows uses schannel, macOS uses Security.framework,
-# Linux/Android use OpenSSL (Android version compiled from source via vendored openssl)
+# Linux/Android use OpenSSL (compiled from source via the `vendored` feature,
+# see [features] above — same approach as Delta Chat's chatmail/core)
 native-tls = "0.2"
 tokio-native-tls = "0.3"
 futures = "0.3"
@@ -53,7 +63,3 @@ open = "5"
 fern = "0.7"
 sha2 = "0.10"
 hex = "0.4"
-
-# Android: compile OpenSSL from source because the NDK doesn't ship pre-built libssl
-[target.'cfg(target_os = "android")'.dependencies]
-openssl = { version = "0.10", features = ["vendored"] }

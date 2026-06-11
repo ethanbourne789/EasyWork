@@ -51,39 +51,62 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
-/** Format a raw email date header into a consistent short display format. */
+/** Format a stored ISO date (YYYY-MM-DD HH:MM:SS) or a raw email date header
+ *  into a consistent short display format.
+ *
+ *  Backend parser (`mail/parser.rs::normalize_rfc2822_date`) stores dates as
+ *  `YYYY-MM-DD HH:MM:SS` UTC. Some legacy rows may still hold the raw RFC
+ *  2822 form. We handle both here, defending against:
+ *    - `Wed, 10 Jun 2026 15:57:48 +0000 (UTC)`   — `(UTC)` suffix
+ *    - `Tue, 12 May 2026 10:02:24 +0800 (CST)`   — `(CST)` suffix
+ *    - `Wed, 13 May 2026 06:06:16 GMT`           — obsolete zone name
+ */
 function formatMailDate(dateStr: string): string {
+  if (!dateStr) return ""
   try {
-    // Clean up non-standard suffixes like "Wed, 10 Jun 2026 15:57:48 +0000 (UTC)"
-    let cleaned = dateStr.replace(/\s*\([^)]*\)\s*$/, "").trim()
-    let d = new Date(cleaned)
-    if (isNaN(d.getTime())) {
-      // Try removing timezone abbreviation in parentheses mid-string
-      cleaned = dateStr.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim()
+    let d: Date | null = null
+
+    // Case 1: already-ISO (the new normal from the backend)
+    if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?/.test(dateStr)) {
+      const iso = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T") + "Z"
+      d = new Date(iso)
+    }
+
+    // Case 2: strip a trailing `(ZoneName)` and try RFC 2822
+    if (!d || isNaN(d.getTime())) {
+      const stripped = dateStr.replace(/\s*\([^)]*\)\s*$/, "").trim()
+      d = new Date(stripped)
+    }
+
+    // Case 3: replace all `(...)` zones inline and try again
+    if (!d || isNaN(d.getTime())) {
+      const cleaned = dateStr.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim()
       d = new Date(cleaned)
     }
-    if (isNaN(d.getTime())) {
-      // Fallback: first 16 chars trimmed
+
+    if (!d || isNaN(d.getTime())) {
+      // Last-resort: just show the raw value, trimmed
       return dateStr.slice(0, 16).trim()
     }
+
     const now = new Date()
     const diffMs = now.getTime() - d.getTime()
     const diffDays = diffMs / 86400000
 
     // Today → show time only
-    if (diffDays < 1 && d.getDate() === now.getDate()) {
-      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    if (diffDays < 1 && d.getDate() === now.getDate() && d.getMonth() === now.getMonth()) {
+      return d.toLocaleTimeString([], { hour: "2-digit", minute: "2-digit" })
     }
     // Within 7 days → show weekday
-    if (diffDays < 7) {
-      return d.toLocaleDateString([], { weekday: 'short' })
+    if (diffDays >= 0 && diffDays < 7) {
+      return d.toLocaleDateString([], { weekday: "short" })
     }
-    // This year → month + day
+    // Future within a week, or anything else this year → month + day
     if (d.getFullYear() === now.getFullYear()) {
-      return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+      return d.toLocaleDateString([], { month: "short", day: "numeric" })
     }
     // Older → year included
-    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
+    return d.toLocaleDateString([], { year: "numeric", month: "short", day: "numeric" })
   } catch {
     return dateStr.slice(0, 16).trim()
   }
