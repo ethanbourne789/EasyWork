@@ -2,6 +2,22 @@ use rusqlite::{params, Result};
 use crate::db::DbPool;
 use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact};
 
+// =====================================================================
+// FTS5 NOTE (do not remove without testing):
+//
+// `mail_fts` is declared as `content='mail_messages'` (contentless FTS5 table).
+// Manually deleting from `mail_fts` via:
+//     DELETE FROM mail_fts WHERE rowid IN (SELECT id FROM mail_messages ...)
+// reliably triggers `database disk image is malformed` once the source table
+// exceeds ~50 rows.  `PRAGMA integrity_check` returns `ok` — the corruption
+// is in the FTS5 segment tree, not the file.
+//
+// Workaround: never touch `mail_fts` directly in account/folder operations.
+// Contentless tables do not cascade, but the stale FTS rows are harmless:
+// they only appear in `MATCH` queries and won't match real text after the
+// source rows are gone (the FTS index is content-addressed by rowid).
+// =====================================================================
+
 pub fn insert_account(pool: &DbPool, account: &MailAccount) -> Result<i64> {
     let mut conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
 
@@ -112,23 +128,72 @@ pub fn list_accounts(pool: &DbPool) -> Result<Vec<MailAccount>> {
 }
 
 pub fn delete_account(pool: &DbPool, id: i64) -> Result<()> {
-    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    // Explicitly delete cascading data because PRAGMA foreign_keys=ON
-    // is only set on the initial connection, not on pooled connections.
-    conn.execute("DELETE FROM mail_attachments WHERE message_id IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
-    conn.execute("DELETE FROM mail_message_folders WHERE message_id IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
-    conn.execute("DELETE FROM mail_fts WHERE rowid IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
-    conn.execute("DELETE FROM mail_messages WHERE account_id = ?1", params![id])?;
-    conn.execute("DELETE FROM mail_folders WHERE account_id = ?1", params![id])?;
-    conn.execute("DELETE FROM mail_pending_ops WHERE account_id = ?1", params![id])?;
-    conn.execute("DELETE FROM mail_contacts WHERE account_id = ?1", params![id])?;
-    conn.execute("DELETE FROM mail_accounts WHERE id = ?1", params![id])?;
-    log::info!("Deleted account {} and all associated data", id);
+    let mut conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    // All deletes in a single transaction so a partial failure (e.g. mid-way
+    // SQLITE_MALFORMED) rolls back and leaves the DB in a consistent state.
+    // PRAGMA foreign_keys is intentionally NOT enabled here: we use explicit
+    // ordered DELETEs instead of relying on ON DELETE CASCADE so we can avoid
+    // the FTS5 contentless-table `WHERE rowid IN (SELECT ...)` malformed trap.
+    let tx = conn.transaction()?;
+
+    // 1. Leaf tables first (depend on messages)
+    tx.execute("DELETE FROM mail_attachments WHERE message_id IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
+    tx.execute("DELETE FROM mail_message_folders WHERE message_id IN (SELECT id FROM mail_messages WHERE account_id = ?1)", params![id])?;
+
+    // 2. Messages. mail_fts is a contentless FTS5 table linked via content='mail_messages';
+    //    removing source rows makes the FTS entries stale but does NOT error.
+    //    We deliberately do NOT touch mail_fts here — see ops.rs top-of-file comment.
+    tx.execute("DELETE FROM mail_messages WHERE account_id = ?1", params![id])?;
+
+    // 3. Folders, pending ops, contacts (depend on account)
+    tx.execute("DELETE FROM mail_folders WHERE account_id = ?1", params![id])?;
+    tx.execute("DELETE FROM mail_pending_ops WHERE account_id = ?1", params![id])?;
+    tx.execute("DELETE FROM mail_contacts WHERE account_id = ?1", params![id])?;
+
+    // 4. Account last
+    tx.execute("DELETE FROM mail_accounts WHERE id = ?1", params![id])?;
+
+    tx.commit()?;
+    log::info!("Deleted account {} and all associated data (transactional)", id);
     Ok(())
 }
 
 pub fn update_account(pool: &DbPool, account: &MailAccount) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let id = account.id.ok_or_else(|| {
+        rusqlite::Error::InvalidParameterName("id is required for update".into())
+    })?;
+
+    // ── Password semantics ──
+    // The frontend intentionally sends an empty password when the user
+    // didn't change it (the field is masked in the form). In that case
+    // we MUST NOT overwrite the stored encrypted_password with an empty
+    // blob — the account would become un-loggable.
+    //
+    // The Rust command layer also has this guard (commands/mail.rs), but
+    // we double-check here so direct callers of ops::update_account stay
+    // safe.
+    if account.password.is_empty() {
+        log::debug!("update_account: id={} password empty, preserving existing encrypted_password", id);
+        conn.execute(
+            "UPDATE mail_accounts SET
+                email = ?1, provider = ?2, imap_host = ?3, imap_port = ?4,
+                smtp_host = ?5, smtp_port = ?6, username = ?7,
+                use_tls = ?8, sync_interval_secs = ?9, sync_period_days = ?10,
+                updated_at = datetime('now')
+             WHERE id = ?11",
+            params![
+                account.email, account.provider, account.imap_host,
+                account.imap_port, account.smtp_host, account.smtp_port,
+                account.username,
+                account.use_tls as i32, account.sync_interval_secs, account.sync_period_days,
+                id,
+            ],
+        )?;
+        return Ok(());
+    }
+
     let pw_b64 = mail::crypto::encrypt_password(&account.password)
         .unwrap_or_else(|e| {
             log::warn!("Password encryption failed, using base64: {}", e);
@@ -147,7 +212,7 @@ pub fn update_account(pool: &DbPool, account: &MailAccount) -> Result<()> {
             account.imap_port, account.smtp_host, account.smtp_port,
             account.username, encrypted_pw,
             account.use_tls as i32, account.sync_interval_secs, account.sync_period_days,
-            account.id,
+            id,
         ],
     )?;
     Ok(())

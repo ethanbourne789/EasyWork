@@ -175,22 +175,33 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     setSaving(true); setError(null); setSyncResult(null)
 
     if (editingId) {
+      // ── Edit path ──
+      // The password field is intentionally left empty by startEdit() — the
+      // backend (update_account) treats an empty password as "keep the stored
+      // one". We therefore must NOT call testConnection() here: it would try
+      // to log in with an empty password and always fail.
       try {
         await mailIpc.updateAccount({ ...form, id: editingId })
-        const connResult = await mailIpc.testConnection(form)
-        setTestResult(connResult)
         updateAccountLocal({ ...form, id: editingId })
         setEditingId(null)
         setShowAdd(false)
         setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
-        setSyncResult("账户已更新")
+        setSyncResult("账户已更新（如修改了密码请点击「测试连接」验证）")
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err)
+        console.error("update_account failed:", msg)
         setError(`更新失败: ${msg}`)
       } finally { setSaving(false) }
       return
     }
 
+    // ── Add new account ──
+    // Two-phase commit:
+    //   Phase A: insert (idempotent rollback if test_connection fails)
+    //   Phase B: test connection — if it fails, delete the just-inserted row
+    //
+    // If the rollback delete itself fails (e.g. backend transient error),
+    // surface the error to the user so they can retry — do NOT swallow it.
     let insertedId: number | null = null
     try {
       insertedId = await mailIpc.addAccount(form)
@@ -198,7 +209,14 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       setTestResult(connResult)
       if (!connResult.includes("成功")) {
         setError(connResult)
-        await mailIpc.deleteAccount(insertedId).catch(() => {})
+        // Best-effort rollback. Log the error rather than silently swallowing.
+        try {
+          await mailIpc.deleteAccount(insertedId)
+        } catch (rollbackErr) {
+          const rmsg = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+          console.error("add_account rollback failed:", rmsg)
+          setError(prev => `${prev}\n警告：回滚失败 (id=${insertedId})，请在账户管理中手动删除`)
+        }
         setSaving(false)
         return
       }
@@ -206,16 +224,23 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       mailIpc.syncAccount(insertedId).then(() => {
         mailIpc.fetchMessages(insertedId!).then(msgs => {
           useMailStore.getState().setMessages(msgs)
-        }).catch(() => {})
-      }).catch(() => {})
+        }).catch(err => console.warn("fetchMessages after add failed:", err))
+      }).catch(err => console.warn("syncAccount after add failed:", err))
       setSyncResult("账户已添加，后台同步已启动")
       setShowAdd(false)
       setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
+      console.error("add_account failed:", msg)
       setError(`操作失败: ${msg}`)
       if (insertedId != null) {
-        await mailIpc.deleteAccount(insertedId).catch(() => {})
+        try {
+          await mailIpc.deleteAccount(insertedId)
+        } catch (rollbackErr) {
+          const rmsg = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+          console.error("add_account rollback failed:", rmsg)
+          setError(prev => `${prev}\n警告：回滚失败 (id=${insertedId})，请在账户管理中手动删除`)
+        }
       }
     } finally { setSaving(false) }
   }

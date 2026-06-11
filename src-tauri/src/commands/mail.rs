@@ -166,10 +166,35 @@ pub async fn update_account(
     pool: State<'_, DbPool>,
     account: MailAccount,
 ) -> Result<(), String> {
+    let trace_id = crate::logging::trace_id();
     if account.id.is_none() {
         return Err("Account ID is required for update".into());
     }
-    ops::update_account(&pool, &account).map_err(|e| e.to_string())
+
+    // ── Password handling: empty password means "keep the existing one".
+    // This is the standard "edit form" semantics: the password field is left
+    // blank so the user can change other settings without re-entering the
+    // sensitive secret. A non-empty password re-encrypts and replaces it.
+    let final_account = if account.password.is_empty() {
+        match ops::get_account_with_password(&pool, account.id.unwrap()) {
+            Ok(Some((existing, _stored_pw))) => MailAccount {
+                password: existing.password, // sentinel: same as stored
+                ..account
+            },
+            Ok(None) => {
+                log::warn!("[{}] update_account: account {:?} not found", trace_id, account.id);
+                return Err("账户不存在".into());
+            }
+            Err(e) => {
+                log::error!("[{}] update_account: failed to read existing: {}", trace_id, e);
+                return Err(format!("读取现有账户失败: {}", e));
+            }
+        }
+    } else {
+        account
+    };
+
+    ops::update_account(&pool, &final_account).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

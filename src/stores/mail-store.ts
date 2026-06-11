@@ -130,10 +130,27 @@ export const useMailStore = create<MailState>((set) => ({
     accounts: [...s.accounts, account],
     activeAccountId: s.activeAccountId ?? account.id ?? null,
   })),
-  removeAccount: (id) => set((s) => ({
-    accounts: s.accounts.filter((a) => a.id !== id),
-    activeAccountId: s.activeAccountId === id ? null : s.activeAccountId,
-  })),
+  removeAccount: (id) => set((s) => {
+    // If the deleted account is the active one, scrub ALL related UI state so
+    // the user doesn't see orphaned messages / contacts / folder references.
+    if (s.activeAccountId !== id) {
+      return {
+        accounts: s.accounts.filter((a) => a.id !== id),
+        activeAccountId: s.activeAccountId,
+      }
+    }
+    return {
+      accounts: s.accounts.filter((a) => a.id !== id),
+      activeAccountId: null,
+      activeFolder: "inbox",
+      activeFolderId: null,
+      selectedMessageId: null,
+      messageBody: null,
+      messages: [],
+      folderUnreadCounts: {},
+      contacts: [],
+    }
+  }),
   updateAccount: (updated) => set((s) => ({
     accounts: s.accounts.map((a) => a.id === updated.id ? { ...a, ...updated } : a),
   })),
