@@ -3,10 +3,10 @@ use std::time::{Duration, Instant};
 use futures::{StreamExt, TryStreamExt};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-/// IMAP session using native-tls (schannel on Windows).
-/// Mirrors curl's SSL behaviour — works reliably with QQ/K8s/163 IMAP servers.
+/// IMAP session using rustls (cross-platform, no system dependency).
+/// Works on Windows, macOS, Linux, and Android without platform-specific TLS.
 pub type ImapSession = async_imap::Session<
-    tokio_util::compat::Compat<tokio_native_tls::TlsStream<tokio::net::TcpStream>>
+    tokio_util::compat::Compat<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>
 >;
 
 /// Timeout per individual step (TCP, TLS, LOGIN)
@@ -84,20 +84,28 @@ async fn connection_attempt(
         host, peer_addr, tcp_elapsed.as_secs_f64()
     );
 
-    // ── Step 2: TLS handshake (10s timeout) using native-tls ──
+    // ── Step 2: TLS handshake (10s timeout) using rustls ──
     let tls_start = Instant::now();
-    log::info!("IMAP Step 2/3: TLS handshake (native-tls) with {}:{} ...", host, port);
+    log::info!("IMAP Step 2/3: TLS handshake (rustls) with {}:{} ...", host, port);
 
-    // native-tls uses the OS trust store (schannel on Windows, Security.framework on macOS, OpenSSL on Linux)
-    let tls_connector = native_tls::TlsConnector::builder()
-        .build()
-        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-            log::error!("IMAP TLS: failed to build native connector: {}", e);
-            format!("TLS 初始化失败: {}", e).into()
+    // Build a root certificate store from webpki roots (Mozilla CA bundle, cross-platform)
+    let mut root_store = rustls::RootCertStore::empty();
+    root_store.extend(
+        webpki_roots::TLS_SERVER_ROOTS.iter().cloned()
+    );
+
+    let tls_config = rustls::ClientConfig::builder()
+        .with_root_certificates(root_store)
+        .with_no_client_auth();
+    let tls_connector = tokio_rustls::TlsConnector::from(Arc::new(tls_config));
+
+    // Build ServerName from owned string so the future doesn't borrow from `host` parameter
+    let server_name = rustls::pki_types::ServerName::try_from(host.to_string())
+        .map_err(|_| -> Box<dyn std::error::Error + Send + Sync> {
+            format!("TLS: 无效的服务器域名: {}", host).into()
         })?;
-    let tls_connector = tokio_native_tls::TlsConnector::from(tls_connector);
 
-    let tls_future = tls_connector.connect(host, tcp);
+    let tls_future = tls_connector.connect(server_name, tcp);
     let tls_stream = tokio::select! {
         t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
             log::error!(
@@ -118,7 +126,7 @@ async fn connection_attempt(
 
     let tls_elapsed = tls_start.elapsed();
     log::info!(
-        "IMAP Step 2/3 OK: TLS handshake (native-tls) complete in {:.3}s",
+        "IMAP Step 2/3 OK: TLS handshake (rustls) complete in {:.3}s",
         tls_elapsed.as_secs_f64()
     );
 
@@ -432,9 +440,9 @@ pub async fn fetch_flags_batch(
 
         for fetch in &fetches {
             if let Some(uid) = fetch.uid {
-                let mut flags = fetch.flags();
-                let is_read = flags.any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Seen"));
-                let is_starred = flags.any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Flagged"));
+                let flags: Vec<_> = fetch.flags().collect();
+                let is_read = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Seen"));
+                let is_starred = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Flagged"));
                 results.push((uid, is_read, is_starred));
             }
         }
