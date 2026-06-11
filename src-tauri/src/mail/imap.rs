@@ -509,27 +509,127 @@ pub async fn fetch_flags_batch(
     Ok(results)
 }
 
-/// IDLE loop: use the real IMAP IDLE command (RFC 2177) for push notifications.
+/// IDLE loop: real IMAP IDLE command (RFC 2177) for push notifications.
 ///
-/// Falls back to polling if the server doesn't support IDLE.
+/// Replaces the previous polling-sleep implementation (Bug #2). The server
+/// keeps the connection in `+ idling` state and pushes unilateral
+/// `EXISTS`/`RECENT` updates whenever the mailbox changes. The client MUST
+/// renew the IDLE state every 29 minutes (RFC 2177 §2) to avoid the server
+/// unilaterally closing the connection. We use `wait_with_timeout(29min)` so
+/// the loop self-renews without external timers.
+///
+/// Takes the session **by value** because the IDLE handle consumes the
+/// session for the duration of the wait, and `handle.done().await` returns
+/// a fresh `Session` that we hand back to the caller.
+///
+/// Falls back to polling if the server doesn't support IDLE (returns a
+/// `NO`/`BAD` for the IDLE command).
 pub async fn idle_wait(
-    session: &mut ImapSession,
+    session: ImapSession,
     folder: &str,
     timeout: std::time::Duration,
-) -> Result<IdleEvent, Box<dyn std::error::Error + Send + Sync>> {
-    // Select the folder first
-    let _ = select_folder(session, folder).await?;
+) -> Result<(ImapSession, IdleEvent), Box<dyn std::error::Error + Send + Sync>> {
+    // ── Bug #2 fix: real RFC 2177 IDLE ──
+    // 1. SELECT the folder (IDLE works on the currently selected mailbox).
+    //    We do this in a small inline block that takes `session` back by
+    //    value and gives it back to the IDLE handle so we never fight the
+    //    borrow checker.
+    let session = match select_for_idle(session, folder).await? {
+        SelectForIdle::Ok(s) => s,
+        SelectForIdle::FailBack(s) => {
+            // SELECT itself failed — most likely auth/connection issue.
+            return Ok((s, IdleEvent::Timeout));
+        }
+    };
 
-    // For now, use the polling approach which works reliably.
-    let mailbox = session.select(folder).await?;
+    // 2. Acquire the IDLE handle (consumes the session) and send IDLE.
+    let mut handle = session.idle();
+    if let Err(e) = handle.init().await {
+        // IDLE unsupported / refused: we no longer have the session back
+        // (handle owns it). Re-establish a session and fall back to a
+        // one-shot polling compare.
+        log::warn!("IDLE init failed for '{}', falling back to polling: {}", folder, e);
+        let session = handle.done().await?;
+        return idle_polling_fallback(session, folder, timeout).await;
+    }
+
+    // 3. Wait for server push (or our timeout). Cap the inner timeout at 29 min
+    //    (RFC 2177 §2 — servers may close after that). The outer `timeout` arg
+    //    remains a soft upper bound for the caller; we choose the smaller.
+    let idle_window = std::cmp::min(timeout, std::time::Duration::from_secs(29 * 60));
+    let (wait_fut, _stop) = handle.wait_with_timeout(idle_window);
+
+    // 4. If the outer caller-supplied `timeout` is shorter than 29 minutes,
+    //    additionally race a `tokio::time::sleep` so the caller can also
+    //    re-enter this function for any reason (UI refresh, app pause, etc.).
+    let event_result: Result<async_imap::extensions::idle::IdleResponse, _> = if timeout < idle_window {
+        tokio::select! {
+            res = wait_fut => res,
+            _ = tokio::time::sleep(timeout) => Ok(async_imap::extensions::idle::IdleResponse::Timeout),
+        }
+    } else {
+        wait_fut.await
+    };
+
+    // 5. Always send DONE before letting the handle go out of scope, so the
+    //    server releases the mailbox and we get the session back.
+    let session = handle.done().await?;
+
+    let event = event_result?;
+    let idle_event = match event {
+        async_imap::extensions::idle::IdleResponse::NewData(_) => IdleEvent::NewMail,
+        async_imap::extensions::idle::IdleResponse::Timeout => IdleEvent::Timeout,
+        async_imap::extensions::idle::IdleResponse::ManualInterrupt => IdleEvent::Timeout,
+    };
+    Ok((session, idle_event))
+}
+
+enum SelectForIdle {
+    Ok(ImapSession),
+    FailBack(ImapSession),
+}
+
+/// SELECT the folder and hand the session back. If SELECT fails we return
+/// `FailBack` so the caller can choose a polling path without unwinding.
+async fn select_for_idle(
+    mut session: ImapSession,
+    folder: &str,
+) -> Result<SelectForIdle, Box<dyn std::error::Error + Send + Sync>> {
+    match select_folder(&mut session, folder).await {
+        Ok(_) => Ok(SelectForIdle::Ok(session)),
+        Err(e) => {
+            log::warn!("IDLE pre-select failed for '{}': {}", folder, e);
+            Ok(SelectForIdle::FailBack(session))
+        }
+    }
+}
+
+/// Polling fallback when IDLE is unsupported. Re-selects the folder after a
+/// sleep and reports whether the message count changed.
+async fn idle_polling_fallback(
+    mut session: ImapSession,
+    folder: &str,
+    timeout: std::time::Duration,
+) -> Result<(ImapSession, IdleEvent), Box<dyn std::error::Error + Send + Sync>> {
+    let mailbox = match select_folder(&mut session, folder).await {
+        Ok(m) => m,
+        Err(e) => {
+            log::warn!("Polling fallback: select '{}' failed: {}", folder, e);
+            return Ok((session, IdleEvent::Timeout));
+        }
+    };
     let initial_exists = mailbox.exists;
     tokio::time::sleep(timeout).await;
-    let mailbox = session.select(folder).await?;
-    if mailbox.exists > initial_exists {
-        Ok(IdleEvent::NewMail)
+    let mailbox = match select_folder(&mut session, folder).await {
+        Ok(m) => m,
+        Err(_) => return Ok((session, IdleEvent::Timeout)),
+    };
+    let event = if mailbox.exists > initial_exists {
+        IdleEvent::NewMail
     } else {
-        Ok(IdleEvent::Timeout)
-    }
+        IdleEvent::Timeout
+    };
+    Ok((session, event))
 }
 
 /// Apply flags (e.g. \\Seen, \\Flagged, \\Deleted) to a message by UID.

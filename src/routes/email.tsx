@@ -647,20 +647,49 @@ function ComposeDialog() {
   const [sendResult, setSendResult] = useState<mailIpc.SendResult | null>(null)
   const [draftIndicator, setDraftIndicator] = useState("")
 
-  const draftIntervalRef = useRef<ReturnType<typeof setInterval> | undefined>(undefined)
+  // ── Draft autosave (Bug #1 fix) ──
+  // Mirror the live field values into refs so the setInterval callback always
+  // reads the latest values WITHOUT forcing the effect to re-subscribe on every
+  // keystroke. The previous implementation listed `to/cc/bcc/subject/body` as
+  // useEffect dependencies, so each keystroke tore down and re-created the
+  // interval, and the unmount cleanup additionally wrote a duplicate draft.
+  // Now the interval is created once per account and reads the latest values
+  // from refs; we only write to localStorage when the snapshot actually changes.
+  const draftFieldsRef = useRef({ to, cc, bcc, subject, body, activeAccountId })
+  const lastSerializedRef = useRef<string>("")
   useEffect(() => {
-    draftIntervalRef.current = setInterval(() => {
-      if (to || cc || bcc || subject || body) {
-        saveDraft({ to, cc, bcc, subject, body, accountId: activeAccountId })
-        setDraftIndicator(t("mail.draftSaved")); setTimeout(() => setDraftIndicator(""), 2000)
-      }
-    }, 5000)
-    return () => { if (draftIntervalRef.current) clearInterval(draftIntervalRef.current) }
-  }, [to, cc, bcc, subject, body, activeAccountId, saveDraft, t])
+    draftFieldsRef.current = { to, cc, bcc, subject, body, activeAccountId }
+  })
 
   useEffect(() => {
-    return () => { if (to || subject || body) saveDraft({ to, cc, bcc, subject, body, accountId: activeAccountId }) }
-  }, []) // eslint-disable-line
+    // Save once on unmount (only if the snapshot was different from what we last wrote)
+    return () => {
+      const { to: u, cc: c, bcc: b, subject: s, body: bd, activeAccountId: aid } = draftFieldsRef.current
+      const snapshot = JSON.stringify({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      if ((u || s || bd) && snapshot !== lastSerializedRef.current) {
+        saveDraft({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      }
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [])
+
+  useEffect(() => {
+    // One interval per (activeAccountId, saveDraft identity). Reads the live
+    // snapshot from refs so the interval body never goes stale, and we only
+    // touch localStorage when the serialized form actually changed.
+    const tick = () => {
+      const { to: u, cc: c, bcc: b, subject: s, body: bd, activeAccountId: aid } = draftFieldsRef.current
+      if (!(u || c || b || s || bd)) return
+      const snapshot = JSON.stringify({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      if (snapshot === lastSerializedRef.current) return
+      lastSerializedRef.current = snapshot
+      saveDraft({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      setDraftIndicator(t("mail.draftSaved"))
+      setTimeout(() => setDraftIndicator(""), 2000)
+    }
+    draftIntervalRef.current = setInterval(tick, 5000)
+    return () => { if (draftIntervalRef.current) clearInterval(draftIntervalRef.current) }
+  }, [activeAccountId, saveDraft, t])
 
   const handleSend = async () => {
     if (!activeAccountId || !accounts.length) return
