@@ -170,7 +170,10 @@ pub async fn list_folders(
 
     for item in names {
         let item = item?;
-        let name_str = item.name().to_string();
+        let raw_name = item.name().to_string();
+
+        // Decode IMAP UTF-7 encoded folder names (e.g. &g0l6P3ux- -> 草稿箱)
+        let name_str = decode_imap_utf7(&raw_name);
 
         // Skip \Noselect mailboxes (can't contain messages)
         let attributes = item.attributes();
@@ -185,10 +188,69 @@ pub async fn list_folders(
             detect_role_by_name(&name_str)
         };
 
-        folders.push((name_str.clone(), name_str, role.to_string()));
+        // Store with decoded display name, using raw name as remote_id for folder selection
+        folders.push((raw_name.clone(), name_str, role.to_string()));
     }
 
     Ok(folders)
+}
+
+/// Decode an IMAP UTF-7 string (RFC 3501 section 5.1.3).
+/// Converts e.g. `&g0l6P3ux-` to `草稿箱`.
+/// Characters outside the Basic Multilingual Plane may produce replacement characters.
+fn decode_imap_utf7(input: &str) -> String {
+    let mut result = String::with_capacity(input.len());
+    let bytes = input.as_bytes();
+    let mut i = 0;
+    while i < bytes.len() {
+        if bytes[i] == b'&' {
+            // Find the terminating '-'
+            let start = i + 1;
+            if start < bytes.len() && bytes[start] == b'-' {
+                // "&-" represents a literal "&"
+                result.push('&');
+                i = start + 1;
+                continue;
+            }
+            // Find end marker '-'
+            if let Some(end) = bytes[start..].iter().position(|&b| b == b'-') {
+                let encoded = &bytes[start..start + end];
+                // Decode modified Base64: ',' -> '+' (RFC 3501)
+                let b64: String = encoded.iter().map(|&b| if b == b',' { '+' } else { b as char }).collect();
+                // Pad to multiple of 4 for standard base64 decode
+                let padded = pad_base64(&b64);
+                if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, padded.as_bytes()) {
+                    // Convert UTF-16BE bytes to UTF-8
+                    let ranges: Vec<char> = decoded.chunks(2)
+                        .filter_map(|pair| {
+                            if pair.len() < 2 { None }
+                            else { char::from_u32(u16::from_be_bytes([pair[0], pair[1]]) as u32) }
+                        })
+                        .collect();
+                    for ch in ranges { result.push(ch); }
+                }
+                i = start + end + 1; // skip past the '-'
+            } else {
+                // No terminator, treat '&' as literal
+                result.push('&');
+                i += 1;
+            }
+        } else {
+            result.push(bytes[i] as char);
+            i += 1;
+        }
+    }
+    result
+}
+
+fn pad_base64(s: &str) -> String {
+    let len = s.len();
+    let padded_len = ((len + 3) / 4) * 4;
+    let mut result = s.to_string();
+    while result.len() < padded_len {
+        result.push('=');
+    }
+    result
 }
 
 /// Detect folder role from IMAP LIST attributes (e.g. \Sent, \Trash)

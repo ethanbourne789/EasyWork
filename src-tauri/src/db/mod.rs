@@ -14,7 +14,19 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<DbPool, Box<dyn std::error::Err
 
     log::info!("Initializing database at {}", db_path.display());
 
-    let manager = SqliteConnectionManager::file(&db_path);
+    let manager = SqliteConnectionManager::file(&db_path)
+        .with_init(|conn| {
+            // Set PRAGMAs on every connection from the pool,
+            // not just the initial connection used for schema creation.
+            conn.execute_batch(
+                "PRAGMA foreign_keys = ON;
+                 PRAGMA journal_mode = WAL;
+                 PRAGMA busy_timeout = 5000;
+                 PRAGMA synchronous = NORMAL;
+                 PRAGMA cache_size = -8000;"
+            ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+            Ok(())
+        });
     let pool = Pool::builder()
         .max_size(8)
         .build(manager)?;

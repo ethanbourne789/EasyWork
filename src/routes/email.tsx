@@ -54,7 +54,14 @@ function formatFileSize(bytes: number): string {
 /** Format a raw email date header into a consistent short display format. */
 function formatMailDate(dateStr: string): string {
   try {
-    const d = new Date(dateStr)
+    // Clean up non-standard suffixes like "Wed, 10 Jun 2026 15:57:48 +0000 (UTC)"
+    let cleaned = dateStr.replace(/\s*\([^)]*\)\s*$/, "").trim()
+    let d = new Date(cleaned)
+    if (isNaN(d.getTime())) {
+      // Try removing timezone abbreviation in parentheses mid-string
+      cleaned = dateStr.replace(/\s*\([^)]*\)\s*/g, " ").replace(/\s+/g, " ").trim()
+      d = new Date(cleaned)
+    }
     if (isNaN(d.getTime())) {
       // Fallback: first 16 chars trimmed
       return dateStr.slice(0, 16).trim()
@@ -214,20 +221,26 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   }
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
+  const [deleting, setDeleting] = useState(false)
 
   const handleRemove = async (id: number) => {
     if (id == null) {
-      setError("无法删除：账户 ID 无效")
+      setError(t("account.invalidId", "无法删除：账户 ID 无效"))
       return
     }
+    setDeleting(true); setError(null)
     try {
       await mailIpc.deleteAccount(id)
       removeAccountLocal(id)
+      setDeleteConfirmId(null)
+      setSyncResult(t("account.deleteSuccess"))
       setError(null)
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       console.error("delete_account failed:", msg)
-      setError(`删除失败: ${msg}`)
+      setError(`${t("account.deleteFailed", "删除失败")}: ${msg}`)
+    } finally {
+      setDeleting(false)
     }
   }
 
@@ -310,16 +323,15 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
         {deleteConfirmId != null && (
           <div className="bg-red-50 dark:bg-red-900/20 border border-red-200 dark:border-red-800 rounded-lg p-4 space-y-3">
             <p className="text-sm text-red-700 dark:text-red-300 font-medium">
-              确认删除此邮箱账号？<br />
-              <span className="font-normal text-xs">该账号的所有邮件、文件夹和联系人也将被删除，此操作不可撤销。</span>
+              {t("account.deleteConfirm")}<br />
+              <span className="font-normal text-xs">{t("account.deleteConfirmHint")}</span>
             </p>
             <div className="flex gap-2">
-              <Button size="sm" variant="danger" onClick={() => {
-                const id = deleteConfirmId
-                setDeleteConfirmId(null)
-                handleRemove(id)
-              }}>确认删除</Button>
-              <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(null)}>取消</Button>
+              <Button size="sm" variant="danger" onClick={() => handleRemove(deleteConfirmId)} disabled={deleting}>
+                {deleting && <Loader2 size={14} className="animate-spin" />}
+                {deleting ? t("account.deleting") : t("account.deleteConfirmBtn")}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => setDeleteConfirmId(null)} disabled={deleting}>{t("mail.cancel")}</Button>
             </div>
           </div>
         )}
@@ -881,9 +893,34 @@ function EmailPage() {
     doAutoSync()
   }, [activeAccountId])
 
-  // Sorted folders
+  // Sorted folders — deduplicate by role (some IMAP servers return both EN and CN names)
   const sortedFolders = useMemo(() => {
-    return [...dbFolders].sort((a, b) => getFolderSortOrder(a) - getFolderSortOrder(b))
+    const seen = new Set<string>()
+    const uniq: typeof dbFolders = []
+    const lang = t("sidebar.dashboard", "Dashboard") === "Dashboard" ? "en" : "zh"
+    // Prefer CN-named folders in Chinese locale, EN-named in English locale
+    const preferCN = lang === "zh"
+    for (const f of dbFolders) {
+      if (seen.has(f.role)) continue
+      seen.add(f.role)
+      // If a duplicate role exists, pick the folder with the most readable name
+      const dupes = dbFolders.filter(d => d.role === f.role)
+      const best = dupes.length > 1
+        ? dupes.reduce((best, d) => {
+            const nameA = best.name
+            const nameB = d.name
+            const aCN = /[\u4e00-\u9fff]/.test(nameA)
+            const bCN = /[\u4e00-\u9fff]/.test(nameB)
+            if (preferCN && bCN && !aCN) return d
+            if (preferCN && aCN && !bCN) return best
+            if (!preferCN && !bCN && aCN) return d
+            if (!preferCN && !aCN && bCN) return best
+            return nameA.length < nameB.length ? best : d
+          }, dupes[0])
+        : f
+      uniq.push(best)
+    }
+    return uniq.sort((a, b) => getFolderSortOrder(a) - getFolderSortOrder(b))
   }, [dbFolders])
 
   const folderIcons: Record<string, typeof Inbox> = {

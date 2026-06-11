@@ -91,7 +91,12 @@
     "minute": "1 minute",
     "minutes5": "5 minutes",
     "minutes15": "15 minutes",
-    "minutes30": "30 minutes"
+    "minutes30": "30 minutes",
+    "deleteConfirm": "Confirm deleting this email account?",
+    "deleteConfirmHint": "All emails, folders and contacts for this account will also be deleted. This action cannot be undone.",
+    "deleteConfirmBtn": "Confirm Delete",
+    "deleting": "Deleting...",
+    "deleteSuccess": "Account deleted"
   },
   "contacts": {
     "title": "Contacts",

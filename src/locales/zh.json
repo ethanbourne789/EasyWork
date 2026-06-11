@@ -91,7 +91,12 @@
     "minute": "1 分钟",
     "minutes5": "5 分钟",
     "minutes15": "15 分钟",
-    "minutes30": "30 分钟"
+    "minutes30": "30 分钟",
+    "deleteConfirm": "确认删除此邮箱账号？",
+    "deleteConfirmHint": "该账号的所有邮件、文件夹和联系人也将被删除，此操作不可撤销。",
+    "deleteConfirmBtn": "确认删除",
+    "deleting": "删除中...",
+    "deleteSuccess": "账号已删除"
   },
   "contacts": {
     "title": "联系人",
