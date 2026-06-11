@@ -3,14 +3,20 @@ use crate::db::DbPool;
 use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact};
 
 pub fn insert_account(pool: &DbPool, account: &MailAccount) -> Result<i64> {
-    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    // Encrypt password with AES-GCM (key stored in OS keyring).
+    // Falls back to base64 if keyring is unavailable (e.g., headless Windows).
     let pw_b64 = mail::crypto::encrypt_password(&account.password)
         .unwrap_or_else(|e| {
-            log::warn!("Password encryption failed, using base64: {}", e);
+            log::warn!("Password encryption failed for {}: {}. Using base64 fallback.", account.email, e);
             base64::Engine::encode(&base64::engine::general_purpose::STANDARD, account.password.as_bytes())
         });
     let encrypted_pw: Vec<u8> = pw_b64.into_bytes();
-    conn.execute(
+
+    // Use a transaction so a partial failure doesn't corrupt the DB.
+    let tx = conn.transaction()?;
+    tx.execute(
         "INSERT INTO mail_accounts (email, provider, imap_host, imap_port, smtp_host, smtp_port, username, encrypted_password, use_tls, sync_interval_secs, sync_period_days)
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
         params![
@@ -20,7 +26,11 @@ pub fn insert_account(pool: &DbPool, account: &MailAccount) -> Result<i64> {
             account.use_tls as i32, account.sync_interval_secs, account.sync_period_days
         ],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = tx.last_insert_rowid();
+    tx.commit()?;
+
+    log::debug!("insert_account committed: id={} email={}", id, account.email);
+    Ok(id)
 }
 
 fn base64_encode(data: &[u8]) -> Vec<u8> {

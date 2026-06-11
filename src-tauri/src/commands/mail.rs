@@ -44,14 +44,102 @@ pub struct SendResult {
 
 // ==================== Account ====================
 
+/// Add an email account.
+///
+/// Flow:
+///   1. Validate input (email format, required fields, port ranges)
+///   2. Encrypt password via OS keyring (offloaded to blocking thread-pool)
+///   3. INSERT into mail_accounts (transactional)
+///   4. Return new account ID
+///
+/// On failure, the caller should NOT retry without fixing the input.
 #[tauri::command]
 pub async fn add_account(
     pool: State<'_, DbPool>,
     account: MailAccount,
 ) -> Result<i64, String> {
-    let id = ops::insert_account(&pool, &account).map_err(|e| e.to_string())?;
-    log::info!("Account added: id={}, email={}", id, account.email);
+    let trace_id = crate::logging::trace_id();
+    log::info!("[{}] add_account START email={}", trace_id, account.email);
+
+    // ── Step 1: Input validation ──
+    validate_account_input(&account, &trace_id)?;
+
+    // ── Step 2: Encrypt + insert (offloaded to blocking pool) ──
+    let pool_clone = pool.inner().clone();
+    let account_clone = account.clone();
+    let tid = trace_id.clone();
+
+    let id = tokio::task::spawn_blocking(move || {
+        log::debug!(
+            "[{tid}] insert_account: email={} imap={}:{} smtp={}:{}",
+            account_clone.email,
+            account_clone.imap_host, account_clone.imap_port,
+            account_clone.smtp_host, account_clone.smtp_port,
+        );
+        ops::insert_account(&pool_clone, &account_clone)
+    })
+    .await
+    .map_err(|e| {
+        log::error!("[{trace_id}] add_account spawn_blocking panicked: {e}");
+        format!("内部错误: 后台任务异常")
+    })?
+    .map_err(|e| {
+        let msg = if e.to_string().contains("UNIQUE constraint") {
+            log::warn!("[{trace_id}] duplicate email rejected: {}", account.email);
+            format!("该邮箱 {} 已存在，请勿重复添加", account.email)
+        } else {
+            log::error!("[{trace_id}] insert_account DB error: {e}");
+            format!("数据库写入失败: {e}")
+        };
+        msg
+    })?;
+
+    log::info!(
+        "[{trace_id}] add_account OK: id={} email={}",
+        id, account.email,
+    );
     Ok(id)
+}
+
+/// Validate MailAccount fields before persisting.
+fn validate_account_input(account: &MailAccount, trace_id: &str) -> Result<(), String> {
+    // Email
+    if account.email.is_empty() || !account.email.contains('@') {
+        log::warn!("[{trace_id}] validation: invalid email '{}'", account.email);
+        return Err("请输入有效的邮箱地址".into());
+    }
+    // IMAP
+    if account.imap_host.is_empty() {
+        return Err("请输入 IMAP 服务器地址".into());
+    }
+    if account.imap_port == 0 {
+        log::warn!("[{trace_id}] validation: invalid imap_port {}", account.imap_port);
+        return Err(format!("IMAP 端口无效: {}", account.imap_port));
+    }
+    // SMTP
+    if account.smtp_host.is_empty() {
+        return Err("请输入 SMTP 服务器地址".into());
+    }
+    if account.smtp_port == 0 {
+        log::warn!("[{trace_id}] validation: invalid smtp_port {}", account.smtp_port);
+        return Err(format!("SMTP 端口无效: {}", account.smtp_port));
+    }
+    // Username
+    if account.username.is_empty() {
+        return Err("请输入用户名/邮箱账号".into());
+    }
+    // Password
+    if account.password.is_empty() {
+        return Err("请输入密码或授权码".into());
+    }
+
+    log::debug!(
+        "[{trace_id}] validation PASS: email={} imap={}:{} smtp={}:{}",
+        account.email,
+        account.imap_host, account.imap_port,
+        account.smtp_host, account.smtp_port,
+    );
+    Ok(())
 }
 
 #[tauri::command]
@@ -391,20 +479,45 @@ pub async fn update_contact(
 pub async fn test_connection(
     account: MailAccount,
 ) -> Result<String, String> {
-    log::info!("Testing IMAP connection to {}:{}", account.imap_host, account.imap_port);
-    match mail::imap::connect(
+    let trace_id = crate::logging::trace_id();
+    log::info!(
+        "[{trace_id}] test_connection START imap={}:{} user={}",
+        account.imap_host, account.imap_port, account.username,
+    );
+
+    let result = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
         &account.username,
         &account.password,
-    ).await {
+    ).await;
+
+    match result {
         Ok(session) => {
             let _ = mail::imap::logout(session).await;
+            log::info!("[{trace_id}] test_connection OK");
             Ok("连接成功: IMAP 服务器可达，认证通过".into())
         }
         Err(e) => {
-            log::warn!("IMAP connection test failed: {}", e);
-            Err(format!("连接失败: {}", e))
+            let msg = e.to_string();
+            // Classify the error for better user feedback
+            let user_msg = if msg.contains("超时") {
+                log::warn!("[{trace_id}] test_connection TIMEOUT");
+                format!("连接超时: 无法在 15 秒内连接到 {}:{}\n请检查服务器地址和网络连接", account.imap_host, account.imap_port)
+            } else if msg.contains("authentication") || msg.contains("AUTHENTICATIONFAILED") || msg.contains("Login") {
+                log::warn!("[{trace_id}] test_connection AUTH_FAILED");
+                "登录失败: 用户名或密码/授权码不正确".into()
+            } else if msg.contains("No such host") || msg.contains("dns") || msg.contains("Name or service not known") {
+                log::warn!("[{trace_id}] test_connection DNS_FAILED: {}", account.imap_host);
+                format!("无法解析服务器地址: {}\n请检查 IMAP 服务器域名是否正确", account.imap_host)
+            } else if msg.contains("Connection refused") {
+                log::warn!("[{trace_id}] test_connection CONN_REFUSED");
+                format!("连接被拒绝: {}:{}\n端口可能不对或服务器未开启 IMAP", account.imap_host, account.imap_port)
+            } else {
+                log::error!("[{trace_id}] test_connection ERROR: {msg}");
+                format!("连接失败: {msg}")
+            };
+            Err(user_msg)
         }
     }
 }

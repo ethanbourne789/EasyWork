@@ -12,14 +12,28 @@ pub fn init_db(app_data_dir: &PathBuf) -> Result<DbPool, Box<dyn std::error::Err
     std::fs::create_dir_all(&db_dir)?;
     let db_path = db_dir.join("mail.db");
 
+    log::info!("Initializing database at {}", db_path.display());
+
     let manager = SqliteConnectionManager::file(&db_path);
     let pool = Pool::builder()
         .max_size(8)
         .build(manager)?;
 
-    let conn = pool.get()?;
-    schema::create_tables(&conn)?;
+    let conn = pool.get()
+        .map_err(|e| {
+            log::error!("DB pool get() failed: {}", e);
+            e
+        })?;
 
-    log::info!("Mail database initialized at {:?}", db_path);
+    schema::create_tables(&conn).map_err(|e| {
+        log::error!(
+            "Schema migration failed at {}: {}. \
+             If you are upgrading from an older version, delete {} and restart.",
+            db_path.display(), e, db_path.display(),
+        );
+        e
+    })?;
+
+    log::info!("Database ready: {}", db_path.display());
     Ok(pool)
 }

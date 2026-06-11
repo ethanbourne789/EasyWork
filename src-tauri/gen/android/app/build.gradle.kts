@@ -38,9 +38,9 @@ android {
         if (hasKeystore) {
             create("release") {
                 storeFile = keystorePath
-                storePassword = "easywork123"
+                storePassword = "123321"
                 keyAlias = "easywork"
-                keyPassword = "easywork123"
+                keyPassword = "123321"
             }
         }
     }
@@ -91,7 +91,8 @@ dependencies {
 
 apply(from = "tauri.build.gradle.kts")
 
-// Pre-built libapp_lib.so is in jniLibs — skip Rust rebuild
-tasks.matching { it.name.startsWith("rustBuild") }.configureEach {
-    enabled = false
-}
+// Enable Rust cross-compilation for Android
+// Pre-built libapp_lib.so is in jniLibs — uncomment the next lines to skip Rust rebuild
+// tasks.matching { it.name.startsWith("rustBuild") }.configureEach {
+//     enabled = false
+// }

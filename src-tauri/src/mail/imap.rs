@@ -1,10 +1,18 @@
 use std::sync::Arc;
-use tokio_rustls::TlsConnector;
-use rustls::pki_types::ServerName;
+use std::time::{Duration, Instant};
 use futures::{StreamExt, TryStreamExt};
 use tokio_util::compat::TokioAsyncReadCompatExt;
 
-pub type ImapSession = async_imap::Session<tokio_util::compat::Compat<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>>;
+/// IMAP session using native-tls (schannel on Windows).
+/// Mirrors curl's SSL behaviour — works reliably with QQ/K8s/163 IMAP servers.
+pub type ImapSession = async_imap::Session<
+    tokio_util::compat::Compat<tokio_native_tls::TlsStream<tokio::net::TcpStream>>
+>;
+
+/// Timeout per individual step (TCP, TLS, LOGIN)
+const STEP_TIMEOUT: Duration = Duration::from_secs(10);
+/// Overall connection timeout
+const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
 pub async fn connect(
     host: &str,
@@ -12,23 +20,140 @@ pub async fn connect(
     username: &str,
     password: &str,
 ) -> Result<ImapSession, Box<dyn std::error::Error + Send + Sync>> {
-    let tcp = tokio::net::TcpStream::connect((host, port)).await?;
+    let overall_start = Instant::now();
 
-    // Build rustls TLS config (safe defaults, no client auth)
-    let root_store: rustls::RootCertStore = webpki_roots::TLS_SERVER_ROOTS.iter().cloned().collect();
-    let config = rustls::ClientConfig::builder()
-        .with_root_certificates(root_store)
-        .with_no_client_auth();
-    let connector = TlsConnector::from(Arc::new(config));
-    let domain = ServerName::try_from(host.to_string())?;
-    let tls_stream = connector.connect(domain, tcp).await?;
-    // Wrap tokio TlsStream in compat layer for futures traits (async-imap requires futures::AsyncRead+Write)
+    // Race the entire connection against a 30-second timer.
+    tokio::select! {
+        result = connection_attempt(host, port, username, password) => {
+            let elapsed = overall_start.elapsed();
+            log::info!(
+                "IMAP connect OK to {}:{} as {} in {:.1}s",
+                host, port, username, elapsed.as_secs_f64()
+            );
+            result
+        }
+        _ = tokio::time::sleep(CONNECTION_TIMEOUT) => {
+            let elapsed = overall_start.elapsed();
+            log::warn!(
+                "IMAP connection timed out after {:.1}s: {}:{}",
+                elapsed.as_secs_f64(), host, port
+            );
+            Err(format!(
+                "IMAP 连接超时 ({}:{}): 连接过程超过 {} 秒",
+                host, port, CONNECTION_TIMEOUT.as_secs()
+            ).into())
+        }
+    }
+}
+
+/// Inner connection logic — isolated so tokio::select! can cancel it.
+/// Each step has its own timeout and detailed timing log.
+async fn connection_attempt(
+    host: &str,
+    port: u16,
+    username: &str,
+    password: &str,
+) -> Result<ImapSession, Box<dyn std::error::Error + Send + Sync>> {
+    // ── Step 1: DNS resolve + TCP connect (10s timeout) ──
+    let tcp_start = Instant::now();
+    log::info!("IMAP Step 1/3: TCP connecting to {}:{} ...", host, port);
+
+    let connect_future = tokio::net::TcpStream::connect((host, port));
+    let tcp = tokio::select! {
+        t = connect_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            log::error!(
+                "IMAP TCP connect FAILED to {}:{} after {:.1}s: {}",
+                host, port, tcp_start.elapsed().as_secs_f64(), e
+            );
+            format!("无法连接 {}:{}: {}", host, port, e).into()
+        })?,
+        _ = tokio::time::sleep(STEP_TIMEOUT) => {
+            let elapsed = tcp_start.elapsed();
+            log::error!(
+                "IMAP TCP connect TIMEOUT to {}:{} after {:.1}s",
+                host, port, elapsed.as_secs_f64()
+            );
+            return Err(format!("TCP 连接超时 ({}:{}): {} 秒内无响应", host, port, STEP_TIMEOUT.as_secs()).into());
+        }
+    };
+
+    let tcp_elapsed = tcp_start.elapsed();
+    let peer_addr = tcp.peer_addr().map(|a| a.to_string()).unwrap_or_else(|_| "?".into());
+    log::info!(
+        "IMAP Step 1/3 OK: TCP connected to {} (resolved to {}) in {:.3}s",
+        host, peer_addr, tcp_elapsed.as_secs_f64()
+    );
+
+    // ── Step 2: TLS handshake (10s timeout) using native-tls ──
+    let tls_start = Instant::now();
+    log::info!("IMAP Step 2/3: TLS handshake (native-tls) with {}:{} ...", host, port);
+
+    // native-tls uses the OS trust store (schannel on Windows, Security.framework on macOS, OpenSSL on Linux)
+    let tls_connector = native_tls::TlsConnector::builder()
+        .build()
+        .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            log::error!("IMAP TLS: failed to build native connector: {}", e);
+            format!("TLS 初始化失败: {}", e).into()
+        })?;
+    let tls_connector = tokio_native_tls::TlsConnector::from(tls_connector);
+
+    let tls_future = tls_connector.connect(host, tcp);
+    let tls_stream = tokio::select! {
+        t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+            log::error!(
+                "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
+                host, port, tls_start.elapsed().as_secs_f64(), e
+            );
+            format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
+        })?,
+        _ = tokio::time::sleep(STEP_TIMEOUT) => {
+            let elapsed = tls_start.elapsed();
+            log::error!(
+                "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
+                host, port, elapsed.as_secs_f64()
+            );
+            return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
+        }
+    };
+
+    let tls_elapsed = tls_start.elapsed();
+    log::info!(
+        "IMAP Step 2/3 OK: TLS handshake (native-tls) complete in {:.3}s",
+        tls_elapsed.as_secs_f64()
+    );
+
     let tls_stream = tls_stream.compat();
 
-    let client = async_imap::Client::new(tls_stream);
-    let session = client.login(username, password).await.map_err(|e| e.0)?;
+    // ── Step 3: IMAP LOGIN (10s timeout) ──
+    let login_start = Instant::now();
+    log::info!("IMAP Step 3/3: LOGIN as {} ...", username);
 
-    log::info!("IMAP connected to {}:{} as {}", host, port, username);
+    let client = async_imap::Client::new(tls_stream);
+    let login_future = client.login(username, password);
+    let session = tokio::select! {
+        s = login_future => s.map_err(|(e, _)| -> Box<dyn std::error::Error + Send + Sync> {
+            log::error!(
+                "IMAP LOGIN FAILED for {}@{}:{} after {:.1}s: {:?}",
+                username, host, port, login_start.elapsed().as_secs_f64(), e
+            );
+            format!("登录失败: 用户名或密码/授权码不正确 ({})", e).into()
+        })?,
+        _ = tokio::time::sleep(STEP_TIMEOUT) => {
+            let elapsed = login_start.elapsed();
+            log::error!(
+                "IMAP LOGIN TIMEOUT for {}@{}:{} after {:.1}s",
+                username, host, port, elapsed.as_secs_f64()
+            );
+            return Err(format!("IMAP 登录超时 ({}:{}): {} 秒内服务器未响应 LOGIN 命令", host, port, STEP_TIMEOUT.as_secs()).into());
+        }
+    };
+
+    let login_elapsed = login_start.elapsed();
+    log::info!(
+        "IMAP Step 3/3 OK: logged in as {}@{}:{} in {:.3}s",
+        username, host, port, login_elapsed.as_secs_f64()
+    );
+
     Ok(session)
 }
 
@@ -271,10 +396,6 @@ pub async fn idle_wait(
     // Select the folder first
     let _ = select_folder(session, folder).await?;
 
-    // async-imap Session::idle() consumes the session and returns a Handle.
-    // We need to handle the API differently - since `idle()` takes ownership,
-    // let's use the polling approach with IDLE attempted as a best-effort optimization.
-    //
     // For now, use the polling approach which works reliably.
     let mailbox = session.select(folder).await?;
     let initial_exists = mailbox.exists;
@@ -298,7 +419,6 @@ pub async fn store_flags(
 }
 
 /// Move a message to another folder via UID COPY + UID STORE +FLAGS (\\Deleted).
-/// Returns the UID of the copy in the target folder if available.
 pub async fn copy_and_delete(
     session: &mut ImapSession,
     source_folder: &str,

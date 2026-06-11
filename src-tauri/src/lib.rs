@@ -1,6 +1,7 @@
 mod db;
 mod mail;
 mod commands;
+mod logging;
 
 use tauri::{
     Emitter, Manager, WindowEvent,
@@ -138,15 +139,25 @@ pub fn run() {
                 })
             ).ok();
 
+            // ── Get app data dir FIRST (used by logging, db, shortcuts) ──
+            let app_data_dir = app
+                .path()
+                .app_data_dir()
+                .expect("Failed to get app data dir");
+
+            // ── Initialize structured file+console logging BEFORE anything else ──
+            if let Err(e) = logging::init(&app_data_dir) {
+                eprintln!("WARN: logging::init failed: {}. Logging to stderr only.", e);
+            }
+
+            // ── Initialize database ──
+            let pool = db::init_db(&app_data_dir)
+                .expect("Failed to initialize mail database");
+
             // ---- Global shortcut (desktop only) ----
             #[cfg(desktop)]
             {
-                let app_data_dir = app.path().app_data_dir()
-                    .expect("Failed to get app data dir");
-                let pool_for_shortcut = db::init_db(&app_data_dir)
-                    .expect("Failed to init db for shortcut");
-
-                let shortcut_key = db::ops::get_config(&pool_for_shortcut, "global_shortcut")
+                let shortcut_key = db::ops::get_config(&pool, "global_shortcut")
                     .unwrap_or_else(|| "Alt+W".to_string());
 
                 let app_handle = app.handle().clone();
@@ -171,14 +182,6 @@ pub fn run() {
                 // Register the configured shortcut
                 let _ = app_handle.global_shortcut().register(shortcut_key.as_str());
             }
-
-            let app_data_dir = app
-                .path()
-                .app_data_dir()
-                .expect("Failed to get app data dir");
-
-            let pool = db::init_db(&app_data_dir)
-                .expect("Failed to initialize mail database");
 
             app.manage(pool.clone());
 

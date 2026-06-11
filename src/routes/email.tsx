@@ -123,21 +123,44 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   }, [form.email])
 
   const handleAdd = async () => {
+    // ── Front-end validation (fast, no round-trip) ──
+    if (!form.email.includes("@")) { setError("请输入有效的邮箱地址"); return }
+    if (!form.imap_host.trim()) { setError("请输入 IMAP 服务器地址"); return }
+    if (!form.smtp_host.trim()) { setError("请输入 SMTP 服务器地址"); return }
+    if (!form.username.trim()) { setError("请输入用户名/邮箱账号"); return }
+    if (!form.password.trim()) { setError("请输入密码或授权码"); return }
+
     setSaving(true); setError(null); setSyncResult(null)
+    let insertedId: number | null = null
     try {
-      const accountId = await mailIpc.addAccount(form)
+      insertedId = await mailIpc.addAccount(form)
       const connResult = await mailIpc.testConnection(form)
       setTestResult(connResult)
-      if (!connResult.includes("成功")) { setError(connResult); setSaving(false); return }
-      setSyncResult("正在同步...")
-      await mailIpc.syncAccount(accountId)
-      setSyncResult("同步完成")
-      addAccountLocal({ ...form, id: accountId })
-      const refreshed = await mailIpc.listAccounts(); setAccounts(refreshed)
-      const msgs = await mailIpc.fetchMessages(accountId); useMailStore.getState().setMessages(msgs)
+      if (!connResult.includes("成功")) {
+        // Test failed → remove the account we just inserted
+        setError(connResult)
+        await mailIpc.deleteAccount(insertedId).catch(() => {})
+        setSaving(false)
+        return
+      }
+      addAccountLocal({ ...form, id: insertedId })
+      // Background sync — don't block UI
+      mailIpc.syncAccount(insertedId).then(() => {
+        mailIpc.fetchMessages(insertedId!).then(msgs => {
+          useMailStore.getState().setMessages(msgs)
+        }).catch(() => {})
+      }).catch(() => {})
+      setSyncResult("账户已添加，后台同步已启动")
       setShowAdd(false)
       setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
-    } catch (err: unknown) { setError(`操作失败: ${err instanceof Error ? err.message : String(err)}`) }
+    } catch (err: unknown) {
+      const msg = err instanceof Error ? err.message : String(err)
+      setError(`操作失败: ${msg}`)
+      // Cleanup if account was already inserted
+      if (insertedId != null) {
+        await mailIpc.deleteAccount(insertedId).catch(() => {})
+      }
+    }
     finally { setSaving(false) }
   }
 

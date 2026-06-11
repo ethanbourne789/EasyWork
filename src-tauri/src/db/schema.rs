@@ -107,10 +107,10 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
         );
 
-        -- Indexes
+        -- Indexes for columns created in the main DDL.
+        -- Indexes on columns added via ALTER TABLE migration MUST be created
+        -- after the migration block, not here.
         CREATE INDEX IF NOT EXISTS idx_mail_messages_account_id ON mail_messages(account_id);
-        CREATE INDEX IF NOT EXISTS idx_mail_messages_thread_id ON mail_messages(thread_id);
-        CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
         CREATE INDEX IF NOT EXISTS idx_mail_pending_ops_status ON mail_pending_ops(status);
         CREATE INDEX IF NOT EXISTS idx_mail_contacts_account_id ON mail_contacts(account_id);
 
@@ -187,6 +187,14 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             ))?;
         }
     }
+
+    // ↑ All ALTER TABLE migrations must run BEFORE these indexes.
+    // The columns below may not exist in old versions of the DB,
+    // so the index creation is placed here, after the migration block.
+    let _ = conn.execute_batch(
+        "CREATE INDEX IF NOT EXISTS idx_mail_messages_thread_id ON mail_messages(thread_id);
+         CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);"
+    );
 
     Ok(())
 }
