@@ -1,5 +1,6 @@
 mod db;
 mod mail;
+mod stock;
 mod commands;
 mod logging;
 
@@ -168,6 +169,11 @@ pub fn run() {
             let pool = db::init_db(&app_data_dir)
                 .expect("Failed to initialize mail database");
 
+            // ── Initialize stock module tables ──
+            if let Err(e) = crate::stock::db::init_stock_tables(&pool) {
+                log::warn!("Stock tables init failed (non-fatal): {}", e);
+            }
+
             // ---- Global shortcut (desktop only) ----
             #[cfg(desktop)]
             {
@@ -321,6 +327,13 @@ pub fn run() {
             get_autostart,
             get_global_shortcut,
             set_global_shortcut,
+            // Stock module
+            crate::stock::commands::stock_watchlist_list,
+            crate::stock::commands::stock_watchlist_add,
+            crate::stock::commands::stock_watchlist_remove,
+            crate::stock::commands::stock_trade_add,
+            crate::stock::commands::stock_trades_list,
+            crate::stock::commands::stock_positions_get,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");
