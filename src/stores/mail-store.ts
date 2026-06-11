@@ -70,6 +70,7 @@ interface MailState {
   setAccounts: (accounts: MailAccount[]) => void
   addAccount: (account: MailAccount) => void
   removeAccount: (id: number) => void
+  updateAccount: (account: MailAccount) => void
   setActiveAccountId: (id: number | null) => void
 
   // Messages
@@ -132,6 +133,9 @@ export const useMailStore = create<MailState>((set) => ({
   removeAccount: (id) => set((s) => ({
     accounts: s.accounts.filter((a) => a.id !== id),
     activeAccountId: s.activeAccountId === id ? null : s.activeAccountId,
+  })),
+  updateAccount: (updated) => set((s) => ({
+    accounts: s.accounts.map((a) => a.id === updated.id ? { ...a, ...updated } : a),
   })),
   setActiveAccountId: (id) => set({ activeAccountId: id }),
 

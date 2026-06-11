@@ -11,7 +11,7 @@ import {
   Search, Star, Paperclip, Inbox, Send, Archive, Trash2, Plus, Settings,
   RefreshCw, X, Reply, Forward, Trash,
   Mail, Users, FileText, Loader2, CheckCircle2, AlertCircle,
-  AlertTriangle, ChevronDown, Download, MessageSquare, Menu, PanelLeftClose, PanelLeft,
+  AlertTriangle, ChevronDown, Download, MessageSquare, Menu, PanelLeftClose, PanelLeft, Pencil,
   Upload,
 } from "lucide-react"
 import { ShadowDomEmail } from "@/components/ShadowDomEmail"
@@ -129,7 +129,7 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
 
 function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
-  const { accounts, addAccount: addAccountLocal, removeAccount: removeAccountLocal, setAccounts, activeAccountId, setActiveAccountId } = useMailStore()
+  const { accounts, addAccount: addAccountLocal, removeAccount: removeAccountLocal, updateAccount: updateAccountLocal, setAccounts, activeAccountId, setActiveAccountId } = useMailStore()
   const [showAdd, setShowAdd] = useState(false)
   const [form, setForm] = useState<MailAccount>({
     email: "", provider: "imap", imap_host: "", imap_port: 993,
@@ -162,20 +162,36 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     if (!form.password.trim()) { setError("请输入密码或授权码"); return }
 
     setSaving(true); setError(null); setSyncResult(null)
+
+    if (editingId) {
+      try {
+        await mailIpc.updateAccount({ ...form, id: editingId })
+        const connResult = await mailIpc.testConnection(form)
+        setTestResult(connResult)
+        updateAccountLocal({ ...form, id: editingId })
+        setEditingId(null)
+        setShowAdd(false)
+        setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
+        setSyncResult("账户已更新")
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        setError(`更新失败: ${msg}`)
+      } finally { setSaving(false) }
+      return
+    }
+
     let insertedId: number | null = null
     try {
       insertedId = await mailIpc.addAccount(form)
       const connResult = await mailIpc.testConnection(form)
       setTestResult(connResult)
       if (!connResult.includes("成功")) {
-        // Test failed → remove the account we just inserted
         setError(connResult)
         await mailIpc.deleteAccount(insertedId).catch(() => {})
         setSaving(false)
         return
       }
       addAccountLocal({ ...form, id: insertedId })
-      // Background sync — don't block UI
       mailIpc.syncAccount(insertedId).then(() => {
         mailIpc.fetchMessages(insertedId!).then(msgs => {
           useMailStore.getState().setMessages(msgs)
@@ -187,16 +203,32 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
       setError(`操作失败: ${msg}`)
-      // Cleanup if account was already inserted
       if (insertedId != null) {
         await mailIpc.deleteAccount(insertedId).catch(() => {})
       }
-    }
-    finally { setSaving(false) }
+    } finally { setSaving(false) }
   }
 
   const handleRemove = async (id: number) => {
     try { await mailIpc.deleteAccount(id); removeAccountLocal(id) } catch {}
+  }
+
+  const [editingId, setEditingId] = useState<number | null>(null)
+
+  const startEdit = (acc: MailAccount) => {
+    setEditingId(acc.id ?? null)
+    setForm({
+      email: acc.email, provider: acc.provider || "imap",
+      imap_host: acc.imap_host, imap_port: acc.imap_port,
+      smtp_host: acc.smtp_host, smtp_port: acc.smtp_port,
+      username: acc.username, password: "",
+      use_tls: acc.use_tls ?? true, sync_interval_secs: acc.sync_interval_secs ?? 300, sync_period_days: acc.sync_period_days ?? 30,
+    })
+    setShowAdd(true); setError(null); setTestResult(null)
+  }
+
+  const cancelEdit = () => {
+    setEditingId(null); setShowAdd(false); setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 }); setError(null); setTestResult(null)
   }
 
   const handleTest = async () => {
@@ -224,24 +256,42 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
 
-        {accounts.map(acc => (
-          <Card key={acc.id} className={activeAccountId === acc.id ? "ring-2 ring-primary-500" : ""}>
-            <CardContent className="p-4 flex items-center justify-between">
-              <div className="flex items-center gap-3 cursor-pointer" onClick={() => acc.id && setActiveAccountId(acc.id)}>
-                <div className="w-9 h-9 rounded-xl bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold">{acc.email.charAt(0).toUpperCase()}</div>
-                <div><p className="font-medium text-sm">{acc.email}</p><p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">IMAP: {acc.imap_host}:{acc.imap_port}</p></div>
-              </div>
-              <div className="flex items-center gap-1">
-                {activeAccountId === acc.id && <Badge variant="success">{t("account.current")}</Badge>}
-                <Button variant="ghost" size="icon" onClick={() => acc.id && handleRemove(acc.id)}><Trash2 size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-red-500 dark:hover:text-red-400 dark:text-red-400" /></Button>
-              </div>
-            </CardContent>
-          </Card>
-        ))}
+        {accounts.length > 0 && (
+          <>
+            <div className="flex items-center justify-between">
+              <span className="text-sm font-medium text-surface-500 dark:text-surface-400">邮箱账号</span>
+              <Button size="sm" variant="outline" onClick={() => { setShowAdd(true) }}><Plus size={14} />{t("account.addAccount")}</Button>
+            </div>
+
+            {accounts.map(acc => (
+              <Card key={acc.id} className={activeAccountId === acc.id ? "ring-2 ring-primary-500" : ""}>
+                <CardContent className="p-4 flex items-center justify-between">
+                  <div className="flex items-center gap-3 cursor-pointer" onClick={() => acc.id && setActiveAccountId(acc.id)}>
+                    <div className="w-9 h-9 rounded-xl bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold">{acc.email.charAt(0).toUpperCase()}</div>
+                    <div>
+                      <p className="font-medium text-sm">{acc.email}</p>
+                      <p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">IMAP: {acc.imap_host}:{acc.imap_port}</p>
+                    </div>
+                  </div>
+                  <div className="flex items-center gap-1">
+                    {activeAccountId === acc.id && <Badge variant="success">{t("account.current")}</Badge>}
+                    <Button variant="ghost" size="icon" onClick={() => startEdit(acc)} title="编辑"><Pencil size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-blue-500" /></Button>
+                    <Button variant="ghost" size="icon" onClick={() => acc.id && handleRemove(acc.id)} title="删除"><Trash2 size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-red-500" /></Button>
+                  </div>
+                </CardContent>
+              </Card>
+            ))}
+          </>
+        )}
 
         {showAdd && (
           <div className="space-y-3 border border-primary-200 dark:border-primary-800 rounded-xl p-4">
-            <h3 className="font-semibold text-sm">{t("account.addAccount")}</h3>
+            <div className="flex items-center justify-between">
+              <h3 className="font-semibold text-sm">{editingId ? "编辑账号" : t("account.addAccount")}</h3>
+              {editingId && (
+                <Button size="sm" variant="ghost" onClick={cancelEdit}>{t("mail.cancel")}</Button>
+              )}
+            </div>
             <input type="email" value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} onBlur={handleEmailBlur} placeholder="example@gmail.com" className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:focus:ring-primary-400" />
             <div className="grid grid-cols-2 gap-2">
               <input type="text" value={form.username} onChange={e => setForm(f => ({ ...f, username: e.target.value }))} placeholder={t("account.username")} className="h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm focus:outline-none focus:ring-2 focus:ring-primary-500 dark:focus:ring-primary-400 dark:focus:ring-primary-400" />
@@ -259,9 +309,9 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
             {error && <div className="text-xs p-2 rounded bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300">{error}</div>}
             {syncResult && <div className="text-xs p-2 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">{syncResult}</div>}
             <div className="flex gap-2">
-              <Button size="sm" onClick={handleAdd} disabled={saving}>{saving ? <Loader2 size={14} className="animate-spin" /> : null}{t("account.save")}</Button>
+              <Button size="sm" onClick={handleAdd} disabled={saving}>{saving ? <Loader2 size={14} className="animate-spin" /> : null}{editingId ? "保存修改" : t("account.save")}</Button>
               <Button size="sm" variant="outline" onClick={handleTest} disabled={testing}>{t("account.testConnection")}</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setError(null) }}>{t("mail.cancel")}</Button>
+              <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setError(null); setEditingId(null) }}>{t("mail.cancel")}</Button>
             </div>
           </div>
         )}
