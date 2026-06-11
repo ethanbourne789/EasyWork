@@ -34,12 +34,18 @@
 }
 
 /* ============================================================
-   Android / iOS Edge-to-Edge Safe Area Support
-   Prevents content overlap with status bar, navigation bar,
-   camera cutouts (notch/punch-hole/water-drop) on modern devices.
+   Safe Area Insets（安全区域边距）
    
-   Requires <meta name="viewport" ... viewport-fit=cover> in HTML.
-   CSS env() values are injected by the OS WebView at render time.
+   防止内容与系统状态栏、导航栏、刘海屏 / 挖孔屏重叠。
+   
+   策略说明：
+   ①  iOS  → CSS env(safe-area-inset-*) 原生支持
+   ②  Android → MainActivity 已移除 enableEdgeToEdge()，
+      系统自动预留状态栏边距，无需额外处理
+   ③  桌面端 → 不存在安全区域问题，保持 0px
+   
+   --safe-* 变量由 CSS env() 提供 iOS 回退，
+   Android 通过原生方式解决重叠问题。
    ============================================================ */
 
 /*

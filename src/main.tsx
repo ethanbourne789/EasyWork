@@ -3,7 +3,11 @@ import { routeTree } from "./routeTree.gen"
 import { StrictMode } from "react"
 import { createRoot } from "react-dom/client"
 import { applyTheme, useThemeStore } from "./stores/theme-store"
+import { initSafeArea } from "./lib/safe-area"
 import "./index.css"
+
+// Initialize safe area insets for Android/iOS status bar, notch, etc.
+initSafeArea()
 
 // Create router
 const router = createRouter({
