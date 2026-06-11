@@ -269,10 +269,16 @@ pub async fn mark_message_read(
     ops::mark_read(&pool, message_id, is_read).map_err(|e| e.to_string())?;
 
     // Create pending op for IMAP remote sync
-    if let Ok(Some((account_id, remote_uid, _subject))) = ops::get_message_remote_info(&pool, message_id) {
+    if let Ok(Some((account_id, remote_uid, _subject, folder_remote_id))) =
+        ops::get_message_remote_info(&pool, message_id)
+    {
+        // Bug #4 fix: persist the source folder so the executor can SELECT
+        // the right mailbox (Gmail's "[Gmail]/Sent Mail" etc) instead of
+        // hard-coding "INBOX".
         let payload = serde_json::json!({
             "remote_uid": remote_uid,
             "is_read": is_read,
+            "folder_remote_id": folder_remote_id,
         }).to_string();
         let op = mail::PendingOp {
             id: None,
@@ -305,9 +311,13 @@ pub async fn delete_message(
     ops::soft_delete_message(&pool, message_id).map_err(|e| e.to_string())?;
 
     // Create pending op for IMAP remote sync
-    if let Ok(Some((account_id, remote_uid, _subject))) = ops::get_message_remote_info(&pool, message_id) {
+    if let Ok(Some((account_id, remote_uid, _subject, folder_remote_id))) =
+        ops::get_message_remote_info(&pool, message_id)
+    {
+        // Bug #4 fix: persist the source folder for the pending delete.
         let payload = serde_json::json!({
             "remote_uid": remote_uid,
+            "folder_remote_id": folder_remote_id,
         }).to_string();
         let op = mail::PendingOp {
             id: None,
@@ -332,9 +342,13 @@ pub async fn archive_message(
     ops::archive_message(&pool, message_id).map_err(|e| e.to_string())?;
 
     // Create pending op for IMAP remote sync
-    if let Ok(Some((account_id, remote_uid, _subject))) = ops::get_message_remote_info(&pool, message_id) {
+    if let Ok(Some((account_id, remote_uid, _subject, folder_remote_id))) =
+        ops::get_message_remote_info(&pool, message_id)
+    {
+        // Bug #4 fix: persist the source folder for the pending archive.
         let payload = serde_json::json!({
             "remote_uid": remote_uid,
+            "folder_remote_id": folder_remote_id,
         }).to_string();
         let op = mail::PendingOp {
             id: None,

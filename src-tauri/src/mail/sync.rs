@@ -326,13 +326,18 @@ async fn execute_single_pending_op(
 
     let result = match op.op_type.as_str() {
         "mark_read" => {
-            // Parse payload: remote_uid and is_read
+            // Parse payload: remote_uid, is_read, folder_remote_id
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&op.payload) {
                 let remote_uid = payload["remote_uid"].as_i64().unwrap_or(0) as u32;
                 let is_read = payload["is_read"].as_bool().unwrap_or(true);
+                // Bug #4 fix: SELECT the right folder, not hard-coded "INBOX"
+                let folder = payload["folder_remote_id"].as_str().unwrap_or("INBOX");
                 if remote_uid > 0 {
                     let flags = if is_read { "+FLAGS (\\Seen)" } else { "-FLAGS (\\Seen)" };
-                    log::info!("Executing pending mark_read: UID {} -> {}", remote_uid, flags);
+                    log::info!("Executing pending mark_read: UID {} in '{}' -> {}", remote_uid, folder, flags);
+                    if let Err(e) = mail::imap::select_folder(&mut session, folder).await {
+                        log::warn!("mark_read: select '{}' failed: {}", folder, e);
+                    }
                     mail::imap::store_flags(&mut session, remote_uid, flags).await
                         .map_err(|e| format!("IMAP STORE failed: {}", e))?;
                 }
@@ -340,21 +345,21 @@ async fn execute_single_pending_op(
             Ok(())
         }
         "delete" => {
-            // Parse payload: remote_uid
+            // Parse payload: remote_uid, folder_remote_id
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&op.payload) {
                 let remote_uid = payload["remote_uid"].as_i64().unwrap_or(0) as u32;
+                // Bug #4 fix: use the folder the message actually lives in
+                let folder = payload["folder_remote_id"].as_str().unwrap_or("INBOX");
                 let msg_id = op.message_id.unwrap_or(0);
                 if remote_uid > 0 {
-                    // Mark as \Deleted on server, then expunge
-                    log::info!("Executing pending delete: UID {}", remote_uid);
-                    // Select INBOX (assumes message is in INBOX)
-                    let _ = mail::imap::select_folder(&mut session, "INBOX").await
-                        .map_err(|e| format!("Select INBOX failed: {}", e))?;
+                    log::info!("Executing pending delete: UID {} in '{}'", remote_uid, folder);
+                    if let Err(e) = mail::imap::select_folder(&mut session, folder).await {
+                        return Err(format!("Select '{}' failed: {}", folder, e));
+                    }
                     mail::imap::store_flags(&mut session, remote_uid, "+FLAGS (\\Deleted)").await
                         .map_err(|e| format!("IMAP STORE +Deleted failed: {}", e))?;
                     mail::imap::expunge(&mut session).await
                         .map_err(|e| format!("IMAP EXPUNGE failed: {}", e))?;
-                    // Also hard-delete from local DB
                     if msg_id > 0 {
                         let _ = ops::hard_delete_messages(pool, &[msg_id]);
                     }
@@ -363,19 +368,24 @@ async fn execute_single_pending_op(
             Ok(())
         }
         "archive" => {
-            // Parse payload: remote_uid
+            // Parse payload: remote_uid, folder_remote_id
             if let Ok(payload) = serde_json::from_str::<serde_json::Value>(&op.payload) {
                 let remote_uid = payload["remote_uid"].as_i64().unwrap_or(0) as u32;
+                // Bug #4 fix: archive from the actual source folder
+                let folder = payload["folder_remote_id"].as_str().unwrap_or("INBOX");
                 if remote_uid > 0 {
-                    log::info!("Executing pending archive: UID {} -> [Gmail]/All Mail or Archive", remote_uid);
+                    log::info!("Executing pending archive: UID {} in '{}'", remote_uid, folder);
+                    if let Err(e) = mail::imap::select_folder(&mut session, folder).await {
+                        return Err(format!("Select '{}' failed: {}", folder, e));
+                    }
                     // Try common archive folder names
                     for try_folder in &["[Gmail]/All Mail", "Archive", "Archives", "INBOX.Archive"] {
-                        match mail::imap::copy_and_delete(&mut session, "INBOX", remote_uid, try_folder).await {
+                        match mail::imap::copy_and_delete(&mut session, folder, remote_uid, try_folder).await {
                             Ok(()) => return Ok(()),
                             Err(e) => log::debug!("Archive to '{}' failed: {}", try_folder, e),
                         }
                     }
-                    // If all fail, just delete from inbox
+                    // Fallback: just delete from source
                     mail::imap::store_flags(&mut session, remote_uid, "+FLAGS (\\Deleted)").await
                         .map_err(|e| format!("IMAP STORE +Deleted (archive fallback) failed: {}", e))?;
                     mail::imap::expunge(&mut session).await

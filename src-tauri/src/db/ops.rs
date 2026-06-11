@@ -443,11 +443,15 @@ pub fn list_messages(
     let offset = (page - 1) * page_size;
 
     let query = if let Some(_fid) = folder_id {
+        // Bug #3 fix: also filter m.is_deleted = 0 in the folder_id branch.
+        // Previously the join-branch only constrained mf.folder_id, so soft-deleted
+        // messages would still appear in the folder listing (the all-account branch
+        // already had the filter; the folder branch was inconsistent).
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
                 m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted
          FROM mail_messages m
          JOIN mail_message_folders mf ON m.id = mf.message_id
-         WHERE m.account_id = ?1 AND mf.folder_id = ?2
+         WHERE m.account_id = ?1 AND mf.folder_id = ?2 AND m.is_deleted = 0
          ORDER BY m.date_sort DESC LIMIT ?3 OFFSET ?4"
     } else {
         "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
@@ -553,13 +557,38 @@ pub fn soft_delete_message(pool: &DbPool, message_id: i64) -> Result<()> {
     Ok(())
 }
 
-/// Get account_id and remote_uid for a message (used by pending ops).
-pub fn get_message_remote_info(pool: &DbPool, message_id: i64) -> Result<Option<(i64, i64, String)>> {
+/// Get account_id, remote_uid, and primary folder_remote_id for a message
+/// (used by pending ops to drive IMAP STORE/COPY+DELETE on the correct folder).
+///
+/// Bug #4 fix: we now also return the source folder's `remote_id` so the
+/// pending op executor can SELECT the right folder before issuing STORE.
+/// Previously the executor hard-coded `SELECT INBOX`, which would fail on
+/// Gmail / folders where the message lives in `[Gmail]/Sent Mail` or
+/// `[Gmail]/All Mail` — the IMAP server returns `NO` and the pending op
+/// re-tries forever.
+pub fn get_message_remote_info(pool: &DbPool, message_id: i64) -> Result<Option<(i64, i64, String, String)>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let result = conn.query_row(
-        "SELECT account_id, remote_uid, subject FROM mail_messages WHERE id = ?1 AND is_deleted = 0",
+        "SELECT m.account_id, m.remote_uid, m.subject,
+                COALESCE(
+                    (SELECT f.remote_id FROM mail_folders f
+                     JOIN mail_message_folders mf ON f.id = mf.folder_id
+                     WHERE mf.message_id = m.id
+                     ORDER BY CASE f.role
+                                WHEN 'inbox' THEN 0
+                                WHEN 'sent'  THEN 1
+                                WHEN 'drafts' THEN 2
+                                WHEN 'archive' THEN 3
+                                WHEN 'trash' THEN 4
+                                WHEN 'junk' THEN 5
+                                ELSE 6 END
+                     LIMIT 1),
+                    'INBOX'
+                ) AS folder_remote_id
+         FROM mail_messages m
+         WHERE m.id = ?1 AND m.is_deleted = 0",
         params![message_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, String>(2)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get::<_, String>(2)?, row.get::<_, String>(3)?)),
     );
     match result {
         Ok(v) => Ok(Some(v)),
@@ -897,12 +926,14 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
         if !ids.is_empty() {
             let placeholders: Vec<String> = ids.iter().enumerate()
                 .map(|(i, _)| format!("?{}", i + 1)).collect();
+            // Bug #5 fix: ORDER BY date_sort DESC for consistent chronological
+            // ordering across FTS5 and LIKE paths.
             let sql = format!(
                 "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
                         is_read, is_starred, has_attachment, size, thread_id, is_deleted
                  FROM mail_messages
                  WHERE id IN ({}) AND account_id = ?{} AND is_deleted = 0
-                 ORDER BY date DESC LIMIT 100",
+                 ORDER BY date_sort DESC LIMIT 100",
                 placeholders.join(","), ids.len() + 1
             );
 
@@ -922,6 +953,12 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
     }
 
     // Fallback: LIKE search
+    // Bug #5 fix: ORDER BY date_sort DESC (the sortable ISO form) instead of
+    // `date DESC` (the raw header value). The raw header is RFC 2822 text that
+    // sorts lexicographically and produces wrong order — e.g. "Tue, 12 May
+    // 2026 10:02:24 +0800" sorts after "Wed, 10 Jun 2026 15:57:48 +0000".
+    // `date_sort` is the normalized YYYY-MM-DD HH:MM:SS string computed in
+    // `normalize_date` and gives a correct chronological order.
     let search = format!("%{}%", query);
     let mut stmt = conn.prepare(
         "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
@@ -929,7 +966,7 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
          FROM mail_messages
          WHERE account_id = ?1 AND is_deleted = 0
            AND (subject LIKE ?2 OR from_name LIKE ?2 OR from_email LIKE ?2 OR body_text LIKE ?2)
-         ORDER BY date DESC LIMIT 100"
+         ORDER BY date_sort DESC LIMIT 100"
     )?;
     let messages: Vec<MailMessageSummary> = stmt.query_map(params![account_id, search], map_summary)?
         .filter_map(|r| r.ok()).collect();
