@@ -27,6 +27,10 @@ export interface SendMailRequest {
 export interface SendResult {
   success: boolean
   error: string | null
+  /** Bug #8 fix: local id of the parent message (if this is a reply/forward). */
+  linked_message_id: number | null
+  /** Bug #8 fix: local id of the just-sent message. */
+  new_message_id: number | null
 }
 
 export interface SyncResult {

@@ -142,19 +142,77 @@ function escapeAttr(s: string): string {
 }
 
 /**
- * Basic HTML sanitization:
- * - Remove <script> tags
- * - Remove on* event handler attributes
- * - Remove <iframe> tags
- * - Remove javascript: URLs
+ * Sanitize email HTML before rendering into the Shadow DOM.
+ *
+ * Bug #7 fix: the old implementation used a sequence of regex substitutions
+ * that were trivially bypassable. Examples the previous regex missed:
+ *   - Nested obfuscation: `<scr<script>ipt>alert(1)</script>` survives because
+ *     the inner `<script>` is stripped first, leaving an intact `<script>`.
+ *   - Whitespace inside tag: `<script\n>alert(1)</script>` was sometimes
+ *     missed by `\b` boundaries.
+ *   - Newline-separated event handlers: `<img src=x on\nerror=alert(1)>`.
+ *   - Mixed-case `JaVaScRiPt:` URLs in `formaction`, `xlink:href`, etc.
+ *
+ * We now parse the HTML with the browser's DOMParser (so we leverage the
+ * real HTML5 tokeniser), then walk the tree and drop dangerous nodes and
+ * attributes. The result is serialized back to a string for the Shadow
+ * DOM injection.
  */
 function sanitizeHtml(html: string): string {
-  return html
-    .replace(/<script\b[^<]*(?:(?!<\/script>)<[^<]*)*<\/script>/gi, "")
-    .replace(/\s+on\w+\s*=\s*("[^"]*"|'[^']*'|[^\s>]+)/gi, "")
-    .replace(/href\s*=\s*["']javascript:[^"']*["']/gi, 'href="#"')
-    .replace(/src\s*=\s*["']javascript:[^"']*["']/gi, 'src="#"')
-    .replace(/<iframe\b[^<]*(?:(?!<\/iframe>)<[^<]*)*<\/iframe>/gi, "")
-    .replace(/<object\b[^<]*(?:(?!<\/object>)<[^<]*)*<\/object>/gi, "")
-    .replace(/<embed\b[^>]*\/?>/gi, "")
+  // Use a template document so the parser runs in a fresh, isolated context
+  // — no script execution, no style bleed into the host page.
+  const doc = new DOMParser().parseFromString(html, "text/html")
+
+  // Forbidden tags: completely remove (including their text content for
+  // <script> / <style> which can carry executable code or CSS exfil).
+  const FORBIDDEN_TAGS = new Set([
+    "script", "style", "iframe", "object", "embed", "applet",
+    "form", "input", "button", "textarea", "select", "option",
+  ])
+  doc.querySelectorAll(Array.from(FORBIDDEN_TAGS).join(",")).forEach((el) => {
+    el.remove()
+  })
+
+  // Walk every remaining element and strip event-handler attributes plus
+  // any attribute whose value starts with `javascript:` (case-insensitive,
+  // allowing leading whitespace).
+  const JS_URL = /^\s*javascript:/i
+  const ALL_TAGS = doc.querySelectorAll("*")
+  ALL_TAGS.forEach((el) => {
+    // Build a snapshot because mutating attributes during iteration can skip entries
+    const attrs = Array.from(el.attributes)
+    for (const attr of attrs) {
+      const name = attr.name.toLowerCase()
+      const value = attr.value
+
+      // 1) Inline event handlers (onclick, onload, onerror, onmouseover, …)
+      if (name.startsWith("on")) {
+        el.removeAttribute(attr.name)
+        continue
+      }
+
+      // 2) javascript: URLs in any href-like attribute. We cover the common
+      //    cases: href, src, action, formaction, xlink:href. data: URIs are
+      //    still allowed (used for cid: inline images in this product).
+      if (
+        (name === "href" || name === "src" || name === "action" ||
+         name === "formaction" || name === "xlink:href") &&
+        JS_URL.test(value)
+      ) {
+        el.setAttribute(attr.name, "#")
+      }
+    }
+
+    // 3) Defensive: <a target="_blank"> without rel="noopener noreferrer"
+    //    allows the opened page to navigate the opener. Tag-aware fixup.
+    if (el.tagName === "A" && el.getAttribute("target") === "_blank") {
+      const rel = el.getAttribute("rel") || ""
+      const needed = ["noopener", "noreferrer"]
+      const have = new Set(rel.split(/\s+/).filter(Boolean))
+      needed.forEach((n) => { if (!have.has(n)) have.add(n) })
+      el.setAttribute("rel", Array.from(have).join(" "))
+    }
+  })
+
+  return doc.body.innerHTML
 }

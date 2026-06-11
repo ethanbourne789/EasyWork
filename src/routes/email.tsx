@@ -3,6 +3,7 @@ import { Card, CardContent } from "@/components/ui/card"
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useMailStore, type MailAccount, type MailContact } from "@/stores/mail-store"
+import { useSidebarStore } from "@/stores/sidebar-store"
 import * as mailIpc from "@/lib/mail-ipc"
 import { useState, useCallback, useEffect, useRef, useMemo } from "react"
 import { useTranslation } from "react-i18next"
@@ -851,10 +852,12 @@ function EmailPage() {
   const [showDraftRecovery, setShowDraftRecovery] = useState(hasDraft)
   const [showSettings, setShowSettings] = useState(false)
   const [showContacts, setShowContacts] = useState(false)
-  const [sidebarOpen, setSidebarOpen] = useState(() => {
-    if (typeof window === "undefined") return true
-    return window.innerWidth >= 1440
-  })
+  // Bug #6 fix: collapse state now lives in the shared sidebar store so the
+  // global Sidebar (in @/components/Sidebar) and the email module's local
+  // folder rail stay in sync. Removing the duplicated local state eliminates
+  // a class of bugs where the two views drift out of agreement.
+  const sidebarOpen = useSidebarStore((s) => !s.collapsed)
+  const setSidebarOpen = useSidebarStore((s) => s.toggle)
   const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
   const [showMobileList, setShowMobileList] = useState(true)
   const [searchFilters, setSearchFilters] = useState<SearchFiltersState>({
@@ -882,11 +885,15 @@ function EmailPage() {
     initAccounts()
   }, [])
 
-  // Auto-collapse sidebar on laptop / smaller screens
+  // Auto-collapse sidebar on laptop / smaller screens.
+  // (Bug #6) We now drive the shared sidebar store directly so the global
+  // Sidebar component in @/components/Sidebar reacts the same way.
   useEffect(() => {
     const handleResize = () => {
-      if (window.innerWidth < 1440) setSidebarOpen(false)
+      if (window.innerWidth < 1440) useSidebarStore.getState().setCollapsed(true)
+      else useSidebarStore.getState().setCollapsed(false)
     }
+    handleResize()
     window.addEventListener("resize", handleResize)
     return () => window.removeEventListener("resize", handleResize)
   }, [])
@@ -1155,11 +1162,11 @@ function EmailPage() {
       <div className="flex items-center justify-between px-3 py-2 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 shrink-0 gap-2">
         <div className="flex items-center gap-1">
           {/* Mobile sidebar toggle */}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800 lg:hidden" title="切换侧边栏">
+          <button onClick={() => setSidebarOpen()} className="p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800 lg:hidden" title="切换侧边栏">
             <Menu size={18} />
           </button>
           {/* Desktop sidebar toggle */}
-          <button onClick={() => setSidebarOpen(!sidebarOpen)} className="p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800" title="切换侧边栏">
+          <button onClick={() => setSidebarOpen()} className="p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800" title="切换侧边栏">
             {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
           </button>
         </div>

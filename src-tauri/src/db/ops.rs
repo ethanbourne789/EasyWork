@@ -432,6 +432,25 @@ pub fn get_thread_id_by_message_id(pool: &DbPool, account_id: i64, message_id_he
     }
 }
 
+/// Find a local message id by its RFC 2822 `Message-ID` header.
+/// Bug #8 helper: used by `send_mail` to locate the parent message when
+/// building the reply chain. Returns `None` for brand-new threads.
+pub fn find_message_id_by_header(pool: &DbPool, account_id: i64, message_id_header: &str) -> Result<Option<i64>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    match conn.query_row(
+        "SELECT id FROM mail_messages
+         WHERE account_id = ?1 AND (message_id_header = ?2 OR message_id_header = ?3)
+         AND is_deleted = 0
+         LIMIT 1",
+        params![account_id, message_id_header, format!("<{}>", message_id_header)],
+        |row| row.get(0),
+    ) {
+        Ok(id) => Ok(Some(id)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
 pub fn list_messages(
     pool: &DbPool,
     account_id: i64,

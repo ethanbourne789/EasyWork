@@ -40,6 +40,14 @@ pub struct AttachmentItem {
 pub struct SendResult {
     pub success: bool,
     pub error: Option<String>,
+    /// Bug #8 fix: when a sent message is linked to an existing thread (e.g.
+    /// the user replied to msg X), this carries the local id of that message
+    /// so the UI can scroll to / highlight the thread the new mail joined.
+    /// `None` for brand-new threads.
+    pub linked_message_id: Option<i64>,
+    /// The local id assigned to the newly sent message (so the UI can
+    /// immediately render it in Sent / a future "Sent" sync).
+    pub new_message_id: Option<i64>,
 }
 
 // ==================== Account ====================
@@ -429,13 +437,137 @@ pub async fn send_mail(
         Ok(()) => {
             log::info!("Mail sent successfully from {} (to={}, cc={}, bcc={}, attachments={})",
                 account.email, to_list.len(), cc_list.len(), bcc_list.len(), attachments.len());
-            Ok(SendResult { success: true, error: None })
+
+            // Bug #8 fix: persist the sent message in the local DB and link it
+            // back to the message it replied to (if any). We need the
+            // message_id from the In-Reply-To header to find the parent.
+            let pool_for_record = pool.inner().clone();
+            let account_id = request.account_id;
+            let subject_for_record = request.subject.clone();
+            let body_text_for_record = request.body_text.clone();
+            let body_html_for_record = request.body_html.clone();
+            let to_list_for_record = to_list.clone();
+            let cc_list_for_record = cc_list.clone();
+            let in_reply_to_header = request.in_reply_to.clone();
+            let references_for_record = request.references.clone();
+            let account_email_for_record = account.email.clone();
+            let from_name_for_record = from_name.clone();
+
+            let record_result: Result<(Option<i64>, Option<i64>), String> = tokio::task::spawn_blocking(move || {
+                use crate::mail::MailMessage;
+
+                // 1. Resolve the parent message (if this is a reply/forward).
+                //    We match on message_id_header equality, which is what the
+                //    existing thread_id logic uses.
+                let parent_msg_id: Option<i64> = if let Some(ref in_reply_to) = in_reply_to_header {
+                    let cleaned = in_reply_to.trim().trim_start_matches('<').trim_end_matches('>').trim().to_string();
+                    if !cleaned.is_empty() {
+                        ops::find_message_id_by_header(&pool_for_record, account_id, &cleaned).ok().flatten()
+                    } else {
+                        None
+                    }
+                } else {
+                    None
+                };
+
+                // 2. Build a thread_id consistent with how incoming messages
+                //    compute theirs. If we have a parent, use the parent's
+                //    thread_id (so the new mail joins the same conversation).
+                //    Otherwise the new message's own (unknown yet) id will be
+                //    used as the root.
+                let thread_id = if let Some(pid) = parent_msg_id {
+                    // Look up the parent's message_id_header, then resolve
+                    // its thread_id. (We have an id, not a header.)
+                    let parent_header: Option<String> = {
+                        let conn = pool_for_record.get().ok();
+                        conn.and_then(|c| {
+                            c.query_row(
+                                "SELECT message_id_header FROM mail_messages WHERE id = ?1",
+                                rusqlite::params![pid],
+                                |row| row.get::<_, String>(0),
+                            ).ok()
+                        })
+                    };
+                    parent_header
+                        .and_then(|hdr| ops::get_thread_id_by_message_id(&pool_for_record, account_id, &hdr).ok().flatten())
+                        .unwrap_or_default()
+                } else {
+                    String::new()
+                };
+
+                // 3. Find the Sent folder for this account; default to creating
+                //    a placeholder entry otherwise.
+                let sent_folder_id = ops::list_folders(&pool_for_record, account_id)
+                    .ok()
+                    .and_then(|folders| folders.into_iter().find(|f| f.role == "sent"))
+                    .and_then(|f| f.id)
+                    .unwrap_or(0);
+
+                let now = chrono::Utc::now();
+                let date_iso = now.format("%Y-%m-%d %H:%M:%S").to_string();
+
+                let new_msg = MailMessage {
+                    id: None,
+                    account_id,
+                    remote_uid: -1, // outgoing, no IMAP UID yet
+                    message_id_header: format!("<{}.{}@easywork.local>",
+                        now.timestamp_millis(), account_id),
+                    subject: subject_for_record,
+                    from_name: from_name_for_record.unwrap_or_else(|| account_email_for_record.clone()),
+                    from_email: account_email_for_record,
+                    to_list: serde_json::to_string(&to_list_for_record).unwrap_or_default(),
+                    cc_list: serde_json::to_string(&cc_list_for_record).unwrap_or_default(),
+                    date: now.to_rfc3339(),
+                    body_text: body_text_for_record,
+                    body_html: body_html_for_record.unwrap_or_default(),
+                    is_read: true,
+                    is_starred: false,
+                    has_attachment: !attachments.is_empty(),
+                    size: 0,
+                    folder_ids: if sent_folder_id > 0 { vec![sent_folder_id] } else { vec![] },
+                    thread_id: thread_id.clone(),
+                };
+
+                let new_id = ops::insert_message(&pool_for_record, &new_msg).ok();
+
+                // 4. After the row exists, set thread_id to the row's own id
+                //    if we have no parent (new thread root).
+                if let Some(new_id) = new_id {
+                    if thread_id.is_empty() {
+                        let _ = ops::update_message_thread_id(&pool_for_record, new_id, &new_id.to_string());
+                    }
+                    if sent_folder_id > 0 {
+                        let _ = ops::insert_message_folder(&pool_for_record, new_id, sent_folder_id);
+                    }
+                }
+
+                Ok((new_id, parent_msg_id))
+            })
+            .await
+            .unwrap_or_else(|e| Err(format!("后台记录已发送邮件失败: {}", e)));
+
+            let (new_id, parent_id) = match record_result {
+                Ok(v) => v,
+                Err(e) => {
+                    log::warn!("send_mail: SMTP succeeded but local record failed: {}", e);
+                    (None, None)
+                }
+            };
+
+            Ok(SendResult {
+                success: true,
+                error: None,
+                linked_message_id: parent_id,
+                new_message_id: new_id,
+            })
         }
         Err(e) => {
             log::error!("Failed to send mail: {}", e);
             Ok(SendResult {
                 success: false,
                 error: Some(format!("发送失败: {}", e)),
+                linked_message_id: None,
+                new_message_id: None,
             })
         }
     }
