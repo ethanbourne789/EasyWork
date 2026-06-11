@@ -11,7 +11,7 @@ import {
   Search, Star, Paperclip, Inbox, Send, Archive, Trash2, Plus, Settings,
   RefreshCw, X, Reply, Forward, Trash,
   Mail, Users, FileText, Loader2, CheckCircle2, AlertCircle,
-  AlertTriangle, ChevronDown, Download, MessageSquare, Globe, Menu, PanelLeftClose, PanelLeft,
+  AlertTriangle, ChevronDown, Download, MessageSquare, Menu, PanelLeftClose, PanelLeft,
   Upload,
 } from "lucide-react"
 import { ShadowDomEmail } from "@/components/ShadowDomEmail"
@@ -206,12 +206,6 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     finally { setTesting(false) }
   }
 
-  const [lang, setLang] = useState(() => localStorage.getItem("easywork-lang") || "zh")
-  const toggleLang = () => {
-    const next = lang === "zh" ? "en" : "zh"
-    setLang(next); localStorage.setItem("easywork-lang", next)
-    import("i18next").then(i18n => i18n.default.changeLanguage(next))
-  }
 
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/70" onClick={onClose}>
@@ -219,10 +213,6 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
         <div className="flex items-center justify-between">
           <h2 className="text-lg font-bold">{t("account.title")}</h2>
           <button onClick={onClose} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 dark:text-surface-300"><X size={20} /></button>
-        </div>
-
-        <div className="flex items-center gap-2">
-          <Button variant="ghost" size="sm" onClick={toggleLang}><Globe size={14} />{lang === "zh" ? "EN" : "中文"}</Button>
         </div>
 
         {accounts.length === 0 && !showAdd && (
