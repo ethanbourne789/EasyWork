@@ -51,6 +51,37 @@ function formatFileSize(bytes: number): string {
   return `${(bytes / (1024 * 1024)).toFixed(1)} MB`
 }
 
+/** Format a raw email date header into a consistent short display format. */
+function formatMailDate(dateStr: string): string {
+  try {
+    const d = new Date(dateStr)
+    if (isNaN(d.getTime())) {
+      // Fallback: first 16 chars trimmed
+      return dateStr.slice(0, 16).trim()
+    }
+    const now = new Date()
+    const diffMs = now.getTime() - d.getTime()
+    const diffDays = diffMs / 86400000
+
+    // Today → show time only
+    if (diffDays < 1 && d.getDate() === now.getDate()) {
+      return d.toLocaleTimeString([], { hour: '2-digit', minute: '2-digit' })
+    }
+    // Within 7 days → show weekday
+    if (diffDays < 7) {
+      return d.toLocaleDateString([], { weekday: 'short' })
+    }
+    // This year → month + day
+    if (d.getFullYear() === now.getFullYear()) {
+      return d.toLocaleDateString([], { month: 'short', day: 'numeric' })
+    }
+    // Older → year included
+    return d.toLocaleDateString([], { year: 'numeric', month: 'short', day: 'numeric' })
+  } catch {
+    return dateStr.slice(0, 16).trim()
+  }
+}
+
 function stripHtml(html: string): string {
   const div = document.createElement("div")
   div.innerHTML = html
@@ -1128,7 +1159,7 @@ function EmailPage() {
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center justify-between gap-1">
                         <span className={`text-xs lg:text-sm ${!msg.is_read ? "font-semibold" : ""} truncate`}>{msg.from_name || msg.from_email}</span>
-                        <span className="text-[9px] lg:text-[10px] text-surface-400 dark:text-surface-500 dark:text-surface-400 shrink-0">{msg.date.includes("T") ? msg.date.split("T")[0] : msg.date.slice(0, 10)}</span>
+                        <span className="text-[9px] lg:text-[10px] text-surface-400 dark:text-surface-500 dark:text-surface-400 shrink-0">{formatMailDate(msg.date)}</span>
                       </div>
                       <p className={`text-xs lg:text-sm mt-0.5 truncate ${!msg.is_read ? "font-semibold" : ""}`}>{msg.subject}</p>
                       <div className="flex items-center gap-1 mt-0.5">
