@@ -1,4 +1,5 @@
 mod db;
+mod error;
 mod mail;
 mod stock;
 mod commands;
@@ -165,14 +166,9 @@ pub fn run() {
                 eprintln!("WARN: logging::init failed: {}. Logging to stderr only.", e);
             }
 
-            // ── Initialize database ──
+            // ── Initialize database (stock module DDL is part of schema.rs) ──
             let pool = db::init_db(&app_data_dir)
                 .expect("Failed to initialize mail database");
-
-            // ── Initialize stock module tables ──
-            if let Err(e) = crate::stock::db::init_stock_tables(&pool) {
-                log::warn!("Stock tables init failed (non-fatal): {}", e);
-            }
 
             // ---- Global shortcut (desktop only) ----
             #[cfg(desktop)]
@@ -208,11 +204,26 @@ pub fn run() {
             // Store app_data_dir in config so background workers can find it
             db::ops::set_config(&pool, "app_data_dir", &app_data_dir.to_string_lossy());
 
+            // Per-account sync lock — prevents manual button, auto-fetch
+            // scheduler, and smart-poll worker from all syncing the same
+            // account concurrently. Try-acquire returns a friendly error
+            // string the frontend can show in the toast.
+            let sync_lock: commands::mail::SyncLock = Default::default();
+            app.manage(sync_lock);
+
             // Start background sync worker
             let pool_clone = pool.clone();
             tauri::async_runtime::spawn(async move {
                 mail::sync::start_sync_worker(pool_clone).await;
             });
+
+            // ---- Stock price alert worker ----
+            // 后台轮询 stock_alerts 启用的预警，触发后通过系统通知提醒用户
+            #[cfg(desktop)]
+            {
+                let app_handle_alerts = app.handle().clone();
+                stock::alert_worker::spawn(pool.clone(), app_handle_alerts);
+            }
 
             // ---- System Tray (desktop only) ----
             #[cfg(desktop)]
@@ -234,6 +245,16 @@ pub fn run() {
                     let accounts = db::ops::list_accounts(&pool_for_fetch).unwrap_or_default();
                     for account in &accounts {
                         if let Some(id) = account.id {
+                            // Acquire per-account lock so we don't race with
+                            // the manual button or the smart-poll worker.
+                            let lock = app_handle.state::<commands::mail::SyncLock>();
+                            let _guard = match commands::mail::SyncLockGuard::acquire(lock.inner(), id) {
+                                Ok(g) => g,
+                                Err(busy) => {
+                                    log::debug!("auto-fetch: skipping account {} ({})", id, busy);
+                                    continue;
+                                }
+                            };
                             match commands::mail::sync_account_impl(
                                 pool_for_fetch.clone(), id,
                             ).await {
@@ -262,18 +283,31 @@ pub fn run() {
             Ok(())
         })
         .on_window_event(move |window, event| {
-            if let WindowEvent::CloseRequested { api, .. } = event {
-                // Check close behavior setting
-                let pool = window.state::<db::DbPool>();
-                let close_behavior = db::ops::get_config(&pool, "close_behavior")
-                    .unwrap_or_else(|| "minimize".to_string());
-
-                if close_behavior == "minimize" {
-                    api.prevent_close();
-                    let _ = window.hide();
-                    closing_to_tray.store(true, Ordering::SeqCst);
+            match event {
+                // Update smart-poll focus state so the background worker
+                // uses 10s polling when the user is in the app and 120s
+                // when minimized. Previously set_app_focused had no caller
+                // and APP_FOCUSED was stuck at false, defeating the smart
+                // poll design.
+                WindowEvent::Focused(focused) => {
+                    let focused = *focused;
+                    mail::sync::set_app_focused(focused);
+                    log::info!("App focus changed: focused={} (smart poll → {}s)", focused, if focused { 10 } else { 120 });
                 }
-                // If "exit", let the window close naturally
+                WindowEvent::CloseRequested { api, .. } => {
+                    // Check close behavior setting
+                    let pool = window.state::<db::DbPool>();
+                    let close_behavior = db::ops::get_config(&pool, "close_behavior")
+                        .unwrap_or_else(|| "minimize".to_string());
+
+                    if close_behavior == "minimize" {
+                        api.prevent_close();
+                        let _ = window.hide();
+                        closing_to_tray.store(true, Ordering::SeqCst);
+                    }
+                    // If "exit", let the window close naturally
+                }
+                _ => {}
             }
         })
         .invoke_handler(tauri::generate_handler![
@@ -320,6 +354,14 @@ pub fn run() {
             commands::mail::list_contacts,
             commands::mail::delete_contact,
             commands::mail::update_contact,
+            // v1.1 Contact Groups
+            commands::mail::list_contact_groups,
+            commands::mail::add_contact_group,
+            commands::mail::update_contact_group,
+            commands::mail::delete_contact_group,
+            // v1.1 Find + Search
+            commands::mail::find_contact_by_email,
+            commands::mail::search_messages_by_email,
             // Reconciliation & Monitoring
             commands::mail::reconcile_account,
             commands::mail::get_pending_ops_summary,
@@ -332,6 +374,10 @@ pub fn run() {
             // Remote Images
             commands::mail::get_remote_images_enabled,
             commands::mail::set_remote_images_enabled,
+            // Settings KV (基础设施，本轮不暴露前端 API)
+            commands::settings::settings_get,
+            commands::settings::settings_set,
+            commands::settings::settings_get_all,
             // System
             #[cfg(desktop)]
             set_autostart,
@@ -339,13 +385,21 @@ pub fn run() {
             get_autostart,
             get_global_shortcut,
             set_global_shortcut,
-            // Stock module
+            // Stock module — watchlist / trades / positions / alerts
             crate::stock::commands::stock_watchlist_list,
             crate::stock::commands::stock_watchlist_add,
             crate::stock::commands::stock_watchlist_remove,
+            crate::stock::commands::stock_watchlist_reorder,
             crate::stock::commands::stock_trade_add,
+            crate::stock::commands::stock_trade_delete,
             crate::stock::commands::stock_trades_list,
+            crate::stock::commands::stock_trades_count,
             crate::stock::commands::stock_positions_get,
+            crate::stock::commands::stock_alert_list,
+            crate::stock::commands::stock_alert_add,
+            crate::stock::commands::stock_alert_update,
+            crate::stock::commands::stock_alert_delete,
+            crate::stock::commands::stock_alert_toggle,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

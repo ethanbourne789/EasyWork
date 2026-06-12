@@ -2,17 +2,16 @@
 use std::collections::HashMap;
 use tauri::State;
 
-use crate::db::DbState;
-use crate::error::{AppError, AppResult};
+use crate::db::DbPool;
+use crate::error::AppResult;
 use rusqlite::params;
 
 /// 获取单个设置项
 #[tauri::command]
-pub async fn settings_get(key: String, state: State<'_, DbState>) -> AppResult<Option<String>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn settings_get(key: String, pool: State<'_, DbPool>) -> AppResult<Option<String>> {
+    let conn = pool.get().map_err(|e| {
+        crate::error::AppError::Internal(format!("Failed to get DB connection: {}", e))
+    })?;
 
     let value: Option<String> = conn
         .query_row(
@@ -27,15 +26,10 @@ pub async fn settings_get(key: String, state: State<'_, DbState>) -> AppResult<O
 
 /// 设置单个设置项
 #[tauri::command]
-pub async fn settings_set(
-    key: String,
-    value: String,
-    state: State<'_, DbState>,
-) -> AppResult<()> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn settings_set(key: String, value: String, pool: State<'_, DbPool>) -> AppResult<()> {
+    let conn = pool.get().map_err(|e| {
+        crate::error::AppError::Internal(format!("Failed to get DB connection: {}", e))
+    })?;
 
     // UPSERT：存在则更新，不存在则插入
     conn.execute(
@@ -49,11 +43,10 @@ pub async fn settings_set(
 
 /// 获取所有设置项
 #[tauri::command]
-pub async fn settings_get_all(state: State<'_, DbState>) -> AppResult<HashMap<String, String>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn settings_get_all(pool: State<'_, DbPool>) -> AppResult<HashMap<String, String>> {
+    let conn = pool.get().map_err(|e| {
+        crate::error::AppError::Internal(format!("Failed to get DB connection: {}", e))
+    })?;
 
     let mut stmt = conn.prepare("SELECT key, value FROM settings")?;
     let rows = stmt
