@@ -339,6 +339,21 @@ pub fn normalize_date(date_str: &str) -> String {
     if date_str.is_empty() {
         return String::new();
     }
+    // If already in YYYY-MM-DD HH:MM:SS format (output of normalize_rfc2822_date),
+    // return as-is — no need to re-parse.
+    if date_str.len() >= 19
+        && date_str.as_bytes().get(4) == Some(&b'-')
+        && date_str.as_bytes().get(7) == Some(&b'-')
+        && date_str.as_bytes().get(10) == Some(&b' ')
+        && date_str.as_bytes().get(13) == Some(&b':')
+        && date_str.as_bytes().get(16) == Some(&b':')
+    {
+        let candidate = &date_str[..19];
+        // Quick validation: all chars in YYYY-MM-DD HH:MM:SS are ASCII digits, '-', ' ', or ':'
+        if candidate.bytes().all(|b| b.is_ascii_digit() || b == b'-' || b == b' ' || b == b':') {
+            return candidate.to_string();
+        }
+    }
     // Try mailparse::dateparse first (handles RFC 2822 dates with timezone)
     if let Ok(ts) = mailparse::dateparse(date_str) {
         // mailparse returns a Unix timestamp

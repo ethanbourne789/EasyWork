@@ -880,91 +880,24 @@ pub async fn sync_account_impl(
         log::info!("Folder '{}': found {} UIDs to fetch", folder_name, remote_uids.len());
 
         let batch_size = 50usize;
+        if is_first_sync {
+            log::info!(
+                "First sync for account {} — fetching full bodies (will skip attachments >5MB)",
+                account_id,
+            );
+        }
+
         for chunk in remote_uids.chunks(batch_size) {
             total_all += chunk.len();
 
-            if is_first_sync {
-                // ── First-sync path: headers only, no body/attachments ──
-                let header_msgs = match mail::imap::fetch_messages_headers_batch(&mut session, chunk).await {
-                    Ok(msgs) => {
-                        log::info!(
-                            "Folder '{}': fetched {}/{} headers (first sync, no bodies)",
-                            folder_name, msgs.len(), chunk.len()
-                        );
-                        msgs
-                    }
-                    Err(e) => {
-                        log::warn!("Failed to fetch header batch in '{}': {}", folder_name, e);
-                        continue;
-                    }
-                };
-
-                let chunk_uids: Vec<i64> = header_msgs.iter().map(|(uid, _, _, _)| *uid as i64).collect();
-                let existing_uids = ops::get_existing_remote_uids(&pool, account_id, &chunk_uids)
-                    .unwrap_or_default();
-
-                for (uid, header_raw, is_read, is_starred) in header_msgs {
-                    if existing_uids.contains(&(uid as i64)) {
-                        continue;
-                    }
-
-                    match mail::parser::parse_header_only(&header_raw) {
-                        Ok(parsed) => {
-                            let thread_id = mail::thread::compute_thread_id(
-                                &parsed.message_id,
-                                &parsed.in_reply_to,
-                                &parsed.references,
-                                &parsed.subject,
-                            );
-
-                            let msg = MailMessage {
-                                id: None,
-                                account_id,
-                                remote_uid: uid as i64,
-                                message_id_header: parsed.message_id,
-                                subject: if parsed.subject.is_empty() { "(无主题)".to_string() } else { parsed.subject },
-                                from_name: parsed.from_name,
-                                from_email: parsed.from_email,
-                                to_list: serde_json::to_string(&parsed.to_list).unwrap_or_else(|_| "[]".into()),
-                                cc_list: serde_json::to_string(&parsed.cc_list).unwrap_or_else(|_| "[]".into()),
-                                date: parsed.date,
-                                body_text: String::new(),         // skipped in first sync
-                                body_html: String::new(),         // skipped in first sync
-                                is_read,
-                                is_starred,
-                                has_attachment: false,             // unknown without body parsing
-                                size: header_raw.len() as i64,
-                                folder_ids: vec![*folder_db_id],
-                                thread_id,
-                            };
-                            total_parsed += 1;
-
-                            match ops::insert_message(&pool, &msg) {
-                                Ok(msg_id) => {
-                                    let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
-                                    // FTS with empty body text is fine — search will still match subject/from
-                                    let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, "");
-                                    total_new += 1;
-                                }
-                                Err(e) => {
-                                    total_failed_insert += 1;
-                                    log::warn!("Failed to insert message uid={}: {}", uid, e);
-                                }
-                            }
-                        }
-                        Err(e) => {
-                            total_failed_parse += 1;
-                            log::warn!("Failed to parse header uid={}: {}", uid, e);
-                        }
-                    }
-                }
-            } else {
-                // ── Subsequent sync path: full body + attachments ──
+                // ── Always fetch full bodies (headers-only was too aggressive: no body, no has_attachment flag).
+                //    Attachments >5MB are still skipped (see attachment handling below). ──
                 let raw_msgs = match mail::imap::fetch_messages_raw_batch(&mut session, chunk).await {
                     Ok(msgs) => {
                         log::info!(
-                            "Folder '{}': fetched {}/{} bodies, about to parse+store",
-                            folder_name, msgs.len(), chunk.len()
+                            "Folder '{}': fetched {}/{} full messages{}",
+                            folder_name, msgs.len(), chunk.len(),
+                            if is_first_sync { " (first sync)" } else { "" },
                         );
                         msgs
                     }
@@ -1064,7 +997,6 @@ pub async fn sync_account_impl(
                         }
                     }
                 }
-            }
         }
     }
 

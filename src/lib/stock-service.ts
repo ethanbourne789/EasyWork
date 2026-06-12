@@ -104,7 +104,10 @@ export interface KLinePoint {
 }
 
 /**
- * Fetch K-line (candlestick) data from Sina.
+ * Fetch K-line (candlestick) data.
+ *
+ * Primary: Sina Finance API (money.finance.sina.com.cn)
+ * Fallback: Tencent Finance API (ifzq.gtimg.cn)
  *
  * Sina's API uses numeric scale values:
  *   5 / 15 / 30 / 60 (minutes), 240 (daily)
@@ -116,9 +119,23 @@ export async function fetchKLine(
   scale: number | string = 240,
   datalen: number = 120,
 ): Promise<KLinePoint[]> {
-  const key = buildSinaKey(symbol, marketType)
+  // Try Sina primary, then Tencent fallback
+  let points = await fetchKLineSina(symbol, marketType, scale, datalen)
+  if (points.length === 0) {
+    console.warn("fetchKLine: Sina empty, trying Tencent fallback")
+    points = await fetchKLineTencent(symbol, marketType, scale, datalen)
+  }
+  return points
+}
 
-  // Handle week/month by aggregating daily data
+/** Fetch K-line from Sina (primary) */
+async function fetchKLineSina(
+  symbol: string,
+  marketType: string,
+  scale: number | string,
+  datalen: number,
+): Promise<KLinePoint[]> {
+  const key = buildSinaKey(symbol, marketType)
   const isWeek = scale === "week" || scale === "month"
   const actualScale = isWeek ? 240 : scale
   const actualDatalen = isWeek ? 365 : datalen
@@ -128,13 +145,22 @@ export async function fetchKLine(
     `CN_MarketData.getKLineData?symbol=${key}` +
     `&scale=${actualScale}&ma=5&datalen=${actualDatalen}`
 
-  const resp = await fetch(url)
-  const text = await resp.text()
+  let text: string
+  try {
+    const resp = await fetch(url)
+    text = await resp.text()
+  } catch (e) {
+    console.warn("fetchKLineSina: network error", e)
+    return []
+  }
 
   // Sina may return a BOM or plain array JSON
   const clean = text.replace(/^\uFEFF/, "")
   let raw: any[] = []
-  try { raw = JSON.parse(clean) } catch { return [] }
+  try { raw = JSON.parse(clean) } catch {
+    console.warn("fetchKLineSina: JSON parse failed, first 100 chars:", clean.slice(0, 100))
+    return []
+  }
   if (!Array.isArray(raw) || raw.length === 0) return []
 
   let points: KLinePoint[] = raw.map((p: any) => ({
@@ -148,7 +174,64 @@ export async function fetchKLine(
 
   // Aggregate weekly / monthly if needed
   if (scale === "week") {
-    points = aggregateKLine(points, 5)  // ~5 trading days per week
+    points = aggregateKLine(points, 5)
+  } else if (scale === "month") {
+    points = aggregateKLineByMonth(points)
+  }
+
+  return points
+}
+
+/**
+ * Fetch K-line from Tencent (fallback).
+ * Tencent API: ifzq.gtimg.cn/appstock/app/fqkline/get
+ * Returns array of [date, open, close, high, low, volume] (volume in 手)
+ */
+async function fetchKLineTencent(
+  symbol: string,
+  marketType: string,
+  scale: number | string,
+  datalen: number,
+): Promise<KLinePoint[]> {
+  const key = buildSinaKey(symbol, marketType)
+  const isWeek = scale === "week" || scale === "month"
+  const actualDatalen = isWeek ? 365 : datalen
+
+  const period = scale === 5 ? "5min" : "day"
+  const url =
+    `http://ifzq.gtimg.cn/appstock/app/fqkline/get` +
+    `?param=${key},${period},,,${actualDatalen},qfq`
+
+  let json: any
+  try {
+    const resp = await fetch(url)
+    json = await resp.json()
+  } catch (e) {
+    console.warn("fetchKLineTencent: network/parse error", e)
+    return []
+  }
+
+  if (json?.code !== 0 || !json?.data?.[key]) return []
+
+  // Tencent stores data differently per period
+  const dataArr = json.data[key]
+  const raw: [string, string, string, string, string, string][] =
+    period === "day" ? dataArr.qfqday : dataArr[period]
+
+  if (!Array.isArray(raw) || raw.length === 0) return []
+
+  let points: KLinePoint[] = raw.map((p) => ({
+    date: p[0],
+    open:  +p[1] || 0,
+    close: +p[2] || 0,
+    high:  +p[3] || 0,
+    low:   +p[4] || 0,
+    volume: +p[5] || 0, // already in 手
+  }))
+
+  // Aggregate weekly / monthly if needed
+  if (scale === "week") {
+    points = aggregateKLine(points, 5)
   } else if (scale === "month") {
     points = aggregateKLineByMonth(points)
   }

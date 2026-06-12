@@ -117,7 +117,10 @@ function KLineChart({
           if (data.length === 0) setError("暂无数据")
         }
       } catch (e) {
-        if (!cancelled) setError("数据加载失败")
+        if (!cancelled) {
+          console.error("fetchKLine error:", e)
+          setError("数据加载失败")
+        }
       } finally {
         if (!cancelled) setLoading(false)
       }
