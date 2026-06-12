@@ -2,6 +2,7 @@ import { useEffect, useCallback } from "react"
 import { Link, useRouterState } from "@tanstack/react-router"
 import { useTranslation } from "react-i18next"
 import { useSidebarStore } from "@/stores/sidebar-store"
+import { ThemeToggle } from "@/components/ThemeToggle"
 import { cn } from "@/lib/utils"
 import {
   LayoutDashboard, Columns3, Calendar, Mail, StickyNote,
@@ -19,7 +20,6 @@ const navItems = [
   { id: "accounting", to: "/accounting", icon: PiggyBank },
   { id: "sports", to: "/sports", icon: Dumbbell },
   { id: "logs", to: "/logs", icon: ScrollText },
-  { id: "settings", to: "/settings", icon: Settings },
 ]
 
 export function Sidebar() {
@@ -79,6 +79,72 @@ export function Sidebar() {
     </nav>
   )
 
+  // Footer area: in expanded mode shows ThemeToggle + Settings link + Collapse
+  // toggle, in collapsed mode stacks them as icon buttons. Pushed to the bottom
+  // of the sidebar via mt-auto.
+  const settingsActive = currentPath.startsWith("/settings")
+  const footer = (
+    <div className="mt-auto p-2 border-t border-surface-100 dark:border-surface-800 flex flex-col gap-0.5">
+      {collapsed && !mobileOpen ? (
+        <>
+          <ThemeToggle iconOnly />
+          <Link
+            to="/settings"
+            onClick={onNavClick}
+            className={cn(
+              "flex items-center justify-center w-full p-2 rounded-lg transition-all duration-200",
+              settingsActive
+                ? "bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+                : "text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-700 dark:hover:text-surface-200"
+            )}
+            title={t("sidebar.settings")}
+          >
+            <Settings size={20} className="shrink-0" />
+          </Link>
+          <button
+            onClick={toggle}
+            className="flex items-center justify-center w-full p-2 rounded-lg text-surface-400 dark:text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+            title="展开侧边栏"
+          >
+            <ChevronRight size={18} />
+          </button>
+        </>
+      ) : (
+        <>
+          <div className={cn("flex items-center gap-1", mobileOpen ? "" : "px-1")}>
+            <ThemeToggle />
+            <Link
+              to="/settings"
+              onClick={onNavClick}
+              className={cn(
+                "flex items-center gap-3 flex-1 px-2 py-2 rounded-lg text-sm font-medium transition-all duration-200",
+                settingsActive
+                  ? "bg-primary-50 dark:bg-primary-900/40 text-primary-700 dark:text-primary-300"
+                  : "text-surface-600 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-900 dark:hover:text-surface-200"
+              )}
+            >
+              <Settings
+                size={20}
+                className={cn(
+                  "shrink-0",
+                  settingsActive ? "text-primary-600 dark:text-primary-400" : "text-surface-400 dark:text-surface-500"
+                )}
+              />
+              <span>{t("sidebar.settings")}</span>
+            </Link>
+            <button
+              onClick={toggle}
+              className="p-2 rounded-lg text-surface-400 dark:text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
+              title="收起侧边栏"
+            >
+              <ChevronLeft size={18} />
+            </button>
+          </div>
+        </>
+      )}
+    </div>
+  )
+
   return (
     <>
       {/* ===== DESKTOP SIDEBAR ===== (hidden on mobile) */}
@@ -89,16 +155,7 @@ export function Sidebar() {
         )}
       >
         {navContent}
-
-        {/* Collapse toggle (desktop only) */}
-        <div className="p-2 border-t border-surface-100 dark:border-surface-800 hidden md:block">
-          <button
-            onClick={toggle}
-            className="flex items-center justify-center w-full py-2 rounded-lg text-surface-400 dark:text-surface-500 hover:bg-surface-100 dark:hover:bg-surface-800 hover:text-surface-600 dark:hover:text-surface-300 transition-colors"
-          >
-            {collapsed ? <ChevronRight size={18} /> : <ChevronLeft size={18} />}
-          </button>
-        </div>
+        {footer}
       </aside>
 
       {/* ===== MOBILE DRAWER BACKDROP ===== */}
@@ -129,6 +186,7 @@ export function Sidebar() {
         </div>
 
         {navContent}
+        {footer}
       </div>
     </>
   )
