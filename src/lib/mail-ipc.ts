@@ -123,11 +123,79 @@ export async function fetchMessages(
   })
 }
 
+/** Combined inbox — list messages from multiple accounts (or all). */
+export async function fetchMessagesMulti(
+  accountIds: number[] | null,
+  folderRole: string | null,
+  page?: number,
+  pageSize?: number,
+): Promise<FetchMessagesResult> {
+  return tauriInvoke<FetchMessagesResult>("fetch_messages_multi", {
+    accountIds,
+    folderRole,
+    page: page ?? 1,
+    pageSize: pageSize ?? 30,
+  })
+}
+
+/** Total unread across given accounts (combined inbox badge). */
+export async function getUnreadCountMulti(accountIds: number[] | null): Promise<number> {
+  return tauriInvoke<number>("get_unread_count_multi", { accountIds })
+}
+
 export async function searchMessages(
   accountId: number,
   query: string,
 ): Promise<MailMessageSummary[]> {
   return tauriInvoke<MailMessageSummary[]>("search_messages", { accountId, query })
+}
+
+/** Unified full-text search across all (or specific) accounts. */
+export async function searchMessagesMulti(
+  accountIds: number[] | null,
+  query: string,
+): Promise<MailMessageSummary[]> {
+  return tauriInvoke<MailMessageSummary[]>("search_messages_multi", { accountIds, query })
+}
+
+/** Mark all messages in a folder (or all folders if folderId is null) as read. */
+export async function markFolderRead(accountId: number, folderId: number | null): Promise<number> {
+  return tauriInvoke<number>("mark_folder_read", { accountId, folderId })
+}
+
+// ==================== Autoconfig ====================
+
+export interface ServerConfig {
+  protocol: string
+  hostname: string
+  port: number
+  socket_type: string
+}
+
+export interface AutoconfigResult {
+  email: string
+  domain: string
+  imap: ServerConfig | null
+  smtp: ServerConfig | null
+  source: string
+  error: string | null
+}
+
+/** Mozilla-style autoconfig discovery — auto-fill IMAP/SMTP settings. */
+export async function autodiscoverAccount(email: string): Promise<AutoconfigResult> {
+  return tauriInvoke<AutoconfigResult>("autodiscover_account", { email })
+}
+
+// ==================== Drafts sync ====================
+
+/** Push a local draft (remote_uid == 0) to the server's Drafts folder via APPEND. */
+export async function pushDraftToImap(messageId: number): Promise<number> {
+  return tauriInvoke<number>("push_draft_to_imap", { messageId })
+}
+
+/** Pull all server drafts for an account into the local DB. */
+export async function pullDraftsFromImap(accountId: number): Promise<number> {
+  return tauriInvoke<number>("pull_drafts_from_imap", { accountId })
 }
 
 export async function getMessageBody(

@@ -15,7 +15,21 @@ pub struct MailAccount {
     pub use_tls: bool,
     pub sync_interval_secs: i64,
     pub sync_period_days: i64,
+    /// User-assigned display name shown in UI; defaults to email when empty.
+    #[serde(default)]
+    pub display_name: String,
+    /// Hex color (#RRGGBB) for sidebar avatar / account badge.
+    #[serde(default)]
+    pub color: String,
+    /// Whether this account is the default for compose when no account context.
+    #[serde(default)]
+    pub is_default: bool,
+    /// Whether desktop notifications fire for new mail on this account.
+    #[serde(default = "default_true")]
+    pub notifications_enabled: bool,
 }
+
+fn default_true() -> bool { true }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct MailFolder {

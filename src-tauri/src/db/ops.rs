@@ -33,13 +33,15 @@ pub fn insert_account(pool: &DbPool, account: &MailAccount) -> Result<i64> {
     // Use a transaction so a partial failure doesn't corrupt the DB.
     let tx = conn.transaction()?;
     tx.execute(
-        "INSERT INTO mail_accounts (email, provider, imap_host, imap_port, smtp_host, smtp_port, username, encrypted_password, use_tls, sync_interval_secs, sync_period_days)
-         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)",
+        "INSERT INTO mail_accounts (email, provider, imap_host, imap_port, smtp_host, smtp_port, username, encrypted_password, use_tls, sync_interval_secs, sync_period_days, display_name, color, is_default, notifications_enabled)
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11, ?12, ?13, ?14, ?15)",
         params![
             account.email, account.provider, account.imap_host,
             account.imap_port, account.smtp_host, account.smtp_port,
             account.username, encrypted_pw,
-            account.use_tls as i32, account.sync_interval_secs, account.sync_period_days
+            account.use_tls as i32, account.sync_interval_secs, account.sync_period_days,
+            account.display_name, account.color,
+            account.is_default as i32, account.notifications_enabled as i32
         ],
     )?;
     let id = tx.last_insert_rowid();
@@ -64,7 +66,8 @@ pub fn get_account_with_password(pool: &DbPool, account_id: i64) -> Result<Optio
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let result = conn.query_row(
         "SELECT id, email, provider, imap_host, imap_port, smtp_host, smtp_port,
-                username, encrypted_password, use_tls, sync_interval_secs, sync_period_days, sync_state
+                username, encrypted_password, use_tls, sync_interval_secs, sync_period_days, sync_state,
+                display_name, color, is_default, notifications_enabled
          FROM mail_accounts WHERE id = ?1",
         params![account_id],
         |row| {
@@ -91,6 +94,10 @@ pub fn get_account_with_password(pool: &DbPool, account_id: i64) -> Result<Optio
                     use_tls: row.get::<_, i32>(9)? != 0,
                     sync_interval_secs: row.get(10)?,
                     sync_period_days: row.get(11)?,
+                    display_name: row.get::<_, String>(12).unwrap_or_default(),
+                    color: row.get::<_, String>(13).unwrap_or_default(),
+                    is_default: row.get::<_, i32>(14).unwrap_or(0) != 0,
+                    notifications_enabled: row.get::<_, i32>(15).unwrap_or(1) != 0,
                 },
                 password,
             ))
@@ -106,7 +113,8 @@ pub fn get_account_with_password(pool: &DbPool, account_id: i64) -> Result<Optio
 pub fn list_accounts(pool: &DbPool) -> Result<Vec<MailAccount>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare(
-        "SELECT id, email, provider, imap_host, imap_port, smtp_host, smtp_port, username, use_tls, sync_interval_secs, sync_period_days FROM mail_accounts"
+        "SELECT id, email, provider, imap_host, imap_port, smtp_host, smtp_port, username, use_tls, sync_interval_secs, sync_period_days,
+                display_name, color, is_default, notifications_enabled FROM mail_accounts"
     )?;
     let accounts = stmt.query_map([], |row| {
         Ok(MailAccount {
@@ -122,6 +130,10 @@ pub fn list_accounts(pool: &DbPool) -> Result<Vec<MailAccount>> {
             use_tls: row.get::<_, i32>(8)? != 0,
             sync_interval_secs: row.get(9)?,
             sync_period_days: row.get(10)?,
+            display_name: row.get::<_, String>(11).unwrap_or_default(),
+            color: row.get::<_, String>(12).unwrap_or_default(),
+            is_default: row.get::<_, i32>(13).unwrap_or(0) != 0,
+            notifications_enabled: row.get::<_, i32>(14).unwrap_or(1) != 0,
         })
     })?;
     accounts.collect()
@@ -376,6 +388,321 @@ pub fn normalize_date(date_str: &str) -> String {
     // At minimum, return a truncated version for basic sorting
     log::debug!("normalize_date: could not parse '{}'", date_str);
     String::new()
+}
+
+// ============================================================================
+// Combined inbox (跨账户) + unified search (跨账户) + 全局已读统计
+// ============================================================================
+
+/// List messages from multiple accounts (combined inbox).
+/// `account_ids == None` means ALL accounts.
+/// `folder_role == None` means ANY folder (subject to folder_role filter via JOIN).
+/// `folder_role == Some("inbox")` means only the inbox folder of each account.
+pub fn list_messages_multi(
+    pool: &DbPool,
+    account_ids: Option<&[i64]>,
+    folder_role: Option<&str>,
+    page: i64,
+    page_size: i64,
+) -> Result<Vec<MailMessageSummary>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let offset = (page - 1) * page_size;
+
+    // Build dynamic SQL
+    let (where_clause, params_vec): (String, Vec<rusqlite::types::Value>) = match (account_ids, folder_role) {
+        (Some(ids), Some(role)) if !ids.is_empty() => {
+            let placeholders: Vec<String> = (0..ids.len()).map(|_| "?".to_string()).collect();
+            let ph = placeholders.join(",");
+            let mut p: Vec<rusqlite::types::Value> = ids.iter().map(|i| rusqlite::types::Value::Integer(*i)).collect();
+            p.push(rusqlite::types::Value::Text(role.to_string()));
+            (
+                format!(
+                    "WHERE m.account_id IN ({ph})
+                       AND m.is_deleted = 0
+                       AND EXISTS (SELECT 1 FROM mail_message_folders mf
+                                    JOIN mail_folders f ON mf.folder_id = f.id
+                                    WHERE mf.message_id = m.id AND f.role = ?{n})",
+                    ph = ph,
+                    n = ids.len() + 1,
+                ),
+                p,
+            )
+        }
+        (Some(ids), _) if !ids.is_empty() => {
+            let placeholders: Vec<String> = (0..ids.len()).map(|_| "?".to_string()).collect();
+            let ph = placeholders.join(",");
+            let p: Vec<rusqlite::types::Value> = ids.iter().map(|i| rusqlite::types::Value::Integer(*i)).collect();
+            (
+                format!("WHERE m.account_id IN ({ph}) AND m.is_deleted = 0", ph = ph),
+                p,
+            )
+        }
+        (Some(_), _) => {
+            // empty ids -> no accounts -> empty result
+            return Ok(vec![]);
+        }
+        (None, Some(role)) => {
+            let p = vec![rusqlite::types::Value::Text(role.to_string())];
+            (
+                "WHERE m.is_deleted = 0
+                 AND EXISTS (SELECT 1 FROM mail_message_folders mf
+                              JOIN mail_folders f ON mf.folder_id = f.id
+                              WHERE mf.message_id = m.id AND f.role = ?1)".to_string(),
+                p,
+            )
+        }
+        (None, None) => {
+            ("WHERE m.is_deleted = 0".to_string(), vec![])
+        }
+    };
+
+    let sql = format!(
+        "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted
+         FROM mail_messages m
+         {where_clause}
+         ORDER BY m.date_sort DESC LIMIT ?{lim} OFFSET ?{off}",
+        where_clause = where_clause,
+        lim = params_vec.len() + 1,
+        off = params_vec.len() + 2,
+    );
+
+    let mut all_params = params_vec;
+    all_params.push(rusqlite::types::Value::Integer(page_size));
+    all_params.push(rusqlite::types::Value::Integer(offset));
+
+    let mut stmt = conn.prepare(&sql)?;
+    let map_summary = |row: &rusqlite::Row| -> rusqlite::Result<MailMessageSummary> {
+        Ok(MailMessageSummary {
+            id: row.get(0)?,
+            account_id: row.get(1)?,
+            remote_uid: row.get(2)?,
+            subject: row.get(3)?,
+            from_name: row.get(4)?,
+            from_email: row.get(5)?,
+            date: row.get(6)?,
+            is_read: row.get(7)?,
+            is_starred: row.get(8)?,
+            has_attachment: row.get(9)?,
+            size: row.get(10)?,
+            thread_id: row.get(11)?,
+            is_deleted: row.get(12)?,
+        })
+    };
+    let messages: Vec<MailMessageSummary> = stmt
+        .query_map(rusqlite::params_from_iter(all_params), map_summary)?
+        .filter_map(|r| r.ok())
+        .collect();
+
+    Ok(messages)
+}
+
+/// Count messages matching the same filter as list_messages_multi.
+pub fn count_messages_multi(
+    pool: &DbPool,
+    account_ids: Option<&[i64]>,
+    folder_role: Option<&str>,
+) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let (where_clause, params_vec): (String, Vec<rusqlite::types::Value>) = match (account_ids, folder_role) {
+        (Some(ids), Some(role)) if !ids.is_empty() => {
+            let placeholders: Vec<String> = (0..ids.len()).map(|_| "?".to_string()).collect();
+            let ph = placeholders.join(",");
+            let mut p: Vec<rusqlite::types::Value> = ids.iter().map(|i| rusqlite::types::Value::Integer(*i)).collect();
+            p.push(rusqlite::types::Value::Text(role.to_string()));
+            (
+                format!(
+                    "WHERE m.account_id IN ({ph}) AND m.is_deleted = 0
+                     AND EXISTS (SELECT 1 FROM mail_message_folders mf
+                                  JOIN mail_folders f ON mf.folder_id = f.id
+                                  WHERE mf.message_id = m.id AND f.role = ?{n})",
+                    ph = ph,
+                    n = ids.len() + 1,
+                ),
+                p,
+            )
+        }
+        (Some(ids), _) if !ids.is_empty() => {
+            let placeholders: Vec<String> = (0..ids.len()).map(|_| "?".to_string()).collect();
+            let ph = placeholders.join(",");
+            let p: Vec<rusqlite::types::Value> = ids.iter().map(|i| rusqlite::types::Value::Integer(*i)).collect();
+            (format!("WHERE m.account_id IN ({ph}) AND m.is_deleted = 0", ph = ph), p)
+        }
+        (Some(_), _) => return Ok(0),
+        (None, Some(role)) => (
+            "WHERE m.is_deleted = 0
+             AND EXISTS (SELECT 1 FROM mail_message_folders mf
+                          JOIN mail_folders f ON mf.folder_id = f.id
+                          WHERE mf.message_id = m.id AND f.role = ?1)".to_string(),
+            vec![rusqlite::types::Value::Text(role.to_string())],
+        ),
+        (None, None) => ("WHERE m.is_deleted = 0".to_string(), vec![]),
+    };
+    let sql = format!("SELECT COUNT(*) FROM mail_messages m {where_clause}", where_clause = where_clause);
+    let count: i64 = conn.query_row(&sql, rusqlite::params_from_iter(params_vec), |row| row.get(0))?;
+    Ok(count)
+}
+
+/// Unified full-text search across multiple accounts (FTS5).
+/// `account_ids == None` means all accounts.
+pub fn search_messages_multi(
+    pool: &DbPool,
+    account_ids: Option<&[i64]>,
+    query: &str,
+) -> Result<Vec<MailMessageSummary>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let cleaned = build_fts_query(query);
+    if cleaned.is_empty() {
+        return Ok(vec![]);
+    }
+
+    let (acct_clause, mut params_vec): (String, Vec<rusqlite::types::Value>) = match account_ids {
+        Some(ids) if !ids.is_empty() => {
+            let placeholders: Vec<String> = (0..ids.len()).map(|_| "?".to_string()).collect();
+            let ph = placeholders.join(",");
+            let p: Vec<rusqlite::types::Value> = ids.iter().map(|i| rusqlite::types::Value::Integer(*i)).collect();
+            (format!("AND m.account_id IN ({ph})", ph = ph), p)
+        }
+        Some(_) => return Ok(vec![]),
+        None => ("".to_string(), vec![]),
+    };
+
+    params_vec.insert(0, rusqlite::types::Value::Text(cleaned));
+    let sql = format!(
+        "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted
+         FROM mail_messages m
+         JOIN mail_fts ON m.rowid = mail_fts.rowid
+         WHERE mail_fts MATCH ?1
+           AND m.is_deleted = 0
+           {acct_clause}
+         ORDER BY m.date_sort DESC LIMIT 100"
+    );
+
+    let mut stmt = conn.prepare(&sql)?;
+    let map_summary = |row: &rusqlite::Row| -> rusqlite::Result<MailMessageSummary> {
+        Ok(MailMessageSummary {
+            id: row.get(0)?,
+            account_id: row.get(1)?,
+            remote_uid: row.get(2)?,
+            subject: row.get(3)?,
+            from_name: row.get(4)?,
+            from_email: row.get(5)?,
+            date: row.get(6)?,
+            is_read: row.get(7)?,
+            is_starred: row.get(8)?,
+            has_attachment: row.get(9)?,
+            size: row.get(10)?,
+            thread_id: row.get(11)?,
+            is_deleted: row.get(12)?,
+        })
+    };
+    let messages: Vec<MailMessageSummary> = stmt
+        .query_map(rusqlite::params_from_iter(params_vec), map_summary)?
+        .filter_map(|r| r.ok())
+        .collect();
+    Ok(messages)
+}
+
+/// Convert user query into a safe FTS5 MATCH expression.
+fn build_fts_query(query: &str) -> String {
+    let mut terms: Vec<String> = Vec::new();
+    for raw in query.split_whitespace() {
+        let cleaned: String = raw.chars().filter(|c| c.is_alphanumeric()).collect();
+        if !cleaned.is_empty() {
+            terms.push(format!("{}*", cleaned));
+        }
+    }
+    if terms.is_empty() {
+        return String::new();
+    }
+    terms.join(" AND ")
+}
+
+/// Total unread count across given accounts (combined inbox badge).
+pub fn count_unread_multi(pool: &DbPool, account_ids: Option<&[i64]>) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let (where_clause, params_vec): (String, Vec<rusqlite::types::Value>) = match account_ids {
+        Some(ids) if !ids.is_empty() => {
+            let placeholders: Vec<String> = (0..ids.len()).map(|_| "?".to_string()).collect();
+            let ph = placeholders.join(",");
+            let p: Vec<rusqlite::types::Value> = ids.iter().map(|i| rusqlite::types::Value::Integer(*i)).collect();
+            (format!("account_id IN ({ph}) AND", ph = ph), p)
+        }
+        Some(_) => return Ok(0),
+        None => ("".to_string(), vec![]),
+    };
+    let sql = format!(
+        "SELECT COUNT(*) FROM mail_messages
+         WHERE {where_clause} is_read = 0 AND is_deleted = 0",
+        where_clause = where_clause
+    );
+    let count: i64 = conn.query_row(&sql, rusqlite::params_from_iter(params_vec), |row| row.get(0))?;
+    Ok(count)
+}
+
+/// Mark all unread messages in a folder (or account inbox if folder_id is None) as read.
+/// Returns the number of messages marked.
+pub fn mark_folder_read(
+    pool: &DbPool,
+    account_id: i64,
+    folder_id: Option<i64>,
+) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let sql = if let Some(_fid) = folder_id {
+        "UPDATE mail_messages SET is_read = 1, updated_at = datetime('now')
+         WHERE account_id = ?1 AND is_read = 0 AND is_deleted = 0
+         AND id IN (SELECT message_id FROM mail_message_folders WHERE folder_id = ?2)"
+    } else {
+        "UPDATE mail_messages SET is_read = 1, updated_at = datetime('now')
+         WHERE account_id = ?1 AND is_read = 0 AND is_deleted = 0"
+    };
+    let n = if let Some(fid) = folder_id {
+        conn.execute(sql, params![account_id, fid])?
+    } else {
+        conn.execute(sql, params![account_id])?
+    };
+    Ok(n as i64)
+}
+
+/// Get the list of pending draft messages that haven't been pushed to IMAP yet.
+pub fn list_local_drafts(pool: &DbPool, account_id: i64) -> Result<Vec<MailMessage>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, remote_uid, message_id_header, subject, from_name, from_email,
+                to_list, cc_list, date, body_text, body_html,
+                is_read, is_starred, has_attachment, size, thread_id
+         FROM mail_messages
+         WHERE account_id = ?1 AND is_deleted = 0
+           AND EXISTS (SELECT 1 FROM mail_message_folders mf
+                       JOIN mail_folders f ON mf.folder_id = f.id
+                       WHERE mf.message_id = mail_messages.id AND f.role = 'drafts')
+           AND remote_uid = 0
+         ORDER BY date_sort DESC"
+    )?;
+    let rows = stmt.query_map(params![account_id], |row| {
+        Ok(MailMessage {
+            id: row.get(0)?,
+            account_id: row.get(1)?,
+            remote_uid: row.get(2)?,
+            message_id_header: row.get(3)?,
+            subject: row.get(4)?,
+            from_name: row.get(5)?,
+            from_email: row.get(6)?,
+            to_list: row.get(7)?,
+            cc_list: row.get(8)?,
+            date: row.get(9)?,
+            body_text: row.get(10)?,
+            body_html: row.get(11)?,
+            is_read: row.get(12)?,
+            is_starred: row.get(13)?,
+            has_attachment: row.get(14)?,
+            size: row.get(15)?,
+            thread_id: row.get(16)?,
+            folder_ids: vec![],
+        })
+    })?;
+    Ok(rows.filter_map(|r| r.ok()).collect())
 }
 
 pub fn update_message_thread_id(pool: &DbPool, message_id: i64, thread_id: &str) -> Result<()> {
@@ -655,6 +982,16 @@ pub fn get_message_remote_info(pool: &DbPool, message_id: i64) -> Result<Option<
         Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
         Err(e) => Err(e),
     }
+}
+
+/// Update the remote_uid of a local message (used after pushing a draft to IMAP).
+pub fn set_message_remote_uid(pool: &DbPool, message_id: i64, remote_uid: i64) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE mail_messages SET remote_uid = ?1, updated_at = datetime('now') WHERE id = ?2",
+        params![remote_uid, message_id],
+    )?;
+    Ok(())
 }
 
 pub fn hard_delete_messages(pool: &DbPool, message_ids: &[i64]) -> Result<()> {

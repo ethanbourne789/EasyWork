@@ -288,13 +288,25 @@ pub fn run() {
             commands::mail::folder_unread_counts,
             // Messages
             commands::mail::fetch_messages,
+            commands::mail::fetch_messages_multi,
             commands::mail::search_messages,
+            commands::mail::search_messages_multi,
+            commands::mail::mark_folder_read,
+            commands::mail::get_unread_count_multi,
             commands::mail::get_message_body,
             commands::mail::get_message_headers,
             commands::mail::mark_message_read,
             commands::mail::toggle_message_star,
             commands::mail::delete_message,
             commands::mail::archive_message,
+            // IMAP autoconfig discovery
+            commands::autoconfig::autodiscover_account,
+            // Notification click routing
+            commands::notification_handler::route_notification_open,
+            // Drafts sync
+            commands::drafts::push_draft_to_imap,
+            commands::drafts::pull_drafts_from_imap,
+            commands::drafts::list_local_drafts,
             // Send
             commands::mail::send_mail,
             // Sync

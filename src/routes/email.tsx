@@ -177,15 +177,34 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     mailIpc.listAccounts().then(ba => { if (ba.length > 0) setAccounts(ba) }).catch(() => {})
   }, [setAccounts])
 
-  const handleEmailBlur = useCallback(() => {
-    const provider = detectProvider(form.email)
+  const handleEmailBlur = useCallback(async () => {
+    if (!form.email.includes("@")) return
     if (!form.username.trim()) {
-      // Auto-fill display name from email prefix
       const defaultName = form.email.split("@")[0] || ""
       setForm(f => ({ ...f, username: defaultName }))
     }
+    // 1. Try the local preset list first (instant).
+    const provider = detectProvider(form.email)
     if (provider) {
       setForm(f => ({ ...f, imap_host: provider.imap, imap_port: provider.imapPort, smtp_host: provider.smtp, smtp_port: provider.smtpPort, provider: "imap" }))
+      return
+    }
+    // 2. Fall back to Mozilla autoconfig discovery (network).
+    try {
+      const cfg = await mailIpc.autodiscoverAccount(form.email)
+      if (cfg.imap || cfg.smtp) {
+        setForm(f => ({
+          ...f,
+          imap_host: cfg.imap?.hostname || f.imap_host,
+          imap_port: cfg.imap?.port || f.imap_port,
+          smtp_host: cfg.smtp?.hostname || f.smtp_host,
+          smtp_port: cfg.smtp?.port || f.smtp_port,
+          provider: "imap",
+        }))
+        console.log("Auto-configured from", cfg.source)
+      }
+    } catch (e) {
+      // Silent fail — user can fill in manually
     }
   }, [form.email])
 

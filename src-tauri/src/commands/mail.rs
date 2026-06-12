@@ -249,6 +249,41 @@ pub async fn fetch_messages(
     Ok(FetchMessagesResult { messages, total, page, page_size })
 }
 
+/// Combined inbox — list messages from multiple accounts (or all) optionally filtered by folder role.
+/// `account_ids == None` means ALL accounts.
+/// `folder_role == None` means any folder.
+#[tauri::command]
+pub async fn fetch_messages_multi(
+    pool: State<'_, DbPool>,
+    account_ids: Option<Vec<i64>>,
+    folder_role: Option<String>,
+    page: Option<i64>,
+    page_size: Option<i64>,
+) -> Result<FetchMessagesResult, String> {
+    let page = page.unwrap_or(1);
+    let page_size = page_size.unwrap_or(30);
+    let ids_slice = account_ids.as_deref();
+    let messages = ops::list_messages_multi(&pool, ids_slice, folder_role.as_deref(), page, page_size)
+        .map_err(|e| e.to_string())?;
+    let total = ops::count_messages_multi(&pool, ids_slice, folder_role.as_deref())
+        .map_err(|e| e.to_string())?;
+    log::info!(
+        "fetch_messages_multi: account_ids={:?}, folder_role={:?}, page={}, page_size={}, returned={}, total={}",
+        account_ids, folder_role, page, page_size, messages.len(), total,
+    );
+    Ok(FetchMessagesResult { messages, total, page, page_size })
+}
+
+/// Combined unread count for sidebar / dock badge.
+#[tauri::command]
+pub async fn get_unread_count_multi(
+    pool: State<'_, DbPool>,
+    account_ids: Option<Vec<i64>>,
+) -> Result<i64, String> {
+    ops::count_unread_multi(&pool, account_ids.as_deref())
+        .map_err(|e| e.to_string())
+}
+
 #[tauri::command]
 pub async fn search_messages(
     pool: State<'_, DbPool>,
@@ -256,6 +291,27 @@ pub async fn search_messages(
     query: String,
 ) -> Result<Vec<MailMessageSummary>, String> {
     ops::search_messages(&pool, account_id, &query).map_err(|e| e.to_string())
+}
+
+/// Unified search across all (or specific) accounts.
+#[tauri::command]
+pub async fn search_messages_multi(
+    pool: State<'_, DbPool>,
+    account_ids: Option<Vec<i64>>,
+    query: String,
+) -> Result<Vec<MailMessageSummary>, String> {
+    ops::search_messages_multi(&pool, account_ids.as_deref(), &query)
+        .map_err(|e| e.to_string())
+}
+
+/// Mark all messages in a folder (or all folders if folder_id is None) as read.
+#[tauri::command]
+pub async fn mark_folder_read(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+    folder_id: Option<i64>,
+) -> Result<i64, String> {
+    ops::mark_folder_read(&pool, account_id, folder_id).map_err(|e| e.to_string())
 }
 
 #[tauri::command]

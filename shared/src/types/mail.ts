@@ -26,6 +26,14 @@ export interface MailAccount {
   smtpPort: number;
   syncPeriod: number;
   syncInterval: number;
+  /** Optional display name (defaults to email). */
+  displayName?: string;
+  /** Optional color (#RRGGBB) for sidebar avatar / account badge. */
+  color?: string;
+  /** True if this is the default account used for new compose when no context. */
+  isDefault?: boolean;
+  /** Whether desktop notifications fire for new mail on this account. */
+  notificationsEnabled?: boolean;
 }
 
 export interface Contact {

@@ -1,22 +1,42 @@
 use crate::db::{ops, DbPool};
 use crate::mail::{self, MailFolder, MailMessage, PendingOp};
 use std::time::Duration;
+use std::sync::atomic::{AtomicBool, Ordering};
+use std::sync::Arc;
 
-/// Start the background mail sync worker with exponential backoff + IDLE + reconcile.
+/// App focus state for smart polling. When `true` (foreground), poll more aggressively.
+pub static APP_FOCUSED: AtomicBool = AtomicBool::new(false);
+
+/// Set the app focus state from the frontend (window focus events).
+pub fn set_app_focused(focused: bool) {
+    APP_FOCUSED.store(focused, Ordering::Relaxed);
+}
+
+/// Smart poll intervals in seconds. Matches Pebble's RealtimePollPolicy.
+const POLL_FOREGROUND_ACTIVE_SECS: u64 = 10;
+const POLL_FOREGROUND_IDLE_SECS: u64 = 30;
+const POLL_BACKGROUND_SECS: u64 = 120;
+const POLL_BASE_FLOOR_SECS: u64 = 15; // minimum interval per-account
+const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
+
+/// Start the background mail sync worker with exponential backoff + IDLE + circuit breaker.
 pub async fn start_sync_worker(pool: DbPool) {
     let pool_clone = pool.clone();
 
     // Main poll loop
     tokio::spawn(async move {
-        log::info!("Mail sync worker started (polling + IDLE mode)");
+        log::info!("Mail sync worker started (smart polling + IDLE + circuit breaker)");
 
         let mut backoff: std::collections::HashMap<i64, u32> = std::collections::HashMap::new();
+        let mut circuit_open: std::collections::HashMap<i64, bool> = std::collections::HashMap::new();
         let mut reconcile_tick = 0u64;
 
         tokio::time::sleep(Duration::from_secs(10)).await;
 
         loop {
-            match poll_all_accounts(&pool, &mut backoff).await {
+            let focused = APP_FOCUSED.load(Ordering::Relaxed);
+
+            match poll_all_accounts(&pool, &mut backoff, &mut circuit_open).await {
                 Ok((accounts, messages)) => {
                     if accounts > 0 && messages > 0 {
                         log::info!("Background sync: {} accounts, {} new messages", accounts, messages);
@@ -36,23 +56,40 @@ pub async fn start_sync_worker(pool: DbPool) {
                 reconcile_all_accounts(&pool_clone).await;
             }
 
-            let interval = get_next_poll_delay(&pool, &backoff);
-            log::debug!("Next sync in {}s", interval.as_secs());
+            let interval = get_next_poll_delay(&pool, &backoff, &circuit_open, focused);
+            log::debug!("Next sync in {}s (focused={})", interval.as_secs(), focused);
             tokio::time::sleep(interval).await;
         }
     });
 }
 
-fn get_next_poll_delay(pool: &DbPool, backoff: &std::collections::HashMap<i64, u32>) -> Duration {
-    let base = get_min_sync_interval(pool).unwrap_or(300);
+/// Smart poll delay — adjusts interval based on app focus state and per-account backoff.
+fn get_next_poll_delay(
+    pool: &DbPool,
+    backoff: &std::collections::HashMap<i64, u32>,
+    circuit_open: &std::collections::HashMap<i64, bool>,
+    focused: bool,
+) -> Duration {
+    let base = if focused { POLL_FOREGROUND_ACTIVE_SECS } else { POLL_BACKGROUND_SECS };
+
+    // If any account is in circuit-open state, back off more.
+    let any_circuit_open = circuit_open.values().any(|&v| v);
+    let base = if any_circuit_open { base.max(120) } else { base };
+
+    // Apply per-account exponential backoff
     if let Some(&max_fails) = backoff.values().max() {
         if max_fails > 0 {
-            return Duration::from_secs(compute_backoff(base, max_fails));
+            let backoff_secs = compute_backoff(base, max_fails);
+            return Duration::from_secs(backoff_secs);
         }
     }
-    Duration::from_secs(base)
+
+    // Respect per-account minimum sync interval
+    let min_interval = get_min_sync_interval(pool).unwrap_or(POLL_BASE_FLOOR_SECS);
+    Duration::from_secs(base.max(min_interval))
 }
 
+/// Exponential backoff with cap. base_secs base; doubles per failure; cap 300s.
 fn compute_backoff(base_secs: u64, consecutive_failures: u32) -> u64 {
     if consecutive_failures == 0 { return base_secs; }
     let backoff = base_secs.saturating_mul(2u64.saturating_pow(consecutive_failures.saturating_sub(1)));
@@ -67,6 +104,7 @@ fn get_min_sync_interval(pool: &DbPool) -> Option<u64> {
 async fn poll_all_accounts(
     pool: &DbPool,
     backoff: &mut std::collections::HashMap<i64, u32>,
+    circuit_open: &mut std::collections::HashMap<i64, bool>,
 ) -> Result<(usize, usize), String> {
     let accounts = ops::list_accounts(pool).map_err(|e| e.to_string())?;
     if accounts.is_empty() { return Ok((0, 0)); }
@@ -76,6 +114,13 @@ async fn poll_all_accounts(
 
     for account in &accounts {
         let account_id = match account.id { Some(id) => id, None => continue };
+
+        // Skip if circuit is open — wait for next backoff cycle to retry.
+        if *circuit_open.get(&account_id).unwrap_or(&false) {
+            log::debug!("Account {}: circuit OPEN — skipping", account_id);
+            continue;
+        }
+
         let (_, password) = match ops::get_account_with_password(pool, account_id) {
             Ok(Some(v)) => v,
             Ok(None) => continue,
@@ -83,20 +128,45 @@ async fn poll_all_accounts(
         };
 
         let days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
-        let mut session = match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password).await {
-            Ok(s) => s,
-            Err(e) => {
-                log::warn!("Poll sync: IMAP connect failed for {}: {}", account.email, e);
+
+        // Try connect with one retry on connection-class errors.
+        let mut session = None;
+        let mut last_err = String::new();
+        for attempt in 1..=2 {
+            match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password).await {
+                Ok(s) => { session = Some(s); break; }
+                Err(e) => {
+                    last_err = e.to_string();
+                    if attempt < 2 {
+                        log::warn!("Account {}: connect attempt {} failed: {} — retrying", account_id, attempt, e);
+                        tokio::time::sleep(Duration::from_secs(2)).await;
+                    }
+                }
+            }
+        }
+        let mut session = match session {
+            Some(s) => s,
+            None => {
+                log::warn!("Account {}: connect failed after retry: {}", account_id, last_err);
                 let fails = backoff.entry(account_id).or_insert(0);
                 *fails = (*fails).saturating_add(1).min(10);
+                // Circuit breaker: open if consecutive failures >= threshold
+                if *fails >= CIRCUIT_BREAKER_THRESHOLD {
+                    circuit_open.insert(account_id, true);
+                    log::warn!("Account {}: circuit breaker OPENED after {} consecutive failures",
+                        account_id, *fails);
+                }
                 continue;
             }
         };
 
+        let mut account_had_error = false;
+
         match sync_inbox_with_cursor(pool, &mut session, account_id, days).await {
-            Ok(n) => { total_new += n; synced_accounts += 1; }
+            Ok(n) => { total_new += n; }
             Err(e) => {
                 log::warn!("Inbox sync failed for {}: {}", account.email, e);
+                account_had_error = true;
             }
         }
 
@@ -105,16 +175,20 @@ async fn poll_all_accounts(
             Ok(f) => f,
             Err(e) => {
                 log::warn!("Folder list failed for {}: {}", account.email, e);
+                account_had_error = true;
                 let _ = mail::imap::logout(session).await;
                 let fails = backoff.entry(account_id).or_insert(0);
                 *fails = (*fails).saturating_add(1).min(10);
+                if *fails >= CIRCUIT_BREAKER_THRESHOLD {
+                    circuit_open.insert(account_id, true);
+                }
                 continue;
             }
         };
 
         for (remote_id, name, role) in &folders {
             if role == "inbox" || role == "trash" || role == "junk" {
-                continue; // INBOX already done; trash/junk don't need syncing
+                continue;
             }
             match sync_folder_with_cursor(pool, &mut session, account_id, remote_id, role, days).await {
                 Ok(n) => { total_new += n; }
@@ -122,8 +196,17 @@ async fn poll_all_accounts(
             }
         }
 
-        // Mark success
-        backoff.remove(&account_id);
+        // Success: clear backoff and close circuit
+        if !account_had_error {
+            backoff.remove(&account_id);
+            if circuit_open.remove(&account_id).is_some() {
+                log::info!("Account {}: circuit breaker CLOSED (recovered)", account_id);
+            }
+        } else {
+            let fails = backoff.entry(account_id).or_insert(0);
+            *fails = (*fails).saturating_add(1).min(10);
+        }
+        synced_accounts += 1;
         let _ = mail::imap::logout(session).await;
     }
     Ok((synced_accounts, total_new))
@@ -156,19 +239,49 @@ async fn sync_folder_with_cursor(
     let mailbox = mail::imap::select_folder(session, folder_name).await
         .map_err(|e| format!("Select '{}' failed: {}", folder_name, e))?;
 
-    // Update cursor with UIDVALIDITY
-    let _ = ops::update_folder_cursor(pool, folder_db_id, mailbox.uid_validity.map(|v| v as i64), None, None);
+    // Update cursor with UIDVALIDITY. If UIDVALIDITY changed since last sync, the
+    // cursor is invalidated and we must re-fetch everything from the server.
+    let prev_uidvalidity = ops::get_folder_cursor(pool, folder_db_id).ok().flatten().and_then(|c| c.0);
+    let uidvalidity_changed = match (prev_uidvalidity, mailbox.uid_validity) {
+        (Some(prev), Some(cur)) => (prev as u64) != (cur as u64),
+        _ => false,
+    };
+    if uidvalidity_changed {
+        log::warn!(
+            "Folder '{}' (account {}): UIDVALIDITY changed ({} -> {}), cursor invalidated",
+            folder_name, account_id, prev_uidvalidity.unwrap_or(0), mailbox.uid_validity.unwrap_or(0),
+        );
+        // Reset cursor so the next block treats this as a first sync
+        let _ = ops::update_folder_cursor(pool, folder_db_id, mailbox.uid_validity.map(|v| v as i64), None, Some(0));
+    } else {
+        let _ = ops::update_folder_cursor(pool, folder_db_id, mailbox.uid_validity.map(|v| v as i64), None, None);
+    }
 
-    // Determine which UIDs to fetch
-    let uids: Vec<u32> = if last_uid > 0 {
+    // First-sync: limit to most recent 200 messages (matches Pebble's strategy).
+    // Subsequent syncs: incremental UID > last_uid.
+    let is_first_sync = last_uid == 0 || uidvalidity_changed;
+    let first_sync_limit: usize = 200;
+
+    let uids: Vec<u32> = if is_first_sync {
+        // Use UID SEARCH to get all UIDs, then take the last N (highest UIDs = newest).
+        let all_uids = mail::imap::fetch_uids_since(session, folder_name, period_days).await
+            .map_err(|e| format!("UID search in '{}' failed: {}", folder_name, e))?;
+        // Sort ascending, take last 200
+        let mut sorted = all_uids;
+        sorted.sort_unstable();
+        let n = sorted.len();
+        if n > first_sync_limit {
+            sorted[n - first_sync_limit..].to_vec()
+        } else {
+            sorted
+        }
+    } else {
+        // Incremental: only UIDs > last_uid
         mail::imap::fetch_uids_since(session, folder_name, period_days).await
             .map_err(|e| format!("UID search in '{}' failed: {}", folder_name, e))?
             .into_iter()
             .filter(|&u| u > last_uid as u32)
             .collect()
-    } else {
-        mail::imap::fetch_uids_since(session, folder_name, period_days).await
-            .map_err(|e| format!("UID search in '{}' failed: {}", folder_name, e))?
     };
 
     if uids.is_empty() { return Ok(0); }

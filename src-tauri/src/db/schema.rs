@@ -198,9 +198,27 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
          CREATE INDEX IF NOT EXISTS idx_mail_messages_content_hash ON mail_messages(content_hash);
          CREATE INDEX IF NOT EXISTS idx_mail_messages_date_sort ON mail_messages(date_sort);
+         CREATE INDEX IF NOT EXISTS idx_mail_messages_account_date ON mail_messages(account_id, date_sort);
          CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_messages_msgid ON mail_messages(account_id, message_id_header)
              WHERE message_id_header != '';"
     );
+
+    // ── New column migrations for v2 features (Combined inbox / Notifications) ──
+    for (col, def) in [
+        ("color", "TEXT NOT NULL DEFAULT ''"),
+        ("is_default", "INTEGER NOT NULL DEFAULT 0"),
+        ("notifications_enabled", "INTEGER NOT NULL DEFAULT 1"),
+        ("display_name", "TEXT NOT NULL DEFAULT ''"),
+    ] {
+        let has = conn
+            .prepare(&format!("SELECT {} FROM mail_accounts LIMIT 0", col))
+            .is_ok();
+        if !has {
+            let _ = conn.execute_batch(&format!(
+                "ALTER TABLE mail_accounts ADD COLUMN {} {};", col, def
+            ));
+        }
+    }
 
     Ok(())
 }
