@@ -1,4 +1,5 @@
 import { create } from "zustand"
+import type { MailRecipient } from "@/lib/parseAddressList"
 
 // Types matching Rust MailAccount
 export interface MailAccount {
@@ -67,6 +68,12 @@ export interface ComposeData {
   isReply?: boolean
   isForward?: boolean
   replyMessageId?: number
+  /**
+   * v1.1: 结构化收件人。优先于 to/cc/bcc 字符串。
+   * Reply/Forward 入口会把 from_email/cc_list 解析到此字段。
+   * ComposeDialog 初始化时若存在则用之，否则从 to/cc/bcc 降级。
+   */
+  recipients?: MailRecipient[]
 }
 
 interface MailState {

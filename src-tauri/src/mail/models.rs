@@ -80,6 +80,11 @@ pub struct MailMessageSummary {
     pub thread_id: String,
     #[serde(default)]
     pub is_deleted: bool,
+    /// v1.1: JSON 数组字符串 `["a@x.com","b@x.com"]`，用于 `search_messages_by_email` 二次过滤
+    #[serde(default)]
+    pub to_list: String,
+    #[serde(default)]
+    pub cc_list: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
@@ -112,8 +117,35 @@ pub struct MailContact {
     pub email: String,
     #[serde(default)]
     pub phone: String,
+    /// v1.1: FK → mail_contact_groups.id。可空（未分组）。
     #[serde(default)]
-    pub group_name: String,
+    pub group_id: Option<i64>,
+    /// v1.1: VCF FN 字段（与 name 区分；未来可独立编辑）。
+    #[serde(default)]
+    pub display_name: String,
     #[serde(default)]
     pub notes: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailContactGroup {
+    pub id: Option<i64>,
+    pub account_id: i64,
+    pub name: String,
+    #[serde(default = "default_group_color")]
+    pub color: String,
+    #[serde(default)]
+    pub sort_order: i32,
+}
+
+fn default_group_color() -> String {
+    "#6366f1".to_string()
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactMailSummary {
+    pub contact_email: String,
+    pub total: i64,
+    pub account_ids: Vec<i64>,
+    pub messages: Vec<MailMessageSummary>,
 }

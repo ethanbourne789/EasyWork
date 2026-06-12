@@ -38,6 +38,12 @@ export interface SyncResult {
   folders_count: number
   messages_new: number
   messages_total: number
+  /** Number of folders that could not be SELECTed (e.g. permission denied). */
+  folders_skipped: number
+  /** Number of messages that failed IMAP body parse. */
+  messages_failed_parse: number
+  /** Number of messages that failed DB insert. */
+  messages_failed_insert: number
   error: string | null
 }
 
@@ -286,6 +292,37 @@ export async function deleteContact(id: number): Promise<void> {
 
 export async function updateContact(contact: MailContact): Promise<void> {
   return tauriInvoke("update_contact", { contact })
+}
+
+/** 按 email 查找联系人（前端预热浮层查询用）。 */
+export async function findContactByEmail(
+  email: string,
+  accountId?: number,
+): Promise<MailContact | null> {
+  return tauriInvoke<MailContact | null>("find_contact_by_email", {
+    email,
+    accountId: accountId ?? null,
+  })
+}
+
+/** 跨账户搜索某邮箱的往来邮件。 */
+export interface ContactMailSummary {
+  contact_email: string
+  total: number
+  account_ids: number[]
+  messages: import("@/stores/mail-store").MailMessageSummary[]
+}
+
+export async function searchMessagesByEmail(
+  email: string,
+  accountIds?: number[],
+  limit?: number,
+): Promise<ContactMailSummary> {
+  return tauriInvoke<ContactMailSummary>("search_messages_by_email", {
+    email,
+    accountIds: accountIds ?? null,
+    limit: limit ?? 50,
+  })
 }
 
 // ==================== Config ====================

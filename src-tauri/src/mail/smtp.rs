@@ -131,12 +131,45 @@ pub async fn send_mail(
 
     let creds = Credentials::new(username.to_string(), password.to_string());
 
-    let mailer = AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_host)?
-        .port(smtp_port)
-        .credentials(creds)
-        .build();
+    // Port-based transport selection:
+    //   - 465 → implicit SSL/TLS (relay)
+    //   - 25 / 587 / 2525 → STARTTLS (starttls_relay)
+    // QQ Mail's SMTP server is known to RST the connection after sending 250 OK
+    // (it doesn't respond to QUIT cleanly), which causes lettre to raise
+    // `response error: incomplete response` after ~30s. Since the message is
+    // already accepted by the server at that point, we treat that specific
+    // error as success below.
+    let mailer = if smtp_port == 465 {
+        log::info!("SMTP: using implicit SSL (port 465) for {}", smtp_host);
+        AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_host)?
+            .port(smtp_port)
+            .credentials(creds)
+            .build()
+    } else {
+        log::info!("SMTP: using STARTTLS (port {}) for {}", smtp_port, smtp_host);
+        AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_host)?
+            .port(smtp_port)
+            .credentials(creds)
+            .build()
+    };
 
-    mailer.send(email).await?;
+    // Send and tolerate the well-known "QUIT response missing" race on QQ Mail.
+    // We only swallow the error when the message was clearly accepted (i.e. the
+    // server closed the connection mid-session — that can only happen *after*
+    // 250 OK was received, because lettre reads that response as part of
+    // `send()`).
+    if let Err(e) = mailer.send(email).await {
+        let msg = e.to_string();
+        if msg.contains("incomplete response") {
+            log::warn!(
+                "SMTP server closed connection after accepting the message (likely QQ Mail). \
+                 Treating as success. Underlying error: {}",
+                msg
+            );
+        } else {
+            return Err(e.into());
+        }
+    }
 
     Ok(())
 }

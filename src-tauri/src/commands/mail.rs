@@ -1,7 +1,9 @@
+use std::collections::HashSet;
+use std::sync::Mutex;
 use tauri::State;
 use crate::db::ops;
 use crate::db::DbPool;
-use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact};
+use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact, MailContactGroup, ContactMailSummary};
 use base64::Engine;
 
 /// Maximum attachment size (5MB) for auto-download during sync.
@@ -9,12 +11,68 @@ use base64::Engine;
 /// local_path and must be manually downloaded by the user on demand.
 const MAX_AUTO_ATTACHMENT_SIZE: i64 = 5 * 1024 * 1024;
 
+/// Per-account in-flight sync lock. Prevents manual-sync button, auto-fetch
+/// scheduler, and smart-poll worker from all hammering the same account at
+/// once. Held in `app.manage(SyncLock)` at startup.
+#[derive(Default)]
+pub struct SyncLock {
+    pub in_flight: Mutex<HashSet<i64>>,
+}
+
+impl SyncLock {
+    /// Try to acquire the lock for `account_id`. Returns `Ok(())` if acquired,
+    /// `Err` if another sync is already running for that account.
+    pub fn try_acquire(&self, account_id: i64) -> Result<(), String> {
+        let mut guard = self.in_flight.lock().map_err(|e| format!("锁中毒: {e}"))?;
+        if guard.contains(&account_id) {
+            return Err(format!("账户 {} 已在同步中，请稍候", account_id));
+        }
+        guard.insert(account_id);
+        Ok(())
+    }
+
+    /// Release the lock for `account_id`. Always call in a defer-style guard.
+    pub fn release(&self, account_id: i64) {
+        if let Ok(mut guard) = self.in_flight.lock() {
+            guard.remove(&account_id);
+        }
+    }
+}
+
+/// RAII guard that releases the per-account sync lock on drop, ensuring we
+/// never leak the lock on early return / panic.
+pub struct SyncLockGuard<'a> {
+    lock: &'a SyncLock,
+    account_id: i64,
+}
+
+impl<'a> SyncLockGuard<'a> {
+    pub fn acquire(lock: &'a SyncLock, account_id: i64) -> Result<Self, String> {
+        lock.try_acquire(account_id)?;
+        Ok(Self { lock, account_id })
+    }
+}
+
+impl<'a> Drop for SyncLockGuard<'a> {
+    fn drop(&mut self) {
+        self.lock.release(self.account_id);
+    }
+}
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SyncResult {
     pub success: bool,
     pub folders_count: usize,
     pub messages_new: usize,
     pub messages_total: usize,
+    /// Number of folders that could not be SELECTed (e.g. permission denied).
+    /// Helps the UI surface "5 个文件夹 (1 个跳过)" instead of silent failures.
+    pub folders_skipped: usize,
+    /// Number of messages that failed IMAP body parse.
+    pub messages_failed_parse: usize,
+    /// Number of messages that failed DB insert.
+    pub messages_failed_insert: usize,
+    /// Set when the per-account sync lock was already held by another path.
     pub error: Option<String>,
 }
 
@@ -798,6 +856,77 @@ pub async fn update_contact(
     ops::update_contact(&pool, &contact).map_err(|e| e.to_string())
 }
 
+// ─── v1.1 Contact Groups ───
+
+#[tauri::command]
+pub async fn list_contact_groups(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<Vec<MailContactGroup>, String> {
+    ops::list_contact_groups(&pool, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn add_contact_group(
+    pool: State<'_, DbPool>,
+    group: MailContactGroup,
+) -> Result<i64, String> {
+    ops::insert_contact_group(&pool, &group).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("UNIQUE") {
+            "group_exists".to_string()
+        } else {
+            msg
+        }
+    })
+}
+
+#[tauri::command]
+pub async fn update_contact_group(
+    pool: State<'_, DbPool>,
+    group: MailContactGroup,
+) -> Result<(), String> {
+    ops::update_contact_group(&pool, &group).map_err(|e| {
+        let msg = e.to_string();
+        if msg.contains("UNIQUE") {
+            "group_exists".to_string()
+        } else {
+            msg
+        }
+    })
+}
+
+#[tauri::command]
+pub async fn delete_contact_group(
+    pool: State<'_, DbPool>,
+    id: i64,
+) -> Result<i64, String> {
+    ops::delete_contact_group(&pool, id).map_err(|e| e.to_string())
+}
+
+// ─── v1.1 Find Contact + Search by Email ───
+
+#[tauri::command]
+pub async fn find_contact_by_email(
+    pool: State<'_, DbPool>,
+    email: String,
+    account_id: Option<i64>,
+) -> Result<Option<MailContact>, String> {
+    ops::find_contact_by_email(&pool, &email, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn search_messages_by_email(
+    pool: State<'_, DbPool>,
+    email: String,
+    account_ids: Option<Vec<i64>>,
+    limit: Option<i64>,
+) -> Result<ContactMailSummary, String> {
+    let ids_slice = account_ids.as_deref();
+    ops::search_messages_by_email(&pool, &email, ids_slice, limit.unwrap_or(50))
+        .map_err(|e| e.to_string())
+}
+
 // ==================== Sync ====================
 
 #[tauri::command]
@@ -856,6 +985,24 @@ pub async fn sync_account_impl(
     pool: DbPool,
     account_id: i64,
 ) -> Result<SyncResult, String> {
+    sync_account_impl_with_lock(pool, account_id, None).await
+}
+
+/// Inner implementation that also takes an optional `SyncLock` to prevent
+/// concurrent syncs of the same account from the manual button, auto-fetch
+/// scheduler, and smart-poll worker.
+pub async fn sync_account_impl_with_lock(
+    pool: DbPool,
+    account_id: i64,
+    sync_lock: Option<&SyncLock>,
+) -> Result<SyncResult, String> {
+    // ── Acquire per-account lock if provided ──
+    // RAII guard releases the lock on every return path (Ok / Err / panic).
+    let _guard = match sync_lock {
+        Some(lock) => Some(SyncLockGuard::acquire(lock, account_id)?),
+        None => None,
+    };
+
     log::info!("Starting sync for account {}", account_id);
 
     let (account, password) = ops::get_account_with_password(&pool, account_id)
@@ -911,20 +1058,20 @@ pub async fn sync_account_impl(
 
     let mut total_new = 0usize;
     let mut total_all = 0usize;
-    let mut total_parsed = 0usize;
     let mut total_failed_parse = 0usize;
     let mut total_failed_insert = 0usize;
+    let mut folders_skipped = 0usize;
 
     for (folder_name, folder_db_id) in &folder_db_ids {
-        if let Err(e) = mail::imap::select_folder(&mut session, folder_name).await {
-            log::warn!("Failed to select folder '{}': {}", folder_name, e);
-            continue;
-        }
+        // NOTE: We do NOT call select_folder here — fetch_uids_since does its
+        // own SELECT internally, so this avoids the redundant second SELECT
+        // that previously showed up in the IMAP logs.
 
         let remote_uids = match mail::imap::fetch_uids_since(&mut session, folder_name, period_days).await {
             Ok(uids) => uids,
             Err(e) => {
                 log::warn!("Failed to fetch UIDs for '{}': {}", folder_name, e);
+                folders_skipped += 1;
                 continue;
             }
         };
@@ -1001,8 +1148,6 @@ pub async fn sync_account_impl(
                                 folder_ids: vec![*folder_db_id],
                                 thread_id,
                             };
-                            total_parsed += 1;
-
                             match ops::insert_message(&pool, &msg) {
                                 Ok(msg_id) => {
                                     let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
@@ -1066,8 +1211,9 @@ pub async fn sync_account_impl(
     let _ = mail::imap::logout(session).await;
 
     log::info!(
-        "Sync complete for account {}: {} folders, {} new / {} total",
-        account_id, folder_db_ids.len(), total_new, total_all
+        "Sync complete for account {}: {} folders ({} skipped), {} new / {} total ({} parse fail, {} insert fail)",
+        account_id, folder_db_ids.len(), folders_skipped, total_new, total_all,
+        total_failed_parse, total_failed_insert
     );
 
     Ok(SyncResult {
@@ -1075,6 +1221,9 @@ pub async fn sync_account_impl(
         folders_count: folder_db_ids.len(),
         messages_new: total_new,
         messages_total: total_all,
+        folders_skipped,
+        messages_failed_parse: total_failed_parse,
+        messages_failed_insert: total_failed_insert,
         error: None,
     })
 }
@@ -1082,9 +1231,14 @@ pub async fn sync_account_impl(
 #[tauri::command]
 pub async fn sync_account(
     pool: State<'_, DbPool>,
+    sync_lock: State<'_, SyncLock>,
     account_id: i64,
 ) -> Result<SyncResult, String> {
-    sync_account_impl(pool.inner().clone(), account_id).await
+    sync_account_impl_with_lock(
+        pool.inner().clone(),
+        account_id,
+        Some(sync_lock.inner()),
+    ).await
 }
 
 // ==================== Config & Tray Commands ====================

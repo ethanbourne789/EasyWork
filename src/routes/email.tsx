@@ -18,11 +18,15 @@ import {
 import { ShadowDomEmail } from "@/components/ShadowDomEmail"
 import { ThreadView } from "@/components/ThreadView"
 import { ThreadItem } from "@/components/ThreadItem"
-import { ContactAutocomplete } from "@/components/ContactAutocomplete"
 import { RichTextEditor } from "@/components/RichTextEditor"
 import { SearchFilters, type SearchFiltersState } from "@/components/SearchFilters"
 import { useComposeDraft } from "@/hooks/useComposeDraft"
 import { useMailShortcuts } from "@/hooks/useMailShortcuts"
+import { RecipientInputRow, hasAnyRecipient } from "@/components/RecipientInputRow"
+import { ContactPickerPanel } from "@/components/ContactPickerPanel"
+import { ContactImportDialog } from "@/components/ContactImportDialog"
+import { parseAddressList, renderRecipientList, type MailRecipient, type RecipientKind } from "@/lib/parseAddressList"
+import { serializeVcf, type VcfContact } from "@/lib/vcf"
 
 // ==================== Provider Auto-Detect ====================
 
@@ -139,7 +143,7 @@ const FOLDER_ROLE_LABELS_EN: Record<string, string> = {
 
 // ==================== Toast Notification ====================
 
-function Toast({ message, type, onClose }: { message: string; type: "success" | "error"; onClose: () => void }) {
+function Toast({ message, type, onClose }: { message: string; type: "success" | "error" | "info"; onClose: () => void }) {
   useEffect(() => {
     const timer = setTimeout(onClose, 3000)
     return () => clearTimeout(timer)
@@ -147,7 +151,9 @@ function Toast({ message, type, onClose }: { message: string; type: "success" | 
 
   return (
     <div className={`fixed bottom-6 right-6 z-[100] flex items-center gap-2 px-4 py-3 rounded-xl shadow-lg text-sm animate-in slide-in-from-bottom-4 ${
-      type === "success" ? "bg-emerald-600 text-white" : "bg-red-600 text-white"
+      type === "success" ? "bg-emerald-600 text-white"
+        : type === "info" ? "bg-sky-600 text-white"
+        : "bg-red-600 text-white"
     }`}>
       {type === "success" ? <CheckCircle2 size={16} /> : <AlertCircle size={16} />}
       {message}
@@ -451,6 +457,8 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
   const [editingContact, setEditingContact] = useState<MailContact | null>(null)
   const [form, setForm] = useState({ name: "", email: "", phone: "", group_name: "", notes: "" })
   const [saving, setSaving] = useState(false)
+  // VCF 导入对话框开关
+  const [showVcfImport, setShowVcfImport] = useState(false)
 
   useEffect(() => {
     if (activeAccountId) { mailIpc.listContacts(activeAccountId).then(setContacts).catch(() => {}) }
@@ -500,6 +508,49 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
     const a = document.createElement("a")
     a.href = url; a.download = `contacts_${new Date().toISOString().slice(0, 10)}.csv`
     a.click(); URL.revokeObjectURL(url)
+  }
+
+  /**
+   * VCF 导出：把 MailContact[] 转为 vCard 3.0 字符串，下载为 .vcf。
+   * 优先导出真实 contacts，无联系人时回退到 defaultContacts（保持与 CSV 一致）。
+   */
+  const handleExportVcf = () => {
+    const list = contacts.length > 0 ? contacts : defaultContacts
+    const cards: VcfContact[] = list.map((c) => {
+      const [family, ...rest] = (c.name || "").split(/\s+/)
+      const given = rest.join(" ")
+      return {
+        fullName: c.name || c.email,
+        structuredName: c.name
+          ? { family: family || "", given: given || "", middle: "", prefix: "", suffix: "" }
+          : undefined,
+        emails: c.email ? [{ value: c.email, types: [] }] : [],
+        phones: c.phone ? [{ value: c.phone, types: [] }] : [],
+        organization: undefined,
+        note: c.notes || undefined,
+        categories: c.group_name ? [c.group_name] : [],
+        addresses: [],
+        raw: {},
+      }
+    })
+    const vcf = serializeVcf(cards)
+    const blob = new Blob([vcf], { type: "text/vcard;charset=utf-8;" })
+    const url = URL.createObjectURL(blob)
+    const a = document.createElement("a")
+    a.href = url
+    a.download = `contacts_${new Date().toISOString().slice(0, 10)}.vcf`
+    a.click()
+    URL.revokeObjectURL(url)
+  }
+
+  /** VCF 导入完成后刷新列表。 */
+  const handleVcfImportDone = async () => {
+    if (!activeAccountId) return
+    try {
+      setContacts(await mailIpc.listContacts(activeAccountId))
+    } catch {
+      /* ignore */
+    }
   }
 
   const handleImportContacts = () => {
@@ -559,7 +610,7 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
           <h2 className="text-lg font-bold text-surface-700 dark:text-surface-200">{t("contacts.title")}</h2>
           <button onClick={onClose} className="text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"><X size={20} /></button>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button size="sm" onClick={() => { setShowAdd(true); setEditingContact(null); setForm({ name: "", email: "", phone: "", group_name: "", notes: "" }) }}>
             <Plus size={14} />{t("contacts.newContact")}
           </Button>
@@ -568,6 +619,12 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
           </Button>
           <Button size="sm" variant="outline" onClick={handleImportContacts}>
             <Upload size={14} />{t("contacts.import")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={handleExportVcf}>
+            <Download size={14} />{t("contacts.exportVcf")}
+          </Button>
+          <Button size="sm" variant="outline" onClick={() => setShowVcfImport(true)} disabled={!activeAccountId}>
+            <Upload size={14} />{t("contacts.importVcf")}
           </Button>
         </div>
         {(contacts.length > 0 ? contacts : defaultContacts).map(c => (
@@ -593,6 +650,13 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
           </div>
         )}
       </div>
+      {/* VCF 导入对话框（z-index 高于 Modal 自身） */}
+      <ContactImportDialog
+        accountId={activeAccountId}
+        open={showVcfImport}
+        onClose={() => setShowVcfImport(false)}
+        onImported={handleVcfImportDone}
+      />
     </div>
   )
 }
@@ -657,56 +721,83 @@ function ComposeDialog() {
   const [showSignature, setShowSignature] = useState(!!loadSignature(activeAccountId))
   const [showSignatureEditor, setShowSignatureEditor] = useState(false)
 
-  const [to, setTo] = useState(composeData?.to || initialDraft?.to || "")
-  const [cc, setCc] = useState(composeData?.cc || initialDraft?.cc || "")
-  const [bcc, setBcc] = useState(composeData?.bcc || initialDraft?.bcc || "")
+  // v1.1: 结构化收件人。初始化优先级：composeData.recipients > draft.recipients > 草稿字符串降级。
+  const initRecipients = (): MailRecipient[] => {
+    if (composeData?.recipients && composeData.recipients.length > 0) {
+      return composeData.recipients
+    }
+    if (initialDraft?.recipients && initialDraft.recipients.length > 0) {
+      return initialDraft.recipients
+    }
+    // 降级：解析 to/cc/bcc 字符串
+    const out: MailRecipient[] = []
+    if (composeData?.to || initialDraft?.to) {
+      out.push(...parseAddressList(composeData?.to || initialDraft?.to, "to"))
+    }
+    if (composeData?.cc || initialDraft?.cc) {
+      out.push(...parseAddressList(composeData?.cc || initialDraft?.cc, "cc"))
+    }
+    if (composeData?.bcc || initialDraft?.bcc) {
+      out.push(...parseAddressList(composeData?.bcc || initialDraft?.bcc, "bcc"))
+    }
+    return out
+  }
+  const [recipients, setRecipients] = useState<MailRecipient[]>(initRecipients)
+  const [pickerCollapsed, setPickerCollapsed] = useState(false)
   const [subject, setSubject] = useState(composeData?.subject || initialDraft?.subject || "")
   const [body, setBody] = useState(composeData?.body || initialDraft?.body || "")
   const [bodyHtml, setBodyHtml] = useState("")
-  const [showCc, setShowCc] = useState(!!(composeData?.cc || initialDraft?.cc))
-  const [showBcc, setShowBcc] = useState(!!(composeData?.bcc || initialDraft?.bcc))
+  const [showCc, setShowCc] = useState(
+    !!(composeData?.cc || initialDraft?.cc) ||
+      recipients.some((r) => r.kind === "cc"),
+  )
+  const [showBcc, setShowBcc] = useState(
+    !!(composeData?.bcc || initialDraft?.bcc) ||
+      recipients.some((r) => r.kind === "bcc"),
+  )
   const [sending, setSending] = useState(false)
   const [sendResult, setSendResult] = useState<mailIpc.SendResult | null>(null)
   const [draftIndicator, setDraftIndicator] = useState("")
+  const [pickerToast, setPickerToast] = useState<string | null>(null)
+
+  // 派生 to/cc/bcc 字符串（用于发送 & 草稿 & ContactAutocomplete 回填）
+  const to = useMemo(() => renderRecipientList(recipients, "to"), [recipients])
+  const cc = useMemo(() => renderRecipientList(recipients, "cc"), [recipients])
+  const bcc = useMemo(() => renderRecipientList(recipients, "bcc"), [recipients])
 
   // ── Draft autosave (Bug #1 fix) ──
   // Mirror the live field values into refs so the setInterval callback always
   // reads the latest values WITHOUT forcing the effect to re-subscribe on every
-  // keystroke. The previous implementation listed `to/cc/bcc/subject/body` as
-  // useEffect dependencies, so each keystroke tore down and re-created the
-  // interval, and the unmount cleanup additionally wrote a duplicate draft.
-  // Now the interval is created once per account and reads the latest values
-  // from refs; we only write to localStorage when the snapshot actually changes.
-  const draftFieldsRef = useRef({ to, cc, bcc, subject, body, activeAccountId })
+  // keystroke.
+  const draftFieldsRef = useRef({
+    to, cc, bcc, subject, body, activeAccountId, recipients,
+  })
   const lastSerializedRef = useRef<string>("")
   const draftIntervalRef = useRef<ReturnType<typeof setInterval> | null>(null)
   useEffect(() => {
-    draftFieldsRef.current = { to, cc, bcc, subject, body, activeAccountId }
+    draftFieldsRef.current = { to, cc, bcc, subject, body, activeAccountId, recipients }
   })
 
   useEffect(() => {
     // Save once on unmount (only if the snapshot was different from what we last wrote)
     return () => {
-      const { to: u, cc: c, bcc: b, subject: s, body: bd, activeAccountId: aid } = draftFieldsRef.current
-      const snapshot = JSON.stringify({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
-      if ((u || s || bd) && snapshot !== lastSerializedRef.current) {
-        saveDraft({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      const { to: u, cc: c, bcc: b, subject: s, body: bd, activeAccountId: aid, recipients: r } = draftFieldsRef.current
+      const snapshot = JSON.stringify({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid, recipients: r })
+      if ((u || s || bd || r.length > 0) && snapshot !== lastSerializedRef.current) {
+        saveDraft({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid, recipients: r })
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [])
 
   useEffect(() => {
-    // One interval per (activeAccountId, saveDraft identity). Reads the live
-    // snapshot from refs so the interval body never goes stale, and we only
-    // touch localStorage when the serialized form actually changed.
     const tick = () => {
-      const { to: u, cc: c, bcc: b, subject: s, body: bd, activeAccountId: aid } = draftFieldsRef.current
-      if (!(u || c || b || s || bd)) return
-      const snapshot = JSON.stringify({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      const { to: u, cc: c, bcc: b, subject: s, body: bd, activeAccountId: aid, recipients: r } = draftFieldsRef.current
+      if (!(u || c || b || s || bd || r.length > 0)) return
+      const snapshot = JSON.stringify({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid, recipients: r })
       if (snapshot === lastSerializedRef.current) return
       lastSerializedRef.current = snapshot
-      saveDraft({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid })
+      saveDraft({ to: u, cc: c, bcc: b, subject: s, body: bd, accountId: aid, recipients: r })
       setDraftIndicator(t("mail.draftSaved"))
       setTimeout(() => setDraftIndicator(""), 2000)
     }
@@ -716,6 +807,11 @@ function ComposeDialog() {
 
   const handleSend = async () => {
     if (!activeAccountId || !accounts.length) return
+    if (!hasAnyRecipient(recipients)) {
+      setPickerToast(t("contacts.recipients.noRecipient"))
+      setTimeout(() => setPickerToast(null), 2000)
+      return
+    }
     setSending(true); setSendResult(null)
     // Append signature HTML to body
     const finalBodyText = showSignature && signatureHtml ? body + "\n\n" + stripHtml(signatureHtml) : body
@@ -743,63 +839,134 @@ function ComposeDialog() {
     setShowSignatureEditor(false)
   }
 
+  // 联系人选择器 → 合并到 recipients
+  const handlePickerAdd = useCallback(
+    (picked: MailContact[], kind: RecipientKind) => {
+      if (picked.length === 0) return
+      // 自动展开对应 kind 的输入行
+      if (kind === "cc" && !showCc) setShowCc(true)
+      if (kind === "bcc" && !showBcc) setShowBcc(true)
+      const existing = new Set(recipients.map((r) => r.email))
+      const additions: MailRecipient[] = picked
+        .filter((c) => c.email && !existing.has(c.email.toLowerCase()))
+        .map((c) => ({
+          email: c.email.toLowerCase(),
+          name: c.name || undefined,
+          contactId: c.id,
+          kind,
+        }))
+      if (additions.length > 0) {
+        setRecipients([...recipients, ...additions])
+      }
+    },
+    [recipients, showCc, showBcc],
+  )
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/70">
-      <Card className="w-[90vw] max-w-[680px] max-h-[85vh] flex flex-col shadow-2xl dark:shadow-black/30">
-        <div className="flex items-center justify-between p-3 border-b border-surface-200 dark:border-surface-700">
-          <h3 className="font-semibold text-sm text-surface-700 dark:text-surface-200">{composeData?.isReply ? t("mail.reply") : composeData?.isForward ? t("mail.forward") : t("mail.compose")}</h3>
-          <button onClick={handleClose} className="text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"><X size={16} /></button>
-        </div>
-        <div className="flex-1 p-3 space-y-1 overflow-auto">
-          <div className="flex items-center border-b border-surface-200 dark:border-surface-700">
-            <span className="text-xs text-surface-400 dark:text-surface-500 w-10 shrink-0">{t("mail.to")}</span>
-            <ContactAutocomplete value={to} onChange={setTo} contacts={contacts} className="flex-1" />
-            {!showCc && <button onClick={() => setShowCc(true)} className="text-xs text-primary-500 dark:text-primary-400 px-2 shrink-0">{t("mail.addCc")}</button>}
+      <Card className="w-[90vw] max-w-[1080px] max-h-[85vh] flex flex-row shadow-2xl dark:shadow-black/30 overflow-hidden">
+        {/* 主区：收件人 / 主题 / 正文 / 操作 */}
+        <div className="flex-1 flex flex-col min-w-0">
+          <div className="flex items-center justify-between p-3 border-b border-surface-200 dark:border-surface-700">
+            <h3 className="font-semibold text-sm text-surface-700 dark:text-surface-200">{composeData?.isReply ? t("mail.reply") : composeData?.isForward ? t("mail.forward") : t("mail.compose")}</h3>
+            <button onClick={handleClose} className="text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"><X size={16} /></button>
           </div>
-          {showCc && (
+          <div className="flex-1 overflow-auto">
+            <RecipientInputRow
+              recipients={recipients}
+              kind="to"
+              label={t("mail.to")}
+              onChange={setRecipients}
+              onNotify={(m) => { setPickerToast(m); setTimeout(() => setPickerToast(null), 2000) }}
+              adornment={
+                !showCc ? (
+                  <button onClick={() => setShowCc(true)} className="text-xs text-primary-500 dark:text-primary-400 px-1">
+                    {t("mail.addCc")}
+                  </button>
+                ) : undefined
+              }
+            />
+            {showCc && (
+              <RecipientInputRow
+                recipients={recipients}
+                kind="cc"
+                label={t("mail.cc")}
+                onChange={setRecipients}
+                onNotify={(m) => { setPickerToast(m); setTimeout(() => setPickerToast(null), 2000) }}
+                adornment={
+                  !showBcc ? (
+                    <button onClick={() => setShowBcc(true)} className="text-xs text-primary-500 dark:text-primary-400 px-1">
+                      {t("mail.addBcc")}
+                    </button>
+                  ) : undefined
+                }
+              />
+            )}
+            {showBcc && (
+              <RecipientInputRow
+                recipients={recipients}
+                kind="bcc"
+                label={t("mail.bcc")}
+                onChange={setRecipients}
+                onNotify={(m) => { setPickerToast(m); setTimeout(() => setPickerToast(null), 2000) }}
+              />
+            )}
             <div className="flex items-center border-b border-surface-200 dark:border-surface-700">
-              <span className="text-xs text-surface-400 dark:text-surface-500 w-10 shrink-0">{t("mail.cc")}</span>
-              <ContactAutocomplete value={cc} onChange={setCc} contacts={contacts} className="flex-1" />
-              {!showBcc && <button onClick={() => setShowBcc(true)} className="text-xs text-primary-500 dark:text-primary-400 px-2 shrink-0">{t("mail.addBcc")}</button>}
+              <span className="text-xs text-surface-400 dark:text-surface-500 w-12 shrink-0 px-3">{t("mail.subject")}</span>
+              <input type="text" placeholder={t("mail.subject")} value={subject} onChange={e => setSubject(e.target.value)} className="flex-1 h-9 px-1 border-0 text-sm focus:outline-none bg-transparent text-surface-700 dark:text-surface-200" />
             </div>
-          )}
-          {showBcc && (
-            <div className="flex items-center border-b border-surface-200 dark:border-surface-700">
-              <span className="text-xs text-surface-400 dark:text-surface-500 w-10 shrink-0">{t("mail.bcc")}</span>
-              <ContactAutocomplete value={bcc} onChange={setBcc} contacts={contacts} className="flex-1" />
+            <div className="p-3">
+              <RichTextEditor content={body} onChange={(html, text) => { setBody(text); setBodyHtml(html) }} placeholder={t("mail.body")} />
             </div>
-          )}
-          <div className="flex items-center border-b border-surface-200 dark:border-surface-700">
-            <span className="text-xs text-surface-400 dark:text-surface-500 w-10 shrink-0">{t("mail.subject")}</span>
-            <input type="text" placeholder={t("mail.subject")} value={subject} onChange={e => setSubject(e.target.value)} className="flex-1 h-9 px-1 border-0 text-sm focus:outline-none bg-transparent text-surface-700 dark:text-surface-200" />
+            {/* Signature controls */}
+            <div className="flex items-center gap-2 pt-1 px-3">
+              <button onClick={() => { setShowSignature(!showSignature); if (!showSignature && signatureHtml) setBody(b => b + "\n\n" + stripHtml(signatureHtml)) }}
+                className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${showSignature ? "text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30" : "text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"}`}>
+                ✎ {t("mail.signature")}
+              </button>
+              <button onClick={() => setShowSignatureEditor(true)} className="text-xs text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300 underline">
+                {t("mail.manageSignature")}
+              </button>
+            </div>
+            {draftIndicator && <div className="text-xs text-surface-400 dark:text-surface-500 italic px-3 py-1">{draftIndicator}</div>}
+            {sendResult && (
+              <div className={`flex items-center gap-2 p-2 mx-3 rounded-lg text-xs ${sendResult.success ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300"}`}>
+                {sendResult.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}{sendResult.success ? t("mail.sendSuccess") : sendResult.error}
+              </div>
+            )}
+            {pickerToast && (
+              <div className="mx-3 mb-1 text-xs text-amber-600 dark:text-amber-400 italic">
+                {pickerToast}
+              </div>
+            )}
           </div>
-          <RichTextEditor content={body} onChange={(html, text) => { setBody(text); setBodyHtml(html) }} placeholder={t("mail.body")} />
-          {/* Signature controls */}
-          <div className="flex items-center gap-2 pt-1">
-            <button onClick={() => { setShowSignature(!showSignature); if (!showSignature && signatureHtml) setBody(b => b + "\n\n" + stripHtml(signatureHtml)) }}
-              className={`text-xs flex items-center gap-1 px-2 py-1 rounded transition-colors ${showSignature ? "text-primary-600 dark:text-primary-400 bg-primary-50 dark:bg-primary-900/30" : "text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"}`}>
-              ✎ {t("mail.signature")}
-            </button>
-            <button onClick={() => setShowSignatureEditor(true)} className="text-xs text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300 underline">
-              {t("mail.manageSignature")}
-            </button>
-          </div>
-          {draftIndicator && <div className="text-xs text-surface-400 dark:text-surface-500 italic">{draftIndicator}</div>}
-          {sendResult && (
-            <div className={`flex items-center gap-2 p-2 rounded-lg text-xs ${sendResult.success ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300"}`}>
-              {sendResult.success ? <CheckCircle2 size={14} /> : <AlertCircle size={14} />}{sendResult.success ? t("mail.sendSuccess") : sendResult.error}
+          <div className="flex items-center justify-between p-3 border-t border-surface-200 dark:border-surface-700">
+            <span className="text-xs text-surface-400 dark:text-surface-500">
+              {accounts.find(a => a.id === activeAccountId)?.email || "..."}
+              {recipients.filter(r => r.kind === "to").length > 1 && (
+                <span className="ml-2 text-primary-500 dark:text-primary-400">
+                  {t("contacts.recipients.broadcast", { n: recipients.filter(r => r.kind === "to").length })}
+                </span>
+              )}
+            </span>
+            <div className="flex gap-2">
+              <Button variant="ghost" size="sm" onClick={handleClose}>{t("mail.cancel")}</Button>
+              <Button size="sm" onClick={handleSend} disabled={sending || !hasAnyRecipient(recipients) || !subject}>
+                {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{t("mail.send")}
+              </Button>
             </div>
-          )}
+          </div>
         </div>
-        <div className="flex items-center justify-between p-3 border-t border-surface-200 dark:border-surface-700">
-          <span className="text-xs text-surface-400 dark:text-surface-500">{accounts.find(a => a.id === activeAccountId)?.email || "..."}</span>
-          <div className="flex gap-2">
-            <Button variant="ghost" size="sm" onClick={handleClose}>{t("mail.cancel")}</Button>
-            <Button size="sm" onClick={handleSend} disabled={sending || !to || !subject}>
-              {sending ? <Loader2 size={14} className="animate-spin" /> : <Send size={14} />}{t("mail.send")}
-            </Button>
-          </div>
-        </div>
+        {/* 侧栏：联系人选择器 */}
+        <ContactPickerPanel
+          contacts={contacts}
+          recipients={recipients}
+          onAddTo={handlePickerAdd}
+          onNotify={(m) => { setPickerToast(m); setTimeout(() => setPickerToast(null), 2000) }}
+          collapsed={pickerCollapsed}
+          onToggleCollapse={() => setPickerCollapsed((c) => !c)}
+          className="h-full"
+        />
       </Card>
       {showSignatureEditor && <SignatureEditorModal onClose={handleSignatureSaved} />}
     </div>
@@ -884,7 +1051,7 @@ function EmailPage() {
   // a class of bugs where the two views drift out of agreement.
   const sidebarOpen = useSidebarStore((s) => !s.collapsed)
   const setSidebarOpen = useSidebarStore((s) => s.toggle)
-  const [toast, setToast] = useState<{ message: string; type: "success" | "error" } | null>(null)
+  const [toast, setToast] = useState<{ message: string; type: "success" | "error" | "info" } | null>(null)
   const [showMobileList, setShowMobileList] = useState(true)
   const [searchFilters, setSearchFilters] = useState<SearchFiltersState>({
     from: "", to: "", subject: "", dateFrom: "", dateTo: "", hasAttachment: false, folderId: null,
@@ -1100,7 +1267,28 @@ function EmailPage() {
     setSyncStatus({ syncing: true })
     try {
       const result = await mailIpc.syncAccount(activeAccountId)
-      setToast({ message: `${result.folders_count} 个文件夹, ${result.messages_new} 封新邮件`, type: "success" })
+      // Build a descriptive toast that surfaces skipped folders and partial
+      // failures (parse / insert) so the user knows when "0 新邮件" is real
+      // vs. when the sync actually had problems they should look at.
+      const parts: string[] = []
+      parts.push(`${result.folders_count} 个文件夹`)
+      if (result.folders_skipped && result.folders_skipped > 0) {
+        parts.push(`${result.folders_skipped} 个跳过`)
+      }
+      parts.push(`${result.messages_new} 封新邮件`)
+      const failures: string[] = []
+      if (result.messages_failed_parse && result.messages_failed_parse > 0) {
+        failures.push(`解析失败 ${result.messages_failed_parse}`)
+      }
+      if (result.messages_failed_insert && result.messages_failed_insert > 0) {
+        failures.push(`入库失败 ${result.messages_failed_insert}`)
+      }
+      const toastMsg = failures.length > 0
+        ? `${parts.join(", ")}（${failures.join("、")}）`
+        : parts.join(", ")
+      const toastType: "success" | "info" = failures.length > 0 ? "info" : "success"
+      setToast({ message: toastMsg, type: toastType })
+
       let folderId: number | undefined
       const folder = dbFolders.find(f => f.role === activeFolder || f.remote_id === activeFolder)
       folderId = folder?.id ?? dbFolders.find(f => f.role === "inbox")?.id ?? undefined
@@ -1117,7 +1305,14 @@ function EmailPage() {
       setSyncStatus({ syncing: false, lastSyncAt: new Date().toLocaleTimeString() })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      setToast({ message: `同步失败: ${msg}`, type: "error" })
+      // Common case: another sync path (auto-fetch / smart-poll) is already
+      // running for this account. The backend rejects with a friendly
+      // "账户 X 已在同步中" message. Treat that as a non-fatal info toast.
+      const isBusy = typeof msg === "string" && msg.includes("已在同步中")
+      setToast({
+        message: isBusy ? `该账户正在同步中：${msg}` : `同步失败: ${msg}`,
+        type: isBusy ? "info" : "error",
+      })
       setSyncStatus({ syncing: false })
     }
   }, [activeAccountId, activeFolder, dbFolders, setMessages, setSyncStatus, setFolderUnreadCounts])
@@ -1234,46 +1429,20 @@ function EmailPage() {
   const handleMobileBack = () => { setShowMobileList(true); selectMessage(null) }
 
   return (
-    <div className="flex flex-col h-[calc(100vh-3.5rem-3rem)] -m-6 bg-white dark:bg-surface-900">
-      {/* Toolbar */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 shrink-0 gap-2">
-        <div className="flex items-center gap-1">
-          {/* Mobile sidebar toggle */}
-          <button onClick={() => setSidebarOpen()} className="p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800 lg:hidden" title="切换侧边栏">
-            <Menu size={18} />
-          </button>
-          {/* Desktop sidebar toggle */}
-          <button onClick={() => setSidebarOpen()} className="p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800" title="切换侧边栏">
-            {sidebarOpen ? <PanelLeftClose size={18} /> : <PanelLeft size={18} />}
-          </button>
-        </div>
-        <div className="flex items-center gap-1">
-          {/* Account selector */}
-          {accounts.length > 1 && (
-            <select value={activeAccountId ?? ""} onChange={e => useMailStore.getState().setActiveAccountId(Number(e.target.value) || null)}
-              className="h-8 px-2 text-xs border border-surface-200 dark:border-surface-700 rounded-lg bg-surface-50 dark:bg-surface-800/50 max-w-[160px]">
-              {accounts.map(a => <option key={a.id} value={a.id ?? ""}>{a.email}</option>)}
-            </select>
-          )}
-          {/* Sync (single button) */}
-          <Button variant="ghost" size="sm" onClick={handleSync} disabled={syncStatus.syncing} title="同步邮件">
-            <RefreshCw size={15} className={syncStatus.syncing ? "animate-spin" : ""} />
-          </Button>
-          {/* Compose */}
-          <Button size="sm" onClick={() => openCompose()} className="gap-1">
-            <Plus size={15} />{t("mail.compose")}
-          </Button>
-          {/* Settings dropdown */}
-          <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)} title="设置">
-            <Settings size={16} />
-          </Button>
-        </div>
-      </div>
-
-      {/* Content */}
+    <div className="flex flex-col h-full bg-white dark:bg-surface-900">
+      {/* Content — 顶部 Toolbar 整块已删除（消除顶部的空白区域）。
+          原 mobile sidebar toggle 移至 sidebar 顶部；原 account selector
+          整合到 sidebar 的 account indicator 区块。 */}
       <div className="flex-1 flex min-h-0">
-        {/* Sidebar - collapsible */}
-        <div className={`${sidebarOpen ? "w-48 lg:w-52" : "w-12"} shrink-0 border-r border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-800/40 p-2 space-y-0.5 overflow-auto transition-all duration-200`}>
+        {/* Sidebar - collapsible. Layout: top = mobile toggle + folders & filter; bottom (mt-auto) = sync / compose / settings / collapse toggle. */}
+        <div className={`${sidebarOpen ? "w-48 lg:w-52" : "w-12"} shrink-0 border-r border-surface-200 dark:border-surface-700 bg-surface-50/50 dark:bg-surface-800/40 p-2 overflow-y-auto transition-all duration-200 flex flex-col gap-0.5`}>
+          {/* Mobile-only sidebar toggle (lifted from the now-removed top Toolbar) */}
+          <button onClick={() => setSidebarOpen()}
+            className="lg:hidden mb-1 p-1.5 rounded-lg text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800 flex items-center gap-2 text-sm"
+            title="切换侧边栏">
+            <Menu size={16} />{sidebarOpen && <span>切换侧边栏</span>}
+          </button>
+
           {/* System folders (sorted: inbox, sent, drafts, trash, junk, archive) */}
           {sortedFolders.length > 0 ? (
             sortedFolders.map(f => {
@@ -1331,20 +1500,23 @@ function EmailPage() {
                 <Star size={15} className={starredFilter ? "text-amber-400 dark:text-amber-300 fill-amber-400 dark:fill-amber-300" : ""} />{t("mail.starred")}
               </button>
 
-              {/* Account indicator */}
+              {/* Account indicator — 取代原 Toolbar 顶部的 account selector
+                  (下拉选择形式，更紧凑)。 */}
               {accounts.length > 0 && (
                 <div className="px-3 py-2">
                   <p className="text-[10px] font-semibold text-surface-400 dark:text-surface-500 dark:text-surface-400 uppercase mb-1">{t("mail.account")}</p>
-                  {accounts.map(acc => (
-                    <button key={acc.id}
-                      onClick={() => useMailStore.getState().setActiveAccountId(acc.id ?? null)}
-                      className={`flex items-center gap-2 w-full px-1 py-1 text-xs rounded transition-colors truncate ${
-                        activeAccountId === acc.id ? "text-primary-700 dark:text-primary-300 font-medium" : "text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800"
-                      }`}>
-                      <div className="w-5 h-5 rounded bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-[10px] font-bold text-primary-700 dark:text-primary-300">{acc.email.charAt(0).toUpperCase()}</div>
-                      <span className="truncate">{acc.email.split("@")[0]}</span>
-                    </button>
-                  ))}
+                  {accounts.length > 1 ? (
+                    <select value={activeAccountId ?? ""}
+                      onChange={e => useMailStore.getState().setActiveAccountId(Number(e.target.value) || null)}
+                      className="w-full h-7 px-2 text-xs border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-800/50">
+                      {accounts.map(acc => <option key={acc.id} value={acc.id ?? ""}>{acc.email}</option>)}
+                    </select>
+                  ) : (
+                    <div className="flex items-center gap-2 w-full px-1 py-1 text-xs truncate text-surface-600 dark:text-surface-300">
+                      <div className="w-5 h-5 rounded bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-[10px] font-bold text-primary-700 dark:text-primary-300 shrink-0">{accounts[0].email.charAt(0).toUpperCase()}</div>
+                      <span className="truncate">{accounts[0].email}</span>
+                    </div>
+                  )}
                 </div>
               )}
 
@@ -1373,6 +1545,44 @@ function EmailPage() {
               </button>
             </div>
           )}
+
+          {/* ── Position 3 (per user request): Sync / Compose / Settings + sidebar collapse toggle.
+              Pushed to the bottom of the sidebar via mt-auto. In expanded mode the
+              Compose button keeps a label; in collapsed mode it shrinks to an icon
+              to match the existing icon-button style. ── */}
+          <div className="mt-auto pt-2 border-t border-surface-200 dark:border-surface-700 flex flex-col gap-0.5">
+            {/* Sync */}
+            <button onClick={handleSync} disabled={syncStatus.syncing}
+              title="同步邮件"
+              className={`${sidebarOpen ? "flex items-center gap-2 px-3 py-2 text-sm" : "flex items-center justify-center w-full p-2"} rounded-lg transition-colors text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800 disabled:opacity-50`}>
+              <RefreshCw size={sidebarOpen ? 15 : 18} className={syncStatus.syncing ? "animate-spin" : ""} />
+              {sidebarOpen && <span>同步</span>}
+            </button>
+
+            {/* Compose */}
+            <button onClick={() => openCompose()}
+              title={t("mail.compose")}
+              className={`${sidebarOpen ? "flex items-center gap-2 px-3 py-2 text-sm bg-primary-600 text-white hover:bg-primary-700" : "flex items-center justify-center w-full p-2 rounded-lg bg-primary-600 text-white hover:bg-primary-700"} rounded-lg transition-colors`}>
+              <Plus size={sidebarOpen ? 15 : 18} />
+              {sidebarOpen && <span>{t("mail.compose")}</span>}
+            </button>
+
+            {/* Settings */}
+            <button onClick={() => setShowSettings(true)}
+              title="设置"
+              className={`${sidebarOpen ? "flex items-center gap-2 px-3 py-2 text-sm" : "flex items-center justify-center w-full p-2"} rounded-lg transition-colors text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800`}>
+              <Settings size={sidebarOpen ? 15 : 18} />
+              {sidebarOpen && <span>设置</span>}
+            </button>
+
+            {/* Desktop sidebar collapse toggle */}
+            <button onClick={() => setSidebarOpen()}
+              title="切换侧边栏"
+              className={`${sidebarOpen ? "flex items-center gap-2 px-3 py-2 text-sm" : "flex items-center justify-center w-full p-2"} rounded-lg transition-colors text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800`}>
+              {sidebarOpen ? <PanelLeftClose size={15} /> : <PanelLeft size={18} />}
+              {sidebarOpen && <span>收起侧边栏</span>}
+            </button>
+          </div>
         </div>
 
         {/* Thread view or message list + detail */}
@@ -1499,7 +1709,7 @@ function EmailPage() {
             {/* Message detail - full width on mobile */}
             <div className={`flex-1 bg-white dark:bg-surface-900 overflow-auto ${showMobileList ? "hidden lg:block" : "block"}`}>
               {selectedMessage ? (
-                <div className="p-3 lg:p-6">
+                <div className="p-2 lg:p-4">
                   {/* Mobile back button */}
                   <button onClick={handleMobileBack} className="lg:hidden flex items-center gap-1 text-sm text-primary-500 dark:text-primary-400 mb-3">
                     <ChevronDown size={16} className="rotate-90" />返回
