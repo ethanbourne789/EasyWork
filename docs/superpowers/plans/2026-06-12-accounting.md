@@ -4,7 +4,7 @@
 
 **Goal:** 在 EasyWork 中交付「轻量个人账本」全功能模块 —— 交易、分类、预算、统计、导入/导出、图片附件；3 Tab 桌面/移动端响应式。
 
-**Architecture:** 后端 Rust 扩展现有 `commands/accounting.rs` + 新增 `services/accounting/{importer,stats,export}.rs`；前端 React + MUI 在 `apps/app-accounting` 下拆分为 3 页面 + 共享组件；数据走 SQLite (V4 迁移) + 附件走文件系统。
+**Architecture:** 后端 Rust 扩展现有 `commands/accounting.rs` + 新增 `services/accounting/{importer,stats,export}.rs`；前端 React + MUI 整合到主 `src/` 下作为 3 页面 + 共享组件（apps/* 工作区已于 2026-06-12 cleanup commit 移除）；数据走 SQLite (V4 迁移) + 附件走文件系统。
 
 **Tech Stack:**
 - 后端：Rust 1.7x + rusqlite + tauri 2 + encoding_rs + image + rust_xlsxwriter

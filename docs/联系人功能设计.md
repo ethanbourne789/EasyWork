@@ -1,0 +1,458 @@
+# 联系人管理增强 — 设计文档
+
+- 日期：2026-06-12
+- 模块：app-mail（邮箱）
+- 状态：设计已确认，待实施
+- 修订：v1.1（2026-06-12 14:00）— 新增「按群组批量群发」章节
+
+## 目标
+
+完善邮箱模块中联系人管理的 5 项能力：
+
+1. **CRUD**：新增 / 编辑 / 删除 / 查询联系人。
+2. **VCF 导入导出**：vCard 3.0/4.0 的解析与生成；CSV 作为兼容路径。
+3. **联系人分组**：新建独立 `mail_contact_groups` 表，联系人按 `group_id` 归属单一分组。
+4. **正文邮箱交互**：
+   - 已匹配联系人 → hover 浮层显示信息 + 最近 3 封往来。
+   - 浮层 CTA：「写邮件」/「查看完整往来」/「编辑」/「加入通讯录」。
+   - 抽屉面板：跨账户搜索该邮箱的所有往来邮件。
+5. **按群组批量群发**（v1 增量）：
+   - 在 Compose / Reply / Forward 中，右侧可折叠「联系人选择器」面板。
+   - 按分组多选联系人，可一键选中整组，可多组同时选。
+   - 选中联系人合并到 To / Cc / Bcc 字段；发送走现有「一封多收件人」逻辑。
+
+**不做的（YAGNI）**：标签系统、跨设备同步、PBX/社交资料抓取、**逐封独立群发**、**变量模板**。
+
+## 数据模型
+
+### 新表 `mail_contact_groups`
+
+```sql
+CREATE TABLE IF NOT EXISTS mail_contact_groups (
+    id INTEGER PRIMARY KEY AUTOINCREMENT,
+    account_id INTEGER NOT NULL,
+    name TEXT NOT NULL,
+    color TEXT NOT NULL DEFAULT '#6366f1',
+    sort_order INTEGER NOT NULL DEFAULT 0,
+    created_at TEXT NOT NULL DEFAULT (datetime('now')),
+    UNIQUE(account_id, name),
+    FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
+);
+CREATE INDEX IF NOT EXISTS idx_mail_contact_groups_account_id
+    ON mail_contact_groups(account_id);
+```
+
+### 改造 `mail_contacts`
+
+- 删除 `group_name TEXT`。
+- 新增 `group_id INTEGER REFERENCES mail_contact_groups(id) ON DELETE SET NULL`。
+- 新增 `display_name TEXT NOT NULL DEFAULT ''`（VCF FN 字段）。
+- 新增唯一约束 `(account_id, email)`。
+- 新增索引 `idx_mail_contacts_email`。
+
+### Rust 类型
+
+```rust
+pub struct MailContactGroup {
+    pub id: Option<i64>,
+    pub account_id: i64,
+    pub name: String,
+    pub color: String,
+    pub sort_order: i32,
+}
+
+pub struct MailContact {
+    pub id: Option<i64>,
+    pub account_id: i64,
+    pub name: String,
+    pub email: String,
+    pub phone: String,
+    pub group_id: Option<i64>,
+    pub display_name: String,
+    pub notes: String,
+}
+
+pub struct ContactMailSummary {
+    pub contact_email: String,
+    pub total: i64,
+    pub messages: Vec<MailMessageSummary>,
+    pub accounts: Vec<i64>,
+}
+```
+
+## 迁移策略
+
+`db/ops.rs::run_migrations` 末尾追加 v1 → v2 迁移：
+
+1. 探测 `group_name` 列是否存在（`PRAGMA table_info`），不存在则视为已完成。
+2. `VACUUM INTO 'app.db.bak-v1'` 备份。
+3. 事务内执行：
+   - 创建 `mail_contact_groups` 表。
+   - 从 `mail_contacts` 抽取 distinct `(account_id, group_name)` 插入分组（颜色按 name 哈希分配到 12 色调色板）。
+   - 复制 `mail_contacts` 数据到 `mail_contacts_new`（含 `group_id` 回填子查询、`display_name` 默认 `name`）。
+   - DROP 旧表、RENAME 新表。
+   - 重建索引。
+4. 任一步骤失败 → `rm` 新文件并恢复 `app.db.bak-v1`。
+
+迁移幂等：通过 `PRAGMA user_version` 或新增 `app_meta` 表来记录已迁移版本号。
+
+## 后端 Tauri 命令
+
+注册到 `src-tauri/src/lib.rs::invoke_handler`：
+
+| 命令 | 入参 | 出参 | 错误前缀 |
+|---|---|---|---|
+| `list_contact_groups` | `account_id: i64` | `Vec<MailContactGroup>` | — |
+| `add_contact_group` | `group: MailContactGroup` | `i64` | `group_exists` |
+| `update_contact_group` | `group: MailContactGroup` | `()` | `group_exists` |
+| `delete_contact_group` | `id: i64` | `i64`（释放的联系人数） | — |
+| `list_contacts` | `account_id, group_id?: i64, q?: String` | `Vec<MailContact>` | — |
+| `add_contact` | `contact: MailContact` | `i64` | `contact_exists`, `validation:...` |
+| `update_contact` | `contact: MailContact` | `()` | `contact_exists` |
+| `delete_contact` | `id: i64` | `()` | — |
+| `find_contact_by_email` | `email: String, account_id?: i64` | `Option<MailContact>` | — |
+| `search_messages_by_email` | `email: String, account_ids?: Vec<i64>, limit: i64` | `ContactMailSummary` | — |
+
+`search_messages_by_email` SQL 草案：
+
+```sql
+SELECT id, account_id, ... FROM mail_messages
+ WHERE is_deleted = 0
+   AND (from_email LIKE ?1 COLLATE NOCASE
+        OR to_list LIKE ?1 COLLATE NOCASE
+        OR cc_list LIKE ?1 COLLATE NOCASE)
+   AND (account_id IN (SELECT value FROM json_each(?2))
+        OR ?2 IS NULL OR ?2 = '[]')
+ ORDER BY date_sort DESC LIMIT ?3
+```
+
+`to_list` / `cc_list` 在 Rust 端做收尾 `\b<email>\b` 二次过滤。
+
+## 前端架构
+
+### 新增文件
+
+- `src/lib/vcf.ts` — `parseVcf` / `serializeVcf`（纯前端，无依赖）。
+- `src/lib/contact-hover.ts` — `decorateEmailAddresses`（HTML 装饰 + 事件桥）。
+- `src/lib/email-regex.ts` — 共享 RFC 5322 简化版正则。
+- `src/components/ContactCard.tsx` — hover 浮层。
+- `src/components/ContactDetailPanel.tsx` — 右侧抽屉。
+- `src/components/ContactGroupBadge.tsx` — 分组色块。
+- `src/components/ContactImportDialog.tsx` — 导入预览。
+- `src/components/EmailContactLayer.tsx` — 监听 Shadow DOM 事件 + 渲染浮层。
+
+### 改动文件
+
+- `src/stores/mail-store.ts` — 新增 `MailContactGroup` 类型、`contactGroups` state、相关 actions。
+- `src/lib/mail-ipc.ts` — 新增 11 个 IPC 封装 + `MailError` 联合类型。
+- `src/components/ShadowDomEmail.tsx` — `sanitizeHtml` 之后调用 `decorateEmailAddresses`；输出根元素挂上 `data-ew-email-host` 标识。
+- `src/routes/email.tsx` — `ContactsModal` 重写为分组管理 + 联系人表。
+- `src/locales/{zh,en}.json` — 新增 keys。
+
+## 正文邮箱交互设计
+
+### 装饰流程
+
+1. Shadow DOM 内 HTML sanitize → `decorateEmailAddresses`。
+2. 处理两类节点：
+   - `<a href="mailto:...">`：加 `data-ew-email` 属性、包裹 `<span class="ew-email-chip">`。
+   - 文本节点中的裸 email：正则 `/\b[A-Z0-9._%+-]+@[A-Z0-9.-]+\.[A-Z]{2,}\gi` → replace 成 `<a class="ew-email-chip" data-ew-email="...">`。
+3. 已存在的 mailto 节点内的文本不二次处理。
+
+### 事件桥
+
+Shadow DOM 内部直接 `addEventListener`：
+
+```ts
+shadow.addEventListener('mouseover', e => {
+  const el = (e.target as Element).closest('[data-ew-email]')
+  if (!el) return
+  const r = el.getBoundingClientRect() // 注意：是 host viewport 坐标
+  document.dispatchEvent(new CustomEvent('ew:email-hover', {
+    detail: { email: el.getAttribute('data-ew-email'), rect: r }
+  }))
+})
+```
+
+外层 `<EmailContactLayer />` 用 `document.addEventListener` 监听三事件（hover / click / leave），定位浮层。
+
+### 浮层与抽屉
+
+- `ContactCard` 280px 宽，`position: fixed`。
+- 已匹配：彩色头像 / 姓名 / 邮箱 / 电话 / 分组 / 最近 3 封往来 mini 列表。
+- 未匹配：「不在通讯录」+ 「添加到通讯录」按钮（弹 addContact 表单预填）。
+- 抽屉 `ContactDetailPanel` 480px 宽，显示完整 `ContactMailSummary`；列表项点击 → 切到原邮件。
+
+## 错误处理
+
+| 场景 | 处理 |
+|---|---|
+| VCF 解析失败 | Dialog 顶部红色 banner 显示行号 |
+| 导入时 Tauri 断开 | 进度条中断 + 明细弹窗 |
+| 添加重复邮箱 | Inline 错误 + 跳转链接 |
+| 删除有联系人分组 | 二次确认「影响 N 个联系人（变未分组）」 |
+| 浮层查询失败 | 静默降级为「未在通讯录」卡片 |
+| 抽屉搜索失败 | 抽屉内显示「加载失败，点此重试」 |
+| sanitize 移除所有 email | 装饰后无 `data-ew-email` 节点，浮层永不出现 |
+
+## 测试
+
+**Rust 单测**（`db/ops.rs`）：
+
+- `insert_contact` 重复 email 返回 `UniqueViolation`。
+- 迁移在空表 / 有 group_name / 重复 group_name 三个 case 下正确。
+- `search_messages_by_email` 命中 / 不命中 / email 同时在 from + to 都能返回。
+
+**前端 Vitest**：
+
+- `src/lib/vcf.test.ts`：parse 6 case + serialize round-trip。
+- `src/lib/email-regex.test.ts`：转义、混合 case、Unicode 域名。
+- `src/lib/contact-hover.test.ts`：3 mailto + 4 裸 email + 1 `&#64;` → 7 个节点无重复。
+
+**手动 E2E**（记录在 `docs/contacts-e2e.md`）：
+
+1. 同步 5 封邮件 → hover email → 浮层出现。
+2. 导入 100 条 VCF，12 条重复被跳过。
+3. 新建分组 / 拖入联系人 / 数量 +N。
+4. 删除有联系人的分组 → 二次确认 → 联系人变未分组。
+
+## 实施切片
+
+1. **数据层**：schema 迁移 + 11 个命令 + Rust 单测。
+2. **VCF 工具 + 导入导出**：纯前端 lib + Dialog。
+3. **联系人 UI 重写**：分组管理 + 联系人表 + 多选。
+4. **正文邮箱交互**：decorate + ContactCard + EmailContactLayer。
+5. **抽屉 + 跨账户搜索 + 抛光 + 文档**。
+
+每个 PR 独立可跑通。
+
+## 兼容性 & 性能
+
+- 迁移前自动 `VACUUM INTO` 备份到 `app.db.bak-v1`。
+- 跨账户搜索走普通 `LIKE` + Rust 端二次过滤，1 万封邮件 <50ms。
+- `decorateEmailAddresses` 100KB HTML 内 <100ms；如成瓶颈改 `requestIdleCallback`。
+- 浮层查询加 `idx_mail_contacts_email` 后 200 条规模 <5ms。
+
+---
+
+# 增量设计：按群组批量群发（v1.1）
+
+## 范围
+
+- 新建 / 回复 / 转发邮件时均打开「联系人选择器」面板。
+- 选择器以分组为一级节点，联系人 / 全选按钮在节点内。
+- 选中后 → 合并到 To / Cc / Bcc 三个结构化芯片数组中。
+- 发送走现有「一封多收件人」逻辑（`SendMailRequest.to` 单字段逗号拼接）。
+- v1 **不**做：逐封独立群发、变量模板 (`{name}` 替换)、群发发送队列。
+
+## 状态模型
+
+### 邮件头结构化（ComposeDialog）
+
+替换现有 `to / cc / bcc` 三个 `string` state 为：
+
+```ts
+type RecipientKind = 'to' | 'cc' | 'bcc'
+
+interface MailRecipient {
+  email: string          // RFC 5322 验证后小写
+  name?: string          // 取自 MailContact.name / VCF FN
+  contactId?: number     // 来源追踪：用户从通讯录选的可反查编辑
+  kind: RecipientKind
+}
+
+const [recipients, setRecipients] = useState<MailRecipient[]>(composeData?.recipients ?? [])
+```
+
+`MailRecipient[]` 衍生为三个字符串（用于 SMTP 发送）：
+
+```ts
+function renderRecipientList(r: MailRecipient[], kind: RecipientKind): string {
+  return r.filter(x => x.kind === kind)
+          .map(x => x.name ? `${x.name} <${x.email}>` : x.email)
+          .join('; ')
+}
+```
+
+### 选择器面板 state
+
+```ts
+interface ContactPickerState {
+  open: boolean
+  selectedGroupIds: number[]   // 多选
+  search: string               // 面板内搜索（同时过滤分组与联系人）
+  activeTab: 'all' | 'starred' // 简化为 v1：仅 all，可后续扩展
+}
+```
+
+### 持久化
+
+仅会话内 state，关闭 ComposeDialog 即丢弃。无需落库。
+
+## 组件
+
+### `ContactPickerPanel`（新增，`src/components/ContactPickerPanel.tsx`）
+
+- 320px 宽，固定在 ComposeDialog 右侧（`flex` 布局主区 + 面板）。
+- 顶部：搜索框 + 折叠/展开图标按钮（折叠后变成主区右侧贴边「人」按钮 28×28）。
+- 中部：分组列表
+  - 每个分组：色块 + 名称 + 「全选」checkbox + (已选 N/M)。
+  - 展开后显示该分组下联系人（多选 checkbox + 头像 + 姓名 + 邮箱）。
+- 底部：固定操作条
+  - 三个主按钮「加入 To / 加入 Cc / 加入 Bcc」（点击后把当前面板勾选项合并到对应数组并清空面板选择）。
+  - 「取消」清空当前面板选择（不影响已加入 To/Cc/Bcc 的内容）。
+
+### `RecipientChip`（新增，`src/components/RecipientChip.tsx`）
+
+替换 `ContactAutocomplete` 内文本展示。Props:
+
+```ts
+interface RecipientChipProps {
+  recipient: MailRecipient
+  onRemove: () => void
+  onClick?: () => void  // 点 chip 打开邮箱编辑模式（v1 仅展示，不做内联编辑）
+}
+```
+
+UI：圆角胶囊 + 头像首字母 + `name <email>` 截断（> 200px 显示 tooltip），右侧 × 删除按钮。
+
+### `ComposeDialog` 改动
+
+- 替换 `to / cc / bcc` 三个 `useState<string>` 为 `recipients: MailRecipient[]`。
+- 三个「收件人行」改为：
+  - 顶部：当前 kind 的所有 chip（`flex flex-wrap gap-1.5`），溢出横向滚动。
+  - 行末：邮箱输入框（仍保留，作为手工输入入口）；回车 / 失焦后用 `parseAndAddEmail` 把输入按 `,` / `;` / 空白拆分，校验后 `setRecipients([...recipients, new])`。
+  - 行首：「Cc / Bcc」开关按钮（仅第一行 To 旁边显示）。
+- 拉入 `ContactPickerPanel` 放最右侧。
+- 发送时 `to/cc/bcc` 通过 `renderRecipientList` 派生。
+- Draft 序列化：`useComposeDraft` 接受新 `recipients` 数组，回写时反序列化（保持向后兼容旧 draft 仅含 `to` 字符串的格式）。
+
+### `ContactAutocomplete` 改动
+
+- 输入行为不变（仍可手工输入）。
+- 选中联系人后追加为 `MailRecipient` 而不是拼接字符串。
+- 拆分为更小的 `<RecipientInputRow>` 子组件。
+
+## 数据流
+
+```
+[面板勾选] → [加入 To] → setRecipients([...current, ...picked.map(toRecipient('to'))])
+[手工输入] → [解析 + 校验] → setRecipients(...)
+[chip ×]   → setRecipients(r.filter(x => x !== target))
+[chip 拖动] → setRecipients(r.map(x => x.email === dragged ? {...x, kind: target} : x))  // v1.1
+```
+
+## 校验
+
+- email 校验：与 `addContact` 共用 `validateEmail`（轻量正则）。
+- 重复合并：同一 `email` 不重复入栈；如已存在则弹 toast 提示。
+- 收件人为空时「发送」按钮 disabled。
+- 草稿恢复：`recipients` 数组缺失时降级为把旧 `to/cc/bcc` 字符串解析回结构化（容错）。
+
+## 与 Reply / Forward 集成
+
+`composeData` 当前字段（`src/stores/mail-store.ts:78-91`）需扩展：
+
+```ts
+interface ComposeData {
+  // 现有
+  to: string
+  cc: string
+  bcc: string
+  subject: string
+  body: string
+  inReplyTo?: string
+  references?: string[]
+  isReply?: boolean
+  isForward?: boolean
+  replyMessageId?: number
+  // 新增
+  recipients?: MailRecipient[]  // 优先于 to/cc/bcc 字符串
+}
+```
+
+ComposeDialog 初始化时若 `composeData.recipients` 存在则用之；否则从 `to/cc/bcc` 字符串解析。
+
+Reply / Forward 入口（`email.tsx:800+`）从原文解析出 `from_email` / `cc_list` 后构造 `MailRecipient[]`：
+
+```ts
+const replyRecipients: MailRecipient[] = parseAddressList(message.from_name, message.from_email)
+  .map(r => ({ ...r, kind: 'to' }))
+const ccRecipients: MailRecipient[] = parseAddressList('', messageBody?.cc_list ?? '')
+  .map(r => ({ ...r, kind: 'cc' }))
+openCompose({ recipients: [...replyRecipients, ...ccRecipients], isReply: true, ... })
+```
+
+`parseAddressList` 解析 `"张三 <a@x.com>; 李四 <b@x.com>"` → `MailRecipient[]`，与 Rust `mailparse` 行为对齐（不实现 RFC 完整语法，但能覆盖 99% 邮件头）。
+
+## i18n 新增 keys
+
+`src/locales/zh.json` / `en.json` 在 `contacts` 段补：
+
+```
+picker.title: 联系人选择器 / Contact Picker
+picker.search.placeholder: 搜索姓名或邮箱 / Search name or email
+picker.selectAll: 全选 / Select all
+picker.expand: 展开 / Expand
+picker.collapse: 折叠 / Collapse
+picker.addTo: 加入到 / Add to
+picker.addTo.to: 加入收件人 / Add to To
+picker.addTo.cc: 加入抄送 / Add to Cc
+picker.addTo.bcc: 加入密送 / Add to Bcc
+picker.empty: 当前账户还没有联系人 / No contacts in this account yet
+picker.selectedCount: 已选 N 人 / N selected
+picker.clearSelection: 清空选择 / Clear selection
+picker.groupBadge: N 人 / N contacts
+recipients.to: 收件人 / To
+recipients.cc: 抄送 / Cc
+recipients.bcc: 密送 / Bcc
+recipients.addPlaceholder: 输入邮箱后回车，多个用 ; 或 , 分隔 / Type email and press Enter, use ; or , to separate
+recipients.duplicate: 该邮箱已在列表中 / Email already in recipient list
+recipients.invalid: 邮箱格式不正确 / Invalid email format
+```
+
+## 兼容性
+
+- `SendMailRequest.to / cc / bcc` 字段保持不变；后端不需要改。
+- 草稿格式：`useComposeDraft` 扩展为同时存储 `recipients` JSON，读取时优先 `recipients`，缺失再降级。
+- `useMailStore` 的 `composeData` 类型扩展是**追加**字段，旧调用方无需改动。
+
+## 实施切片（v1.1）
+
+1. **类型 + 解析工具**：`MailRecipient` / `parseAddressList` / `validateEmail` / `renderRecipientList`（单元测试覆盖 8 个 case）。
+2. **RecipientChip + RecipientInputRow**：受控组件 + 草稿回写兼容。
+3. **ContactPickerPanel**：分组列表 + 搜索 + 多选 + 「加入 To/Cc/Bcc」操作。
+4. **ComposeDialog 改造**：状态迁移 + 面板接入 + 发送时序列化。
+5. **Reply/Forward 入口**：把 `from_email` / `cc_list` 解析为 `MailRecipient[]`。
+6. **i18n + 抛光**：8 个新 key、折叠/展开动效、empty state。
+
+预计 1.5 天工作量。
+
+## 测试
+
+**Vitest**（`src/lib/parseAddressList.test.ts`）：
+
+- 单地址 `"a@x.com"` → 1 个 recipient。
+- 带名字 `"张三 <a@x.com>"` → name 字段填充。
+- 多个分号分隔。
+- 多余空白。
+- 非法邮箱 → 抛错（被调用方 try/catch 转为 toast）。
+- 草稿降级：旧 `{ to: "a@x.com; b@x.com" }` 反序列化为 2 个 recipient。
+
+**手动 E2E**（追加到 `docs/contacts-e2e.md`）：
+
+1. 打开 ComposeDialog → 面板默认空。点击「人」按钮 → 面板展开。
+2. 选「同事」组 → 加入 To → 5 个 chip 出现。
+3. 选其中 2 人 → 加入 Cc → 2 个 chip 出现。
+4. 手工在 To 框输入 `foo@bar.com` + 回车 → 1 个 chip 出现。
+5. 关掉 Compose → 再打开同一草稿 → 所有 chip 恢复。
+6. Reply 邮件 → 原发件人 chip 自动出现在 To。
+
+## 风险 & 降级
+
+| 风险 | 降级 |
+|---|---|
+| 结构化迁移导致旧草稿不兼容 | 草稿读取时同时检测 `recipients` 与 `to/cc/bcc` 字符串，字符串缺失视为空 |
+| chip 拖动改 kind 实现复杂 | v1.1 不做拖动；UX 上允许「移除后从其他 kind 加」 |
+| 面板占用屏幕宽度 | 折叠到 28×28 按钮，hover 显示当前已选数量 tooltip |
+| 选择器选中 100+ 人时 SMTP 拒收 | 发送前检查收件人数量 > 50 时弹 warning；可继续发送由用户决定 |
