@@ -1,9 +1,10 @@
 /**
- * Sina Finance free API helpers.
+ * Sina / Tencent Finance free API helpers.
  *
- * All requests are plain HTTP GET — Tauri desktop has no CORS,
+ * All requests are plain HTTPS GET — Tauri desktop has no CORS,
  * so we can call them directly from the renderer.
  */
+import type { SinaQuote, KLinePoint } from "@easywork/shared"
 
 // ── Helpers ──
 
@@ -15,23 +16,6 @@ export function buildSinaKey(symbol: string, _marketType: string): string {
 }
 
 // ── Real-time quotes (batch) ──
-
-export interface SinaQuote {
-  symbol: string
-  name: string
-  price: number
-  open: number
-  close_prev: number
-  change: number
-  changePercent: number
-  high: number
-  low: number
-  volume: number   // 手
-  amount: number   // 元
-  bid: number
-  ask: number
-  // …extend if you need more fields
-}
 
 /**
  * Fetch real-time quotes from Tencent Finance API (free, no Referer required).
@@ -65,7 +49,10 @@ export async function fetchQuotes(
     if (!m) continue
     const sym = m[1]
     const parts = m[2].split("~")
-    if (parts.length < 35) continue
+    if (parts.length < 35) {
+      console.warn(`[fetchQuotes] short payload (${parts.length} fields) for ${sym}`)
+      continue
+    }
     const price = parseFloat(parts[3]) || 0
     const closePrev = parseFloat(parts[4]) || 0
     const change = +(price - closePrev).toFixed(4)
@@ -78,7 +65,7 @@ export async function fetchQuotes(
       name: parts[1],   // Chinese name decoded from GBK
       price,
       open: parseFloat(parts[5]) || 0,
-      close_prev: closePrev,
+      closePrev,
       change,
       changePercent,
       high: parseFloat(parts[33]) || 0,
@@ -93,15 +80,6 @@ export async function fetchQuotes(
 }
 
 // ── K-line data ──
-
-export interface KLinePoint {
-  date: string   // "2026-06-10"
-  open: number
-  close: number
-  high: number
-  low: number
-  volume: number
-}
 
 /**
  * Fetch K-line (candlestick) data.
@@ -199,7 +177,7 @@ async function fetchKLineTencent(
 
   const period = scale === 5 ? "5min" : "day"
   const url =
-    `http://ifzq.gtimg.cn/appstock/app/fqkline/get` +
+    `https://ifzq.gtimg.cn/appstock/app/fqkline/get` +
     `?param=${key},${period},,,${actualDatalen},qfq`
 
   let json: any
@@ -297,21 +275,4 @@ export function buildAnnouncementUrl(symbol: string, marketType: string): string
   const key = buildSinaKey(symbol, marketType)
   // Sina announcement page
   return `https://vip.stock.finance.sina.com.cn/corp/go.php/vCB_AllNewsStock/symbol/${key}.phtml`
-}
-
-/** Crypto quote (Sina) — e.g. "btcusd" */
-export async function fetchCryptoQuote(symbol: string): Promise<{
-  symbol: string; name: string; price: number; change: number; changePercent: number
-} | null> {
-  // Sina uses format like "btcusd" for crypto
-  const url = `https://hq.sinajs.cn/list=${symbol}`
-  const resp = await fetch(url)
-  const text = await resp.text()
-  const m = text.match(/hq_str_([^=]+)="([^"]*)"/)
-  if (!m || !m[2]) return null
-  const parts = m[2].split(",")
-  const price = parseFloat(parts[0]) || 0
-  const change = parseFloat(parts[1]) || 0
-  const changePercent = parseFloat(parts[2]) || 0
-  return { symbol: m[1], name: symbol.toUpperCase(), price, change, changePercent }
 }

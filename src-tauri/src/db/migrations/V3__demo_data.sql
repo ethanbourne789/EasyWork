@@ -87,13 +87,7 @@ INSERT INTO notes (title, content, folder_id, tags) VALUES
     ('购物清单', '1. 机械键盘\n2. 显示器支架\n3. USB Hub\n4. 笔记本内胆包', 3, '["shopping"]'),
     ('API 设计规范', 'RESTful 风格，使用 HTTP 状态码，分页使用 cursor 方式', 1, '["api","design"]');
 
--- ---------- stocks: 5 条 ----------
-INSERT INTO stocks (code, name, alert_type, target_price, is_enabled) VALUES
-    ('000001', '平安银行', 'price_above', 13.50, 1),
-    ('600036', '招商银行', 'price_below', 35.00, 1),
-    ('000858', '五粮液', 'pct_change_up', 5.0, 1),
-    ('600519', '贵州茅台', 'price_below', 1600.00, 1),
-    ('300750', '宁德时代', 'price_above', 220.00, 1);
+-- 股票模块（自选股 / 交易 / 预警）demo 数据见 V4__stock.sql
 
 -- ---------- sports_records: 6 条 ----------
 INSERT INTO sports_records (type, duration, distance, calories, date, note) VALUES
@@ -125,8 +119,8 @@ INSERT INTO logs (level, module, message, created_at) VALUES
     ('WARN', 'mail', '账户 zhangsan@example.com IMAP 连接超时，将在 30s 后重试', datetime('now', '-5 days')),
     ('ERROR', 'mail', '账户 subscribe@news.io 认证失败: Invalid credentials', datetime('now', '-5 days')),
     ('INFO', 'sync', '邮件同步完成: 新增 3 封，更新 5 封', datetime('now', '-4 days')),
-    ('DEBUG', 'stock', '刷新股票行情: 000001 当前价 12.85', datetime('now', '-3 days')),
-    ('WARN', 'stock', '股票 600519 价格跌破预警阈值 1650.00', datetime('now', '-2 days')),
+    ('DEBUG', 'stock', '刷新股票行情: 600519 当前价 1685.50', datetime('now', '-3 days')),
+    ('WARN', 'stock', '股票 600519 价格跌破预警阈值 1600.00', datetime('now', '-2 days')),
     ('INFO', 'task', '任务 #3 状态变更: todo → doing', datetime('now', '-2 days')),
     ('INFO', 'task', '任务 #5 标记为已完成', datetime('now', '-2 days')),
     ('INFO', 'app', '应用正常关闭', datetime('now'));

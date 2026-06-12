@@ -1,6 +1,6 @@
 use rusqlite::{params, Result};
 use crate::db::DbPool;
-use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact};
+use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact, MailContactGroup, ContactMailSummary};
 
 // =====================================================================
 // FTS5 NOTE (do not remove without testing):
@@ -237,78 +237,95 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
     let date_sort = normalize_date(&msg.date);
 
     // ── Dedup Layer 1: By remote_uid (IMAP UID) ──
-    let existing: Option<i64> = conn.query_row(
-        "SELECT id FROM mail_messages WHERE account_id = ?1 AND remote_uid = ?2",
+    // When the message already exists we only refresh server-controlled
+    // fields (subject, from, body, size, flags, date). User-controlled
+    // flags (is_read, is_starred) MUST be preserved — otherwise a manual
+    // sync would re-mark a message as unread after the user read it.
+    let existing: Option<(i64, bool, bool)> = conn.query_row(
+        "SELECT id, is_read, is_starred FROM mail_messages
+         WHERE account_id = ?1 AND remote_uid = ?2",
         params![msg.account_id, msg.remote_uid],
-        |row| row.get(0),
+        |row| Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get::<_, i32>(2)? != 0)),
     ).ok();
 
-    if let Some(id) = existing {
+    if let Some((id, prev_read, prev_starred)) = existing {
         conn.execute(
             "UPDATE mail_messages SET subject=?1, from_name=?2, from_email=?3, to_list=?4, cc_list=?5,
-             body_text=?6, body_html=?7, is_read=?8, is_starred=?9, has_attachment=?10, size=?11,
-             date=?12, date_sort=?13, updated_at=datetime('now') WHERE id=?14",
+             body_text=?6, body_html=?7, has_attachment=?8, size=?9,
+             date=?10, date_sort=?11, updated_at=datetime('now') WHERE id=?12",
             params![
                 msg.subject, msg.from_name, msg.from_email, msg.to_list, msg.cc_list,
-                msg.body_text, msg.body_html, msg.is_read as i32, msg.is_starred as i32,
-                msg.has_attachment as i32, msg.size, msg.date, date_sort, id
+                msg.body_text, msg.body_html, msg.has_attachment as i32, msg.size,
+                msg.date, date_sort, id
             ],
         )?;
-        log::debug!("Dedup by UID: updated existing message id={} (account={}, uid={})", id, msg.account_id, msg.remote_uid);
+        log::debug!(
+            "Dedup by UID: refreshed server fields for message id={} (account={}, uid={}); preserved is_read={} is_starred={}",
+            id, msg.account_id, msg.remote_uid, prev_read, prev_starred
+        );
         return Ok(id);
     }
 
     // ── Dedup Layer 2: By Message-ID ──
-    // Catches IMAP server UID reassignment (e.g. QQ Mail re-indexing)
+    // Catches IMAP server UID reassignment (e.g. QQ Mail re-indexing).
+    // Same preservation rule: keep local is_read / is_starred, only update
+    // server-controlled fields and the new remote_uid.
     if !msg.message_id_header.is_empty() {
-        let existing_by_msgid: Option<i64> = conn.query_row(
-            "SELECT id FROM mail_messages WHERE account_id = ?1 AND message_id_header = ?2",
+        let existing_by_msgid: Option<(i64, bool, bool)> = conn.query_row(
+            "SELECT id, is_read, is_starred FROM mail_messages
+             WHERE account_id = ?1 AND message_id_header = ?2",
             params![msg.account_id, msg.message_id_header],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get::<_, i32>(2)? != 0)),
         ).ok();
 
-        if let Some(id) = existing_by_msgid {
+        if let Some((id, prev_read, prev_starred)) = existing_by_msgid {
             // Same Message-ID, different UID → server re-assigned UID, update and reuse
             conn.execute(
                 "UPDATE mail_messages SET remote_uid=?1, subject=?2, from_name=?3, from_email=?4,
                  to_list=?5, cc_list=?6, date=?7, date_sort=?8, body_text=?9, body_html=?10,
-                 is_read=?11, is_starred=?12, has_attachment=?13, size=?14, thread_id=?15,
+                 has_attachment=?11, size=?12, thread_id=?13,
                  updated_at=datetime('now')
-                 WHERE id=?16",
+                 WHERE id=?14",
                 params![
                     msg.remote_uid, msg.subject, msg.from_name, msg.from_email,
                     msg.to_list, msg.cc_list, msg.date, date_sort, msg.body_text, msg.body_html,
-                    msg.is_read as i32, msg.is_starred as i32,
                     msg.has_attachment as i32, msg.size, msg.thread_id, id
                 ],
             )?;
             log::info!(
-                "Dedup by Message-ID: updated UID {}→{} for existing message id={} (account={})",
-                msg.remote_uid, msg.remote_uid, id, msg.account_id
+                "Dedup by Message-ID: updated UID for existing message id={} (account={}); preserved is_read={} is_starred={}",
+                id, msg.account_id, prev_read, prev_starred
             );
             return Ok(id);
         }
     }
 
     // ── Dedup Layer 3: By content hash (subject + from + date) ──
-    // Last-resort catch for emails with missing/invalid Message-ID
+    // Last-resort catch for emails with missing/invalid Message-ID.
+    // Also preserves user flags.
     {
         let hash = compute_content_hash(&msg.subject, &msg.from_email, &msg.date);
-        let existing_by_hash: Option<i64> = conn.query_row(
-            "SELECT m.id FROM mail_messages m
+        let existing_by_hash: Option<(i64, bool, bool)> = conn.query_row(
+            "SELECT m.id, m.is_read, m.is_starred FROM mail_messages m
              WHERE m.account_id = ?1 AND m.content_hash = ?2
              LIMIT 1",
             params![msg.account_id, hash],
-            |row| row.get(0),
+            |row| Ok((row.get(0)?, row.get::<_, i32>(1)? != 0, row.get::<_, i32>(2)? != 0)),
         ).ok();
 
-        if let Some(id) = existing_by_hash {
+        if let Some((id, prev_read, prev_starred)) = existing_by_hash {
             conn.execute(
-                "UPDATE mail_messages SET remote_uid=?1, thread_id=?2, date_sort=?3, updated_at=datetime('now')
-                 WHERE id=?4",
-                params![msg.remote_uid, msg.thread_id, date_sort, id],
+                "UPDATE mail_messages SET remote_uid=?1, thread_id=?2, date_sort=?3,
+                 has_attachment=?4, body_text=?5, body_html=?6, size=?7,
+                 updated_at=datetime('now')
+                 WHERE id=?8",
+                params![msg.remote_uid, msg.thread_id, date_sort,
+                    msg.has_attachment as i32, msg.body_text, msg.body_html, msg.size, id],
             )?;
-            log::info!("Dedup by content hash: updated UID for existing message id={} (account={})", id, msg.account_id);
+            log::info!(
+                "Dedup by content hash: refreshed server fields for id={} (account={}); preserved is_read={} is_starred={}",
+                id, msg.account_id, prev_read, prev_starred
+            );
             return Ok(id);
         }
     }
@@ -458,7 +475,8 @@ pub fn list_messages_multi(
 
     let sql = format!(
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
-                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                m.to_list, m.cc_list
          FROM mail_messages m
          {where_clause}
          ORDER BY m.date_sort DESC LIMIT ?{lim} OFFSET ?{off}",
@@ -487,6 +505,8 @@ pub fn list_messages_multi(
             size: row.get(10)?,
             thread_id: row.get(11)?,
             is_deleted: row.get(12)?,
+            to_list: row.get(13).unwrap_or_default(),
+            cc_list: row.get(14).unwrap_or_default(),
         })
     };
     let messages: Vec<MailMessageSummary> = stmt
@@ -570,7 +590,8 @@ pub fn search_messages_multi(
     params_vec.insert(0, rusqlite::types::Value::Text(cleaned));
     let sql = format!(
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
-                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                m.to_list, m.cc_list
          FROM mail_messages m
          JOIN mail_fts ON m.rowid = mail_fts.rowid
          WHERE mail_fts MATCH ?1
@@ -595,6 +616,8 @@ pub fn search_messages_multi(
             size: row.get(10)?,
             thread_id: row.get(11)?,
             is_deleted: row.get(12)?,
+            to_list: row.get(13).unwrap_or_default(),
+            cc_list: row.get(14).unwrap_or_default(),
         })
     };
     let messages: Vec<MailMessageSummary> = stmt
@@ -809,23 +832,39 @@ pub fn list_messages(
         // messages would still appear in the folder listing (the all-account branch
         // already had the filter; the folder branch was inconsistent).
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
-                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                m.to_list, m.cc_list
          FROM mail_messages m
          JOIN mail_message_folders mf ON m.id = mf.message_id
          WHERE m.account_id = ?1 AND mf.folder_id = ?2 AND m.is_deleted = 0
          ORDER BY m.date_sort DESC LIMIT ?3 OFFSET ?4"
     } else {
         "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                is_read, is_starred, has_attachment, size, thread_id, is_deleted
+                is_read, is_starred, has_attachment, size, thread_id, is_deleted,
+                to_list, cc_list
          FROM mail_messages WHERE account_id = ?1 AND is_deleted = 0
          ORDER BY date_sort DESC LIMIT ?2 OFFSET ?3"
     };
 
-    let total: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM mail_messages WHERE account_id = ?1 AND is_deleted = 0",
-        rusqlite::params![account_id],
-        |row| row.get(0),
-    ).unwrap_or(0);
+    // Bug fix: total must mirror the same filter as `query` — otherwise the
+    // frontend's `total` (used for pagination) disagrees with the `messages`
+    // array (filtered by folder), producing confusing page counts.
+    let total: i64 = if let Some(fid) = folder_id {
+        conn.query_row(
+            "SELECT COUNT(*)
+             FROM mail_messages m
+             JOIN mail_message_folders mf ON m.id = mf.message_id
+             WHERE m.account_id = ?1 AND mf.folder_id = ?2 AND m.is_deleted = 0",
+            params![account_id, fid],
+            |row| row.get(0),
+        ).unwrap_or(0)
+    } else {
+        conn.query_row(
+            "SELECT COUNT(*) FROM mail_messages WHERE account_id = ?1 AND is_deleted = 0",
+            rusqlite::params![account_id],
+            |row| row.get(0),
+        ).unwrap_or(0)
+    };
     log::info!(
         "list_messages: account_id={}, folder_id={:?}, page={}, page_size={}, total_in_db={}",
         account_id, folder_id, page, page_size, total
@@ -888,6 +927,8 @@ fn map_summary(row: &rusqlite::Row) -> Result<MailMessageSummary> {
         size: row.get(10)?,
         thread_id: row.get(11).unwrap_or_default(),
         is_deleted: row.get::<_, i32>(12).unwrap_or(0) != 0,
+        to_list: row.get(13).unwrap_or_default(),
+        cc_list: row.get(14).unwrap_or_default(),
     })
 }
 
@@ -1244,9 +1285,12 @@ pub fn get_unread_message_count(pool: &DbPool, account_id: i64) -> i64 {
 pub fn insert_contact(pool: &DbPool, contact: &MailContact) -> Result<i64> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute(
-        "INSERT INTO mail_contacts (account_id, name, email, phone, group_name, notes)
-         VALUES (?1,?2,?3,?4,?5,?6)",
-        params![contact.account_id, contact.name, contact.email, contact.phone, contact.group_name, contact.notes],
+        "INSERT INTO mail_contacts (account_id, name, email, phone, group_id, display_name, notes)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![
+            contact.account_id, contact.name, contact.email, contact.phone,
+            contact.group_id, contact.display_name, contact.notes
+        ],
     )?;
     Ok(conn.last_insert_rowid())
 }
@@ -1254,7 +1298,9 @@ pub fn insert_contact(pool: &DbPool, contact: &MailContact) -> Result<i64> {
 pub fn list_contacts(pool: &DbPool, account_id: i64) -> Result<Vec<MailContact>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, name, email, phone, group_name, notes FROM mail_contacts WHERE account_id = ?1"
+        "SELECT id, account_id, name, email, phone, group_id, display_name, notes
+         FROM mail_contacts WHERE account_id = ?1
+         ORDER BY name COLLATE NOCASE"
     )?;
     let contacts = stmt.query_map(params![account_id], |row| {
         Ok(MailContact {
@@ -1263,8 +1309,9 @@ pub fn list_contacts(pool: &DbPool, account_id: i64) -> Result<Vec<MailContact>>
             name: row.get(2)?,
             email: row.get(3)?,
             phone: row.get(4).unwrap_or_default(),
-            group_name: row.get(5).unwrap_or_default(),
-            notes: row.get(6).unwrap_or_default(),
+            group_id: row.get(5)?,
+            display_name: row.get(6).unwrap_or_default(),
+            notes: row.get(7).unwrap_or_default(),
         })
     })?.filter_map(|r| r.ok()).collect();
     Ok(contacts)
@@ -1279,10 +1326,208 @@ pub fn delete_contact(pool: &DbPool, id: i64) -> Result<()> {
 pub fn update_contact(pool: &DbPool, contact: &MailContact) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute(
-        "UPDATE mail_contacts SET name=?1, email=?2, phone=?3, group_name=?4, notes=?5 WHERE id=?6",
-        params![contact.name, contact.email, contact.phone, contact.group_name, contact.notes, contact.id],
+        "UPDATE mail_contacts SET name=?1, email=?2, phone=?3, group_id=?4, display_name=?5, notes=?6 WHERE id=?7",
+        params![
+            contact.name, contact.email, contact.phone, contact.group_id,
+            contact.display_name, contact.notes, contact.id
+        ],
     )?;
     Ok(())
+}
+
+// ---- v1.1 Contact Groups ----
+
+pub fn list_contact_groups(pool: &DbPool, account_id: i64) -> Result<Vec<MailContactGroup>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, name, color, sort_order
+         FROM mail_contact_groups WHERE account_id = ?1
+         ORDER BY sort_order ASC, name COLLATE NOCASE ASC"
+    )?;
+    let groups = stmt.query_map(params![account_id], |row| {
+        Ok(MailContactGroup {
+            id: Some(row.get(0)?),
+            account_id: row.get(1)?,
+            name: row.get(2)?,
+            color: row.get(3).unwrap_or_else(|_| "#6366f1".to_string()),
+            sort_order: row.get(4).unwrap_or(0),
+        })
+    })?.filter_map(|r| r.ok()).collect();
+    Ok(groups)
+}
+
+pub fn insert_contact_group(pool: &DbPool, group: &MailContactGroup) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "INSERT INTO mail_contact_groups (account_id, name, color, sort_order) VALUES (?1,?2,?3,?4)",
+        params![group.account_id, group.name, group.color, group.sort_order],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn update_contact_group(pool: &DbPool, group: &MailContactGroup) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE mail_contact_groups SET name=?1, color=?2, sort_order=?3 WHERE id=?4",
+        params![group.name, group.color, group.sort_order, group.id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_contact_group(pool: &DbPool, id: i64) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    // ON DELETE SET NULL 已经把相关联系人 group_id 置空；这里返回受影响行数（联系人变更数）
+    let affected = conn.execute(
+        "DELETE FROM mail_contact_groups WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(affected as i64)
+}
+
+pub fn find_contact_by_email(
+    pool: &DbPool,
+    email: &str,
+    account_id: Option<i64>,
+) -> Result<Option<MailContact>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let result = if let Some(aid) = account_id {
+        conn.query_row(
+            "SELECT id, account_id, name, email, phone, group_id, display_name, notes
+             FROM mail_contacts WHERE account_id = ?1 AND email = ?2 COLLATE NOCASE
+             LIMIT 1",
+            params![aid, email.to_lowercase()],
+            |row| Ok(MailContact {
+                id: Some(row.get(0)?),
+                account_id: row.get(1)?,
+                name: row.get(2)?,
+                email: row.get(3)?,
+                phone: row.get(4).unwrap_or_default(),
+                group_id: row.get(5)?,
+                display_name: row.get(6).unwrap_or_default(),
+                notes: row.get(7).unwrap_or_default(),
+            }),
+        ).ok()
+    } else {
+        conn.query_row(
+            "SELECT id, account_id, name, email, phone, group_id, display_name, notes
+             FROM mail_contacts WHERE email = ?1 COLLATE NOCASE
+             ORDER BY account_id ASC LIMIT 1",
+            params![email.to_lowercase()],
+            |row| Ok(MailContact {
+                id: Some(row.get(0)?),
+                account_id: row.get(1)?,
+                name: row.get(2)?,
+                email: row.get(3)?,
+                phone: row.get(4).unwrap_or_default(),
+                group_id: row.get(5)?,
+                display_name: row.get(6).unwrap_or_default(),
+                notes: row.get(7).unwrap_or_default(),
+            }),
+        ).ok()
+    };
+    Ok(result)
+}
+
+pub fn search_messages_by_email(
+    pool: &DbPool,
+    email: &str,
+    account_ids: Option<&[i64]>,
+    limit: i64,
+) -> Result<ContactMailSummary> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let lower = email.to_lowercase();
+    // 用 `from_email` 精确 + `to_list`/`cc_list` LIKE 双向匹配
+    // 二次过滤在 Rust 端（LIKE 太宽，recipients list 是 JSON 数组字符串）
+    let mut sql = String::from(
+        "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
+                is_read, is_starred, has_attachment, size, thread_id, is_deleted,
+                to_list, cc_list
+         FROM mail_messages
+         WHERE is_deleted = 0
+           AND (from_email = ?1 COLLATE NOCASE
+                OR to_list LIKE ?2 OR cc_list LIKE ?2)"
+    );
+    if let Some(ids) = account_ids {
+        if !ids.is_empty() {
+            let placeholders: Vec<String> = ids.iter().enumerate()
+                .map(|(i, _)| format!("?{}", i + 3))
+                .collect();
+            sql.push_str(&format!(" AND account_id IN ({})", placeholders.join(",")));
+        }
+    }
+    sql.push_str(" ORDER BY date_sort DESC LIMIT ?");
+    let limit_param_idx = if account_ids.map(|ids| !ids.is_empty()).unwrap_or(false) {
+        3 + account_ids.unwrap().len()
+    } else {
+        3
+    };
+    sql = sql.replacen("LIMIT ?", &format!("LIMIT ?{}", limit_param_idx), 1);
+
+    let mut params_dyn: Vec<Box<dyn rusqlite::types::ToSql>> = vec![
+        Box::new(lower.clone()),
+        Box::new(format!("%{}%", lower)),
+    ];
+    if let Some(ids) = account_ids {
+        for id in ids {
+            params_dyn.push(Box::new(*id));
+        }
+    }
+    params_dyn.push(Box::new(limit));
+    let refs: Vec<&dyn rusqlite::types::ToSql> = params_dyn.iter().map(|p| p.as_ref()).collect();
+
+    let mut stmt = conn.prepare(&sql)?;
+    let rows: Vec<MailMessageSummary> = stmt.query_map(refs.as_slice(), |row| {
+        Ok(MailMessageSummary {
+            id: row.get(0)?,
+            account_id: row.get(1)?,
+            remote_uid: row.get(2)?,
+            subject: row.get(3)?,
+            from_name: row.get(4)?,
+            from_email: row.get(5)?,
+            date: row.get(6)?,
+            is_read: row.get(7)?,
+            is_starred: row.get(8)?,
+            has_attachment: row.get(9)?,
+            size: row.get(10)?,
+            thread_id: row.get(11)?,
+            is_deleted: row.get(12)?,
+            to_list: row.get(13).unwrap_or_default(),
+            cc_list: row.get(14).unwrap_or_default(),
+        })
+    })?.filter_map(|r| r.ok()).collect();
+    drop(stmt);
+
+    // 二次过滤：to_list / cc_list 是 JSON 数组字符串，需要精确匹配 email
+    let filtered: Vec<MailMessageSummary> = rows.into_iter()
+        .filter(|m| m.from_email.eq_ignore_ascii_case(&lower)
+            || list_contains_email_simple(&m.to_list, &lower)
+            || list_contains_email_simple(&m.cc_list, &lower))
+        .collect();
+    let total = filtered.len() as i64;
+    let mut account_ids_out: Vec<i64> = filtered.iter().map(|m| m.account_id).collect();
+    account_ids_out.sort();
+    account_ids_out.dedup();
+
+    Ok(ContactMailSummary {
+        contact_email: lower,
+        total,
+        account_ids: account_ids_out,
+        messages: filtered,
+    })
+}
+
+/// 极简邮箱数组匹配：to_list/cc_list 在 Rust 端是
+/// `serde_json::to_string(&Vec<String>)` 序列化的 JSON 数组。
+/// 不解析完整 RFC 8259 — 只覆盖本项目产生的 `["a@x.com","b@x.com"]` 格式。
+/// 匹配规则：在数组字符串中查找 `"<email>"` 子串（带引号，避免 `@` 误匹配）。
+fn list_contains_email_simple(json_array: &str, email_lower: &str) -> bool {
+    if json_array.is_empty() || email_lower.is_empty() {
+        return false;
+    }
+    // serde_json 序列化 Vec<String> 形式为 ["a@x.com","b@x.com"]，
+    // 直接做 `"<email>"` 包含判断，N 封邮件场景 < 1ms。
+    let needle = format!("\"{}\"", email_lower);
+    json_array.to_lowercase().contains(&needle)
 }
 
 pub fn insert_message_folder(pool: &DbPool, message_id: i64, folder_id: i64) -> Result<()> {
@@ -1349,7 +1594,8 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
             // ordering across FTS5 and LIKE paths.
             let sql = format!(
                 "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                        is_read, is_starred, has_attachment, size, thread_id, is_deleted
+                        is_read, is_starred, has_attachment, size, thread_id, is_deleted,
+                        to_list, cc_list
                  FROM mail_messages
                  WHERE id IN ({}) AND account_id = ?{} AND is_deleted = 0
                  ORDER BY date_sort DESC LIMIT 100",
@@ -1381,7 +1627,8 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
     let search = format!("%{}%", query);
     let mut stmt = conn.prepare(
         "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                is_read, is_starred, has_attachment, size, thread_id, is_deleted
+                is_read, is_starred, has_attachment, size, thread_id, is_deleted,
+                to_list, cc_list
          FROM mail_messages
          WHERE account_id = ?1 AND is_deleted = 0
            AND (subject LIKE ?2 OR from_name LIKE ?2 OR from_email LIKE ?2 OR body_text LIKE ?2)
@@ -1390,6 +1637,292 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
     let messages: Vec<MailMessageSummary> = stmt.query_map(params![account_id, search], map_summary)?
         .filter_map(|r| r.ok()).collect();
     Ok(messages)
+}
+
+// =====================================================================
+// Tests (v1.1 Slice 1 — contacts data layer)
+// =====================================================================
+
+#[cfg(test)]
+mod contact_tests {
+    use super::*;
+    use crate::db::DbPool;
+    use r2d2::Pool;
+    use r2d2_sqlite::SqliteConnectionManager;
+
+    /// 创建共享的 in-memory DB 池，并跑过迁移。
+    /// 用 max_size=1 + block 模式保证单连接复用。
+    fn make_test_pool() -> DbPool {
+        let manager = SqliteConnectionManager::file(":memory:")
+            .with_init(|conn| {
+                conn.execute_batch(
+                    "PRAGMA foreign_keys = ON;
+                     PRAGMA busy_timeout = 5000;"
+                ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+                Ok(())
+            });
+        let pool = Pool::builder().max_size(1).build(manager).expect("build pool");
+        {
+            let conn = pool.get().expect("get conn");
+            crate::db::schema::create_tables(&conn).expect("create_tables");
+        }
+        pool
+    }
+
+    /// 准备一个 mail_accounts 行（FK 目标），返回 account_id
+    fn seed_account(pool: &DbPool) -> i64 {
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT INTO mail_accounts (email, imap_host, imap_port, smtp_host, smtp_port, username)
+             VALUES (?1, 'imap.test', 993, 'smtp.test', 465, ?1)",
+            params!["test@example.com"],
+        ).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    /// 模拟 v1 schema（用 group_name 字符串列）。返回建表 SQL。
+    /// 注意：故意不带 group_id 列。
+    const V1_CREATE_MAIL_CONTACTS: &str = "
+        CREATE TABLE mail_contacts_v1 (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            email TEXT NOT NULL,
+            phone TEXT NOT NULL DEFAULT '',
+            group_name TEXT NOT NULL DEFAULT '',
+            notes TEXT NOT NULL DEFAULT '',
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
+        )";
+
+    /// 用 v1 邮件表替换当前 v2 表，并插入测试数据。
+    /// 模拟「老用户从 v1 升级」的状态。
+    fn setup_v1_contacts(pool: &DbPool, account_id: i64, rows: &[(String, String, String)]) {
+        let conn = pool.get().unwrap();
+        conn.execute("DROP TABLE mail_contacts", []).unwrap();
+        conn.execute_batch(V1_CREATE_MAIL_CONTACTS).unwrap();
+        let mut stmt = conn.prepare(
+            "INSERT INTO mail_contacts_v1 (account_id, name, email, group_name) VALUES (?1, ?2, ?3, ?4)"
+        ).unwrap();
+        for (name, email, group) in rows {
+            stmt.execute(params![account_id, name, email, group]).unwrap();
+        }
+        // 把 v1 表重命名回 mail_contacts，让迁移逻辑可以处理它
+        conn.execute("ALTER TABLE mail_contacts_v1 RENAME TO mail_contacts", []).unwrap();
+        drop(stmt);
+        // 重建一下 account_id 索引（迁移代码也会重建）
+    }
+
+    // ---------- 迁移测试 ----------
+
+    #[test]
+    fn migration_empty_table_creates_v2_schema() {
+        // 全新 DB 跑 create_tables 一次：迁移对空表应该是幂等的。
+        let pool = make_test_pool();
+        let conn = pool.get().unwrap();
+        // v2 schema 应有 group_id 列
+        let has_group_id: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM pragma_table_info('mail_contacts') WHERE name = 'group_id'",
+                [],
+                |row| row.get(0),
+            ).unwrap();
+        assert_eq!(has_group_id, 1, "v2 schema should have group_id column");
+        // mail_contact_groups 表应存在
+        let has_groups_table: i64 = conn
+            .query_row(
+                "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='mail_contact_groups'",
+                [],
+                |row| row.get(0),
+            ).unwrap();
+        assert_eq!(has_groups_table, 1, "mail_contact_groups table should exist");
+    }
+
+    #[test]
+    fn migration_with_group_name_creates_groups() {
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        setup_v1_contacts(&pool, account_id, &[
+            ("Alice".to_string(), "alice@x.com".to_string(), "同事".to_string()),
+            ("Bob".to_string(), "bob@x.com".to_string(), "同事".to_string()),
+            ("Carol".to_string(), "carol@x.com".to_string(), "家人".to_string()),
+        ]);
+        // 触发迁移
+        {
+            let conn = pool.get().unwrap();
+            crate::db::schema::create_tables(&conn).expect("re-migrate");
+        }
+        // 验证：2 个分组被建出来
+        let conn = pool.get().unwrap();
+        let groups: Vec<(String,)> = conn.prepare(
+            "SELECT name FROM mail_contact_groups WHERE account_id = ?1 ORDER BY name"
+        ).unwrap()
+        .query_map(params![account_id], |row| Ok((row.get(0)?,)))
+        .unwrap().filter_map(|r| r.ok()).collect();
+        assert_eq!(groups.len(), 2, "should create 2 groups (同事/家人)");
+        assert_eq!(groups[0].0, "同事");
+        assert_eq!(groups[1].0, "家人");
+
+        // 验证：3 个联系人迁移后 group_id 正确
+        let mut stmt = conn.prepare(
+            "SELECT name, group_id FROM mail_contacts WHERE account_id = ?1 ORDER BY name"
+        ).unwrap();
+        let rows: Vec<(String, Option<i64>)> = stmt.query_map(params![account_id], |row| {
+            Ok((row.get::<_, String>(0)?, row.get::<_, Option<i64>>(1)?))
+        }).unwrap().filter_map(|r| r.ok()).collect();
+        assert_eq!(rows.len(), 3);
+        // Alice 和 Bob 都属于 "同事"，应该指向同一个 group_id
+        let alice_gid = rows.iter().find(|(n, _)| n == "Alice").unwrap().1;
+        let bob_gid = rows.iter().find(|(n, _)| n == "Bob").unwrap().1;
+        let carol_gid = rows.iter().find(|(n, _)| n == "Carol").unwrap().1;
+        assert_eq!(alice_gid, bob_gid, "Alice and Bob should share group_id");
+        assert_ne!(alice_gid, carol_gid, "Alice's group should differ from Carol's");
+        assert!(alice_gid.is_some() && carol_gid.is_some());
+    }
+
+    #[test]
+    fn migration_duplicate_group_name_collapses_to_one() {
+        // v1 数据：3 个联系人用相同的 group_name "X"
+        // 迁移后应该只创建 1 个分组
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        setup_v1_contacts(&pool, account_id, &[
+            ("A".to_string(), "a@x.com".to_string(), "X".to_string()),
+            ("B".to_string(), "b@x.com".to_string(), "X".to_string()),
+            ("C".to_string(), "c@x.com".to_string(), "X".to_string()),
+        ]);
+        {
+            let conn = pool.get().unwrap();
+            crate::db::schema::create_tables(&conn).expect("re-migrate");
+        }
+        let conn = pool.get().unwrap();
+        let group_count: i64 = conn.query_row(
+            "SELECT COUNT(*) FROM mail_contact_groups WHERE account_id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(group_count, 1, "duplicate group_name should collapse to 1 group");
+        // 3 个联系人应共享同一个 group_id
+        let distinct_gids: i64 = conn.query_row(
+            "SELECT COUNT(DISTINCT group_id) FROM mail_contacts WHERE account_id = ?1",
+            params![account_id],
+            |row| row.get(0),
+        ).unwrap();
+        assert_eq!(distinct_gids, 1, "all 3 contacts should share 1 group_id");
+    }
+
+    // ---------- insert_contact 唯一性 ----------
+
+    #[test]
+    fn insert_contact_duplicate_email_returns_error() {
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        let c1 = MailContact {
+            id: None, account_id, name: "Alice".to_string(),
+            email: "dup@x.com".to_string(), phone: "".to_string(),
+            group_id: None, display_name: "Alice".to_string(), notes: "".to_string(),
+        };
+        let id1 = insert_contact(&pool, &c1).expect("first insert");
+        assert!(id1 > 0);
+        // 第二次插入同 (account_id, email) → UniqueViolation
+        let c2 = MailContact {
+            id: None, account_id, name: "Alice2".to_string(),
+            email: "dup@x.com".to_string(), phone: "".to_string(),
+            group_id: None, display_name: "Alice2".to_string(), notes: "".to_string(),
+        };
+        let err = insert_contact(&pool, &c2).unwrap_err();
+        let msg = err.to_string();
+        assert!(
+            msg.contains("UNIQUE") || msg.contains("UniqueViolation"),
+            "expected UNIQUE violation, got: {}", msg
+        );
+    }
+
+    // ---------- search_messages_by_email ----------
+
+    /// 插入一封邮件 (from + to + cc)
+    fn insert_test_message(
+        pool: &DbPool,
+        account_id: i64,
+        from_email: &str,
+        to_list: &str,
+        cc_list: &str,
+    ) -> i64 {
+        let conn = pool.get().unwrap();
+        conn.execute(
+            "INSERT INTO mail_messages
+                (account_id, remote_uid, subject, from_name, from_email, to_list, cc_list,
+                 body_text, date, date_sort, is_read, is_starred, has_attachment, size, is_deleted)
+             VALUES (?1, 1, 'test', 'X', ?2, ?3, ?4, '', '2026-06-12 10:00:00', '2026-06-12 10:00:00', 0, 0, 0, 0, 0)",
+            params![account_id, from_email, to_list, cc_list],
+        ).unwrap();
+        conn.last_insert_rowid()
+    }
+
+    #[test]
+    fn search_messages_by_email_hit_on_from() {
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        insert_test_message(&pool, account_id, "alice@x.com", "[]", "[]");
+        let result = search_messages_by_email(&pool, "alice@x.com", None, 50).unwrap();
+        assert_eq!(result.total, 1);
+        assert_eq!(result.messages[0].from_email.to_lowercase(), "alice@x.com");
+    }
+
+    #[test]
+    fn search_messages_by_email_miss() {
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        insert_test_message(&pool, account_id, "alice@x.com", "[]", "[]");
+        let result = search_messages_by_email(&pool, "nobody@x.com", None, 50).unwrap();
+        assert_eq!(result.total, 0);
+        assert!(result.messages.is_empty());
+    }
+
+    #[test]
+    fn search_messages_by_email_hit_on_to_list() {
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        // alice 在 to_list 中，不在 from_email
+        insert_test_message(
+            &pool, account_id,
+            "bob@x.com",
+            r#"["alice@x.com","carol@x.com"]"#,
+            "[]",
+        );
+        let result = search_messages_by_email(&pool, "alice@x.com", None, 50).unwrap();
+        assert_eq!(result.total, 1, "should find message via to_list");
+    }
+
+    #[test]
+    fn search_messages_by_email_hit_on_both_from_and_to() {
+        // 同一封邮件 alice 同时在 from 和 to（reply-all 场景）
+        // 搜索 alice 应该只返回 1 条
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        insert_test_message(
+            &pool, account_id,
+            "alice@x.com",
+            r#"["alice@x.com","bob@x.com"]"#,
+            "[]",
+        );
+        let result = search_messages_by_email(&pool, "alice@x.com", None, 50).unwrap();
+        assert_eq!(result.total, 1, "from+to duplicate should collapse to 1 message");
+    }
+
+    #[test]
+    fn search_messages_by_email_hit_on_cc_list() {
+        let pool = make_test_pool();
+        let account_id = seed_account(&pool);
+        insert_test_message(
+            &pool, account_id,
+            "bob@x.com",
+            r#"["carol@x.com"]"#,
+            r#"["alice@x.com"]"#,
+        );
+        let result = search_messages_by_email(&pool, "alice@x.com", None, 50).unwrap();
+        assert_eq!(result.total, 1, "should find message via cc_list");
+    }
 }
 
 // ---- Flag Reconciliation ----

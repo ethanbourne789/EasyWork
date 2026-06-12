@@ -103,15 +103,7 @@ CREATE TABLE IF NOT EXISTS note_folders (
     parent_id INTEGER
 );
 
--- 股票关注表
-CREATE TABLE IF NOT EXISTS stocks (
-    id           INTEGER PRIMARY KEY AUTOINCREMENT,
-    code         TEXT    UNIQUE NOT NULL,
-    name         TEXT    NOT NULL,
-    alert_type   TEXT,
-    target_price REAL,
-    is_enabled   INTEGER DEFAULT 1
-);
+-- 股票模块（自选股 / 交易 / 预警）见 V4__stock.sql
 
 -- 运动记录表
 CREATE TABLE IF NOT EXISTS sports_records (
