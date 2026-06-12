@@ -206,6 +206,62 @@ pub fn parse_raw_message(
     })
 }
 
+/// Parse only email headers — no body text, no HTML, no attachments.
+///
+/// Use this for first sync or bulk operations where only metadata is needed.
+/// The returned `ParsedMessage` will have empty `body_text`, `body_html`,
+/// and `attachments` fields, which is significantly faster than full parsing.
+pub fn parse_header_only(
+    raw: &[u8],
+) -> Result<ParsedMessage, Box<dyn std::error::Error + Send + Sync>> {
+    use mailparse::parse_mail;
+
+    // Parse headers only — we use a lightweight approach: parse_mail still
+    // does a full MIME parse, but we simply discard body/attachment data.
+    let parsed = parse_mail(raw)?;
+    let headers = &parsed.headers;
+
+    let subject = header_value(headers, "subject");
+    let from = header_value(headers, "from");
+    let (from_name, from_email) = parse_addr(&from);
+    let date = normalize_rfc2822_date(&header_value(headers, "date"));
+    let message_id = header_value(headers, "message-id");
+    let in_reply_to = header_value(headers, "in-reply-to");
+    let references: Vec<String> = header_value(headers, "references")
+        .split_whitespace()
+        .map(|s| s.to_string())
+        .filter(|s| !s.is_empty())
+        .collect();
+    let to_raw = header_value(headers, "to");
+    let cc_raw = header_value(headers, "cc");
+    let to_list = parse_addr_list(&to_raw);
+    let cc_list = parse_addr_list(&cc_raw);
+
+    log::debug!(
+        "parse_header_only: subj='{}' from='{}' date='{}' {:?}→{:?}",
+        subject.chars().take(40).collect::<String>(),
+        from_email,
+        date,
+        to_list,
+        cc_list,
+    );
+
+    Ok(ParsedMessage {
+        subject,
+        from_name,
+        from_email,
+        to_list,
+        cc_list,
+        date,
+        body_text: String::new(),    // skipped
+        body_html: String::new(),    // skipped
+        message_id,
+        attachments: Vec::new(),     // skipped
+        in_reply_to,
+        references,
+    })
+}
+
 fn parse_addr(addr: &str) -> (String, String) {
     if let Some(start) = addr.find('<') {
         if let Some(end) = addr.find('>') {
@@ -283,4 +339,39 @@ fn extract_body(parsed: &ParsedMail) -> (String, String, Vec<ParsedAttachment>) 
     }
 
     (text, html, attachments)
+}
+
+/// Extract a specific attachment by filename from raw MIME message bytes.
+/// Returns the raw binary content of the matching attachment.
+pub fn extract_attachment_by_name(
+    raw: &[u8],
+    target_filename: &str,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    let parsed = parse_mail(raw)?;
+    let (_, _, attachments) = extract_body(&parsed);
+
+    let normalized_target = target_filename.trim().to_lowercase();
+    for att in &attachments {
+        if att.filename.trim().to_lowercase() == normalized_target {
+            log::info!(
+                "extract_attachment_by_name: found '{}' ({} bytes)",
+                att.filename, att.size,
+            );
+            return Ok(att.content.clone());
+        }
+    }
+
+    // Fallback: try matching by sanitized filenames
+    for att in &attachments {
+        let safe = sanitize_filename::sanitize(&att.filename);
+        if safe.trim().to_lowercase() == normalized_target {
+            log::info!(
+                "extract_attachment_by_name: matched via sanitize '{}' ({} bytes)",
+                att.filename, att.size,
+            );
+            return Ok(att.content.clone());
+        }
+    }
+
+    Err(format!("附件 '{}' 在邮件中未找到", target_filename).into())
 }

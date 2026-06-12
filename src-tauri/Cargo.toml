@@ -23,7 +23,7 @@ tauri-build = { version = "2.6.2", features = [] }
 # Optional: "desktop-native-tls" switches IMAP TLS to native-tls (schannel on
 # Windows, Security.framework on macOS, OpenSSL on Linux). Enable this only
 # if you need the OS trust store for corporate/internal PKI scenarios.
-default = []
+default = ["desktop-native-tls"]
 
 # native-tls with vendored OpenSSL (desktop-only; requires Perl+make for
 # cross-compilation to Android)

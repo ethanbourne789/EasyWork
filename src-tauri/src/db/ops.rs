@@ -505,6 +505,32 @@ pub fn list_messages(
     Ok(messages)
 }
 
+/// Count total messages for pagination. Supports optional folder filter.
+pub fn count_messages(
+    pool: &DbPool,
+    account_id: i64,
+    folder_id: Option<i64>,
+) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let total = if let Some(fid) = folder_id {
+        conn.query_row(
+            "SELECT COUNT(*)
+             FROM mail_messages m
+             JOIN mail_message_folders mf ON m.id = mf.message_id
+             WHERE m.account_id = ?1 AND mf.folder_id = ?2 AND m.is_deleted = 0",
+            params![account_id, fid],
+            |row| row.get(0),
+        )?
+    } else {
+        conn.query_row(
+            "SELECT COUNT(*) FROM mail_messages WHERE account_id = ?1 AND is_deleted = 0",
+            params![account_id],
+            |row| row.get(0),
+        )?
+    };
+    Ok(total)
+}
+
 fn map_summary(row: &rusqlite::Row) -> Result<MailMessageSummary> {
     Ok(MailMessageSummary {
         id: row.get(0)?,
@@ -812,6 +838,16 @@ pub fn insert_attachment(
     Ok(conn.last_insert_rowid())
 }
 
+/// Update the local_path of an attachment (used when a lazy attachment is manually downloaded).
+pub fn update_attachment_path(pool: &DbPool, attachment_id: i64, local_path: &str) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE mail_attachments SET local_path = ?1 WHERE id = ?2",
+        params![local_path, attachment_id],
+    )?;
+    Ok(())
+}
+
 pub fn list_attachments(pool: &DbPool, message_id: i64) -> Result<Vec<(i64, String, String, i64, String, String)>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare(
@@ -931,6 +967,18 @@ pub fn get_existing_remote_uids(
         .filter_map(|r| r.ok())
         .collect();
     Ok(existing)
+}
+
+/// Count how many messages an account already has in the DB.
+/// Used to detect first sync vs incremental sync.
+pub fn count_account_messages(pool: &DbPool, account_id: i64) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let count: i64 = conn.query_row(
+        "SELECT COUNT(*) FROM mail_messages WHERE account_id = ?1",
+        params![account_id],
+        |row| row.get(0),
+    )?;
+    Ok(count)
 }
 
 /// Search messages by keyword using FTS5 with LIKE fallback.

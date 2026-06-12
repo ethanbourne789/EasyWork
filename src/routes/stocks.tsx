@@ -12,6 +12,7 @@ import { Label } from "@/components/ui/label"
 import * as stockIpc from "@/lib/stock-ipc"
 import * as stockService from "@/lib/stock-service"
 import type { SinaQuote, KLinePoint } from "@/lib/stock-service"
+import { buildSinaKey } from "@/lib/stock-service"
 
 // ==================== Types ====================
 
@@ -42,7 +43,7 @@ export interface StockPosition {
   avg_cost: number
 }
 
-type ChartType = "intraday" | "daily" | "weekly"
+type ChartType = "intraday" | "daily" | "weekly" | "monthly"
 type ViewMode = "tile" | "list"
 
 const chartTypeOptions: { label: string; value: ChartType }[] = [
@@ -57,6 +58,7 @@ function getScale(chartType: ChartType): number | string {
     case "intraday": return 5       // 5-min bars for intraday
     case "daily":    return 240     // daily
     case "weekly":   return "week"
+    case "monthly":  return "month"
   }
 }
 
@@ -99,12 +101,26 @@ function KLineChart({
   const chartInst = useRef<any>(null)
   const [kData, setKData] = useState<KLinePoint[]>([])
   const [scale, setScale] = useState<number | string>(defaultScale ?? 240)
+  const [loading, setLoading] = useState(false)
+  const [error, setError] = useState<string | null>(null)
 
   useEffect(() => {
     let cancelled = false
+    setLoading(true)
+    setError(null)
+    setKData([])
     ;(async () => {
-      const data = await stockService.fetchKLine(symbol, marketType, scale as any, 120)
-      if (!cancelled) setKData(data)
+      try {
+        const data = await stockService.fetchKLine(symbol, marketType, scale as any, 120)
+        if (!cancelled) {
+          setKData(data)
+          if (data.length === 0) setError("暂无数据")
+        }
+      } catch (e) {
+        if (!cancelled) setError("数据加载失败")
+      } finally {
+        if (!cancelled) setLoading(false)
+      }
     })()
     return () => { cancelled = true }
   }, [symbol, marketType, scale])
@@ -112,6 +128,7 @@ function KLineChart({
   useEffect(() => {
     if (kData.length === 0 || !chartRef.current) return
     let cancelled = false
+    setError(null)
     import("echarts").then((echarts) => {
       if (cancelled) return
       if (chartInst.current) chartInst.current.dispose()
@@ -186,6 +203,8 @@ function KLineChart({
           ],
         })
       }
+    }).catch(() => {
+      if (!cancelled) setError("图表组件加载失败")
     })
     return () => {
       cancelled = true
@@ -219,7 +238,50 @@ function KLineChart({
           </button>
         ))}
       </div>
-      <div ref={chartRef} style={{ width: "100%", height: 380 }} />
+      {/* Chart area with states */}
+      {loading && (
+        <div className="flex items-center justify-center" style={{ width: "100%", height: 380 }}>
+          <div className="flex flex-col items-center gap-2">
+            <svg className="animate-spin h-6 w-6 text-primary-500" xmlns="http://www.w3.org/2000/svg" fill="none" viewBox="0 0 24 24">
+              <circle className="opacity-25" cx="12" cy="12" r="10" stroke="currentColor" strokeWidth="4" />
+              <path className="opacity-75" fill="currentColor" d="M4 12a8 8 0 018-8V0C5.373 0 0 5.373 0 12h4z" />
+            </svg>
+            <span className="text-sm text-surface-400">加载中…</span>
+          </div>
+        </div>
+      )}
+      {!loading && error && (
+        <div className="flex items-center justify-center" style={{ width: "100%", height: 380 }}>
+          <div className="flex flex-col items-center gap-2">
+            <span className="text-sm text-amber-600">{error}</span>
+            <button
+              onClick={() => {
+                setError(null)
+                setScale(s => s) // trigger re-fetch by forcing re-render
+                // Actually trigger re-fetch
+                setKData([])
+                setLoading(true)
+                setTimeout(() => {
+                  stockService.fetchKLine(symbol, marketType, scale as any, 120).then(data => {
+                    setKData(data)
+                    if (data.length === 0) setError("暂无数据")
+                    setLoading(false)
+                  }).catch(() => {
+                    setError("数据加载失败")
+                    setLoading(false)
+                  })
+                }, 0)
+              }}
+              className="text-xs px-3 py-1 rounded bg-primary-500 text-white hover:bg-primary-600"
+            >
+              重试
+            </button>
+          </div>
+        </div>
+      )}
+      {!loading && !error && kData.length > 0 && (
+        <div ref={chartRef} style={{ width: "100%", height: 380 }} />
+      )}
     </div>
   )
 }
@@ -255,7 +317,7 @@ function QuotesTab() {
         { symbol: symbol.trim(), market_type: market },
       ])
       const found = quotes.find(
-        (q) => q.symbol.endsWith(symbol.trim()) || q.symbol === symbol.trim()
+        (q) => q.symbol === buildSinaKey(symbol.trim(), market) || q.symbol === symbol.trim()
       )
       if (found) {
         setQuotePreview(found)
@@ -302,7 +364,7 @@ function QuotesTab() {
         const quotes = await stockService.fetchQuotes(symbols)
         setWatchlist((prev) =>
           prev.map((w) => {
-            const q = quotes.find((q) => q.symbol.endsWith(w.symbol) || q.symbol === w.symbol)
+            const q = quotes.find((q) => q.symbol === buildSinaKey(w.symbol, w.market_type) || q.symbol === w.symbol)
             return q ? { ...w, quote: q } : w
           }),
         )
@@ -687,7 +749,7 @@ function PositionsTab() {
         const quotes = await stockService.fetchQuotes(symbols)
         setPositions((prev) =>
           prev.map((p) => {
-            const q = quotes.find((q) => q.symbol.endsWith(p.symbol) || q.symbol === p.symbol)
+            const q = quotes.find((q) => q.symbol === buildSinaKey(p.symbol, p.market_type) || q.symbol === p.symbol)
             return q ? { ...p, quote: q } : p
           }),
         )
@@ -912,7 +974,7 @@ function StocksPage() {
       <div>
         <h1 className="text-2xl font-bold tracking-tight dark:text-white">股票</h1>
         <p className="text-surface-500 text-sm mt-1">
-          自选股行情追踪 — 数据来源：腾讯财经（免费）
+          自选股行情追踪 — 实时行情：腾讯财经（免费）｜K线数据：新浪财经
         </p>
       </div>
 

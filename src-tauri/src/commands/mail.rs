@@ -4,6 +4,11 @@ use crate::db::DbPool;
 use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact};
 use base64::Engine;
 
+/// Maximum attachment size (5MB) for auto-download during sync.
+/// Attachments larger than this are recorded in the DB with an empty
+/// local_path and must be manually downloaded by the user on demand.
+const MAX_AUTO_ATTACHMENT_SIZE: i64 = 5 * 1024 * 1024;
+
 #[derive(serde::Serialize, serde::Deserialize)]
 pub struct SyncResult {
     pub success: bool,
@@ -215,6 +220,14 @@ pub async fn folder_unread_counts(
 
 // ==================== Messages ====================
 
+#[derive(serde::Serialize, serde::Deserialize)]
+pub struct FetchMessagesResult {
+    pub messages: Vec<MailMessageSummary>,
+    pub total: i64,
+    pub page: i64,
+    pub page_size: i64,
+}
+
 #[tauri::command]
 pub async fn fetch_messages(
     pool: State<'_, DbPool>,
@@ -222,11 +235,18 @@ pub async fn fetch_messages(
     folder_id: Option<i64>,
     page: Option<i64>,
     page_size: Option<i64>,
-) -> Result<Vec<MailMessageSummary>, String> {
+) -> Result<FetchMessagesResult, String> {
     let page = page.unwrap_or(1);
-    let page_size = page_size.unwrap_or(50);
-    ops::list_messages(&pool, account_id, folder_id, page, page_size)
-        .map_err(|e| e.to_string())
+    let page_size = page_size.unwrap_or(30);
+    let messages = ops::list_messages(&pool, account_id, folder_id, page, page_size)
+        .map_err(|e| e.to_string())?;
+    let total = ops::count_messages(&pool, account_id, folder_id)
+        .map_err(|e| e.to_string())?;
+    log::info!(
+        "fetch_messages: account_id={}, folder_id={:?}, page={}, page_size={}, returned={}, total={}",
+        account_id, folder_id, page, page_size, messages.len(), total,
+    );
+    Ok(FetchMessagesResult { messages, total, page, page_size })
 }
 
 #[tauri::command]
@@ -593,6 +613,88 @@ pub async fn list_message_attachments(
     }).collect())
 }
 
+/// Manually download a lazy attachment (one that was not auto-downloaded during sync
+/// because its size exceeded MAX_AUTO_ATTACHMENT_SIZE).
+///
+/// Flow:
+///   1. Look up the attachment record by ID to get message_id and filename.
+///   2. Look up the message's remote info (account_id, remote_uid).
+///   3. Connect to the IMAP server and fetch the full raw message.
+///   4. Parse the raw message and extract the matching attachment by filename.
+///   5. Save the attachment to disk and update the DB record's local_path.
+///   6. Return the local_path so the frontend can open it immediately.
+#[tauri::command]
+pub async fn download_attachment(
+    pool: State<'_, DbPool>,
+    attachment_id: i64,
+    message_id: i64,
+) -> Result<String, String> {
+    let trace_id = crate::logging::trace_id();
+    log::info!("[{trace_id}] download_attachment START att_id={} msg_id={}", attachment_id, message_id);
+
+    // 1. Get attachment metadata from DB
+    let all_atts = ops::list_attachments(&pool, message_id).map_err(|e| e.to_string())?;
+    let (att_filename, _att_content_type, att_size) = all_atts
+        .into_iter()
+        .find(|(id, _, _, _, _, _)| *id == attachment_id)
+        .map(|(_, filename, content_type, size, _, _)| (filename, content_type, size))
+        .ok_or_else(|| format!("Attachment {} not found for message {}", attachment_id, message_id))?;
+
+    // 2. Get message remote info
+    let (account_id, remote_uid, _subject, folder_remote_id) = ops::get_message_remote_info(&pool, message_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Message {} not found", message_id))?;
+
+    // 3. Get account credentials
+    let (account, password) = ops::get_account_with_password(&pool, account_id)
+        .map_err(|e| e.to_string())?
+        .ok_or_else(|| format!("Account {} not found", account_id))?;
+
+    log::info!(
+        "[{trace_id}] download_attachment: msg remote_uid={}, folder='{}', filename='{}' ({} bytes)",
+        remote_uid, folder_remote_id, att_filename, att_size,
+    );
+
+    // 4. Connect to IMAP and fetch the full message
+    let mut session = mail::imap::connect(
+        &account.imap_host, account.imap_port, &account.email, &password,
+    ).await.map_err(|e| format!("IMAP连接失败: {}", e))?;
+
+    let _ = mail::imap::select_folder(&mut session, &folder_remote_id).await
+        .map_err(|e| format!("选择文件夹失败: {}", e))?;
+
+    let raw = mail::imap::fetch_message_raw_by_uid(&mut session, remote_uid as u32).await
+        .map_err(|e| format!("拉取邮件失败: {}", e))?;
+
+    let _ = mail::imap::logout(session).await;
+
+    // 5. Parse and extract the specific attachment
+    let extracted = mail::parser::extract_attachment_by_name(&raw, &att_filename)
+        .map_err(|e| format!("提取附件失败: {}", e))?;
+
+    // 6. Save to disk
+    let base_dir = ops::get_config(&pool, "app_data_dir")
+        .map(std::path::PathBuf::from)
+        .unwrap_or_else(|| std::env::current_dir()
+            .unwrap_or_else(|_| std::path::PathBuf::from(".")));
+    let attach_dir = base_dir.join("mail_attachments").join(message_id.to_string());
+    let _ = std::fs::create_dir_all(&attach_dir);
+    let safe_name = sanitize_filename::sanitize(&att_filename);
+    let local_path = attach_dir.join(&safe_name);
+    std::fs::write(&local_path, &extracted).map_err(|e| format!("写入附件文件失败: {}", e))?;
+
+    // 7. Update DB record
+    ops::update_attachment_path(&pool, attachment_id, &local_path.to_string_lossy())
+        .map_err(|e| format!("更新附件记录失败: {}", e))?;
+
+    log::info!(
+        "[{trace_id}] download_attachment OK: att_id={} saved to {} ({} bytes)",
+        attachment_id, local_path.display(), extracted.len(),
+    );
+
+    Ok(local_path.to_string_lossy().to_string())
+}
+
 // ==================== File Operations ====================
 
 #[tauri::command]
@@ -742,6 +844,15 @@ pub async fn sync_account_impl(
 
     log::info!("Synced {} folders for account {}", folder_db_ids.len(), account_id);
 
+    // ── Detect first sync: if no messages exist, use header-only mode ──
+    let existing_count = ops::count_account_messages(&pool, account_id)
+        .map_err(|e| format!("检查账户邮件数失败: {e}"))?;
+    let is_first_sync = existing_count == 0;
+    log::info!(
+        "Account {}: {} existing messages → first_sync={}",
+        account_id, existing_count, is_first_sync,
+    );
+
     let mut total_new = 0usize;
     let mut total_all = 0usize;
     let mut total_parsed = 0usize;
@@ -772,92 +883,185 @@ pub async fn sync_account_impl(
         for chunk in remote_uids.chunks(batch_size) {
             total_all += chunk.len();
 
-            let raw_msgs = match mail::imap::fetch_messages_raw_batch(&mut session, chunk).await {
-                Ok(msgs) => {
-                    log::info!(
-                        "Folder '{}': fetched {}/{} bodies, about to parse+store",
-                        folder_name, msgs.len(), chunk.len()
-                    );
-                    msgs
-                }
-                Err(e) => {
-                    log::warn!("Failed to fetch batch in '{}': {}", folder_name, e);
-                    continue;
-                }
-            };
-
-            let chunk_uids: Vec<i64> = raw_msgs.iter().map(|(uid, _)| *uid as i64).collect();
-            let existing_uids = ops::get_existing_remote_uids(&pool, account_id, &chunk_uids)
-                .unwrap_or_default();
-
-            for (uid, raw) in raw_msgs {
-                if existing_uids.contains(&(uid as i64)) {
-                    continue;
-                }
-
-                match mail::parser::parse_raw_message(&raw) {
-                    Ok(parsed) => {
-                        let thread_id = mail::thread::compute_thread_id(
-                            &parsed.message_id,
-                            &parsed.in_reply_to,
-                            &parsed.references,
-                            &parsed.subject,
+            if is_first_sync {
+                // ── First-sync path: headers only, no body/attachments ──
+                let header_msgs = match mail::imap::fetch_messages_headers_batch(&mut session, chunk).await {
+                    Ok(msgs) => {
+                        log::info!(
+                            "Folder '{}': fetched {}/{} headers (first sync, no bodies)",
+                            folder_name, msgs.len(), chunk.len()
                         );
-
-                        let msg = MailMessage {
-                            id: None,
-                            account_id,
-                            remote_uid: uid as i64,
-                            message_id_header: parsed.message_id,
-                            subject: if parsed.subject.is_empty() { "(无主题)".to_string() } else { parsed.subject },
-                            from_name: parsed.from_name,
-                            from_email: parsed.from_email,
-                            to_list: serde_json::to_string(&parsed.to_list).unwrap_or_else(|_| "[]".into()),
-                            cc_list: serde_json::to_string(&parsed.cc_list).unwrap_or_else(|_| "[]".into()),
-                            date: parsed.date,
-                            body_text: parsed.body_text.clone(),
-                            body_html: parsed.body_html,
-                            is_read: false,
-                            is_starred: false,
-                            has_attachment: !parsed.attachments.is_empty(),
-                            size: raw.len() as i64,
-                            folder_ids: vec![*folder_db_id],
-                            thread_id,
-                        };
-                        total_parsed += 1;
-
-                        match ops::insert_message(&pool, &msg) {
-                            Ok(msg_id) => {
-                                let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
-                                let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
-                                if !parsed.attachments.is_empty() {
-                                    let base_dir = ops::get_config(&pool, "app_data_dir")
-                                        .map(std::path::PathBuf::from)
-                                        .unwrap_or_else(|| std::env::current_dir()
-                                            .unwrap_or_else(|_| std::path::PathBuf::from(".")));
-                                    let attach_dir = base_dir.join("mail_attachments").join(msg_id.to_string());
-                                    let _ = std::fs::create_dir_all(&attach_dir);
-                                    for att in &parsed.attachments {
-                                        let safe_name = sanitize_filename::sanitize(&att.filename);
-                                        let local_path = attach_dir.join(&safe_name);
-                                        let _ = std::fs::write(&local_path, &att.content);
-                                        let _ = ops::insert_attachment(
-                                            &pool, msg_id, &att.filename, &att.content_type,
-                                            att.size as i64, &local_path.to_string_lossy(), "",
-                                        );
-                                    }
-                                }
-                                total_new += 1;
-                            }
-                            Err(e) => {
-                                total_failed_insert += 1;
-                                log::warn!("Failed to insert message uid={}: {}", uid, e);
-                            }
-                        }
+                        msgs
                     }
                     Err(e) => {
-                        total_failed_parse += 1;
-                        log::warn!("Failed to parse message uid={}: {}", uid, e);
+                        log::warn!("Failed to fetch header batch in '{}': {}", folder_name, e);
+                        continue;
+                    }
+                };
+
+                let chunk_uids: Vec<i64> = header_msgs.iter().map(|(uid, _, _, _)| *uid as i64).collect();
+                let existing_uids = ops::get_existing_remote_uids(&pool, account_id, &chunk_uids)
+                    .unwrap_or_default();
+
+                for (uid, header_raw, is_read, is_starred) in header_msgs {
+                    if existing_uids.contains(&(uid as i64)) {
+                        continue;
+                    }
+
+                    match mail::parser::parse_header_only(&header_raw) {
+                        Ok(parsed) => {
+                            let thread_id = mail::thread::compute_thread_id(
+                                &parsed.message_id,
+                                &parsed.in_reply_to,
+                                &parsed.references,
+                                &parsed.subject,
+                            );
+
+                            let msg = MailMessage {
+                                id: None,
+                                account_id,
+                                remote_uid: uid as i64,
+                                message_id_header: parsed.message_id,
+                                subject: if parsed.subject.is_empty() { "(无主题)".to_string() } else { parsed.subject },
+                                from_name: parsed.from_name,
+                                from_email: parsed.from_email,
+                                to_list: serde_json::to_string(&parsed.to_list).unwrap_or_else(|_| "[]".into()),
+                                cc_list: serde_json::to_string(&parsed.cc_list).unwrap_or_else(|_| "[]".into()),
+                                date: parsed.date,
+                                body_text: String::new(),         // skipped in first sync
+                                body_html: String::new(),         // skipped in first sync
+                                is_read,
+                                is_starred,
+                                has_attachment: false,             // unknown without body parsing
+                                size: header_raw.len() as i64,
+                                folder_ids: vec![*folder_db_id],
+                                thread_id,
+                            };
+                            total_parsed += 1;
+
+                            match ops::insert_message(&pool, &msg) {
+                                Ok(msg_id) => {
+                                    let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
+                                    // FTS with empty body text is fine — search will still match subject/from
+                                    let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, "");
+                                    total_new += 1;
+                                }
+                                Err(e) => {
+                                    total_failed_insert += 1;
+                                    log::warn!("Failed to insert message uid={}: {}", uid, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            total_failed_parse += 1;
+                            log::warn!("Failed to parse header uid={}: {}", uid, e);
+                        }
+                    }
+                }
+            } else {
+                // ── Subsequent sync path: full body + attachments ──
+                let raw_msgs = match mail::imap::fetch_messages_raw_batch(&mut session, chunk).await {
+                    Ok(msgs) => {
+                        log::info!(
+                            "Folder '{}': fetched {}/{} bodies, about to parse+store",
+                            folder_name, msgs.len(), chunk.len()
+                        );
+                        msgs
+                    }
+                    Err(e) => {
+                        log::warn!("Failed to fetch batch in '{}': {}", folder_name, e);
+                        continue;
+                    }
+                };
+
+                let chunk_uids: Vec<i64> = raw_msgs.iter().map(|(uid, _)| *uid as i64).collect();
+                let existing_uids = ops::get_existing_remote_uids(&pool, account_id, &chunk_uids)
+                    .unwrap_or_default();
+
+                for (uid, raw) in raw_msgs {
+                    if existing_uids.contains(&(uid as i64)) {
+                        continue;
+                    }
+
+                    match mail::parser::parse_raw_message(&raw) {
+                        Ok(parsed) => {
+                            let thread_id = mail::thread::compute_thread_id(
+                                &parsed.message_id,
+                                &parsed.in_reply_to,
+                                &parsed.references,
+                                &parsed.subject,
+                            );
+
+                            let msg = MailMessage {
+                                id: None,
+                                account_id,
+                                remote_uid: uid as i64,
+                                message_id_header: parsed.message_id,
+                                subject: if parsed.subject.is_empty() { "(无主题)".to_string() } else { parsed.subject },
+                                from_name: parsed.from_name,
+                                from_email: parsed.from_email,
+                                to_list: serde_json::to_string(&parsed.to_list).unwrap_or_else(|_| "[]".into()),
+                                cc_list: serde_json::to_string(&parsed.cc_list).unwrap_or_else(|_| "[]".into()),
+                                date: parsed.date,
+                                body_text: parsed.body_text.clone(),
+                                body_html: parsed.body_html,
+                                is_read: false,
+                                is_starred: false,
+                                has_attachment: !parsed.attachments.is_empty(),
+                                size: raw.len() as i64,
+                                folder_ids: vec![*folder_db_id],
+                                thread_id,
+                            };
+                            total_parsed += 1;
+
+                            match ops::insert_message(&pool, &msg) {
+                                Ok(msg_id) => {
+                                    let _ = ops::insert_message_folder(&pool, msg_id, *folder_db_id);
+                                    let _ = ops::fts_insert(&pool, msg_id, &msg.subject, &msg.from_name, &msg.from_email, &parsed.body_text);
+                                    if !parsed.attachments.is_empty() {
+                                        let base_dir = ops::get_config(&pool, "app_data_dir")
+                                            .map(std::path::PathBuf::from)
+                                            .unwrap_or_else(|| std::env::current_dir()
+                                                .unwrap_or_else(|_| std::path::PathBuf::from(".")));
+                                        let attach_dir = base_dir.join("mail_attachments").join(msg_id.to_string());
+                                        let _ = std::fs::create_dir_all(&attach_dir);
+                                        for att in &parsed.attachments {
+                                            let safe_name = sanitize_filename::sanitize(&att.filename);
+                                            let local_path = attach_dir.join(&safe_name);
+                                            // Skip auto-download for large attachments (>5MB).
+                                            // Record metadata with empty local_path so the user
+                                            // can download on demand via download_attachment.
+                                            if att.size as i64 > MAX_AUTO_ATTACHMENT_SIZE {
+                                                log::info!(
+                                                    "Skipping auto-download for large attachment: '{}' ({} bytes) message_id={}",
+                                                    att.filename, att.size, msg_id,
+                                                );
+                                                // Insert with empty local_path (lazy marker)
+                                                let _ = ops::insert_attachment(
+                                                    &pool, msg_id, &att.filename, &att.content_type,
+                                                    att.size as i64, "", "",
+                                                );
+                                            } else {
+                                                let _ = std::fs::write(&local_path, &att.content);
+                                                let _ = ops::insert_attachment(
+                                                    &pool, msg_id, &att.filename, &att.content_type,
+                                                    att.size as i64, &local_path.to_string_lossy(), "",
+                                                );
+                                            }
+                                        }
+                                    }
+                                    total_new += 1;
+                                }
+                                Err(e) => {
+                                    total_failed_insert += 1;
+                                    log::warn!("Failed to insert message uid={}: {}", uid, e);
+                                }
+                            }
+                        }
+                        Err(e) => {
+                            total_failed_parse += 1;
+                            log::warn!("Failed to parse message uid={}: {}", uid, e);
+                        }
                     }
                 }
             }

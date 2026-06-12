@@ -102,17 +102,24 @@ export async function syncAccount(accountId: number): Promise<SyncResult> {
 
 // ==================== Messages ====================
 
+export interface FetchMessagesResult {
+  messages: MailMessageSummary[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export async function fetchMessages(
   accountId: number,
   folderId?: number,
   page?: number,
   pageSize?: number,
-): Promise<MailMessageSummary[]> {
-  return tauriInvoke<MailMessageSummary[]>("fetch_messages", {
+): Promise<FetchMessagesResult> {
+  return tauriInvoke<FetchMessagesResult>("fetch_messages", {
     accountId,
     folderId: folderId ?? null,
     page: page ?? 1,
-    pageSize: pageSize ?? 50,
+    pageSize: pageSize ?? 30,
   })
 }
 
@@ -174,6 +181,17 @@ export async function openFile(path: string): Promise<void> {
 
 export async function readFileAsBase64(path: string): Promise<string> {
   return tauriInvoke<string>("read_file_as_base64", { path })
+}
+
+/**
+ * Manually download a lazy attachment (one that was not auto-downloaded because
+ * its size exceeded 5MB during sync). Returns the local file path.
+ */
+export async function downloadAttachment(
+  attachmentId: number,
+  messageId: number,
+): Promise<string> {
+  return tauriInvoke<string>("download_attachment", { attachmentId, messageId })
 }
 
 // ==================== Folders ====================

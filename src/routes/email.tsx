@@ -247,8 +247,8 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       addAccountLocal({ ...form, id: insertedId })
       setActiveAccountId(insertedId!)
       mailIpc.syncAccount(insertedId).then(() => {
-        mailIpc.fetchMessages(insertedId!).then(msgs => {
-          useMailStore.getState().setMessages(msgs)
+        mailIpc.fetchMessages(insertedId!).then(result => {
+          useMailStore.getState().setMessages(result.messages)
         }).catch(err => console.warn("fetchMessages after add failed:", err))
       }).catch(err => console.warn("syncAccount after add failed:", err))
       setSyncResult("账户已添加，后台同步已启动")
@@ -836,6 +836,7 @@ function EmailPage() {
 
   const [dbFolders, setDbFolders] = useState<mailIpc.MailFolder[]>([])
   const [attachments, setAttachments] = useState<mailIpc.AttachmentInfo[]>([])
+  const [downloadingAtts, setDownloadingAtts] = useState<Set<number>>(new Set())
   const [cidMap, setCidMap] = useState<Record<string, string>>({})
   const [remoteImagesEnabled, setRemoteImagesEnabled] = useState(true)
 
@@ -847,6 +848,9 @@ function EmailPage() {
     }
   }, [])
   const [page, setPage] = useState(1)
+  const [totalMessages, setTotalMessages] = useState(0)
+  const PAGE_SIZE = 30
+  const totalPages = Math.max(1, Math.ceil(totalMessages / PAGE_SIZE))
   const [messageBodies, setMessageBodies] = useState<Record<number, { body_text: string; body_html: string } | null>>({})
   const [threadViewId, setThreadViewId] = useState<string | null>(null)
   const [starredFilter, setStarredFilter] = useState(false)
@@ -952,8 +956,10 @@ function EmailPage() {
 
       // Load existing messages from DB immediately
       try {
-        const existing = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
-        setMessages(existing)
+        const result = await mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE)
+        setMessages(result.messages)
+        setTotalMessages(result.total)
+        setPage(1)
       } catch {}
 
       // Trigger incremental sync in background
@@ -963,8 +969,10 @@ function EmailPage() {
           setToast({ message: `${result.messages_new} 封新邮件`, type: "success" })
         }
         // Reload messages after sync
-        const refreshed = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
-        setMessages(refreshed)
+        const refreshed = await mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE)
+        setMessages(refreshed.messages)
+        setTotalMessages(refreshed.total)
+        setPage(1)
         // Refresh unread counts again after sync
         mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
           const map: Record<number, number> = {}
@@ -1039,6 +1047,34 @@ function EmailPage() {
     } catch { setMessageBody({ body_text: "(无法加载)", body_html: "" }); setAttachments([]); setCidMap({}) }
   }, [selectMessage, setMessageBody])
 
+  // Download a lazy attachment (local_path is empty) or open an already-downloaded one
+  const handleDownloadAttachment = useCallback(async (att: mailIpc.AttachmentInfo) => {
+    // If already downloaded, open directly
+    if (att.local_path) {
+      mailIpc.openFile(att.local_path).catch(() => {})
+      return
+    }
+    // Lazy attachment: download from IMAP first
+    setDownloadingAtts(prev => new Set(prev).add(att.id))
+    try {
+      const path = await mailIpc.downloadAttachment(att.id, selectedMessageId!)
+      // Update the local attachments state so the UI re-renders with the path
+      setAttachments(prev => prev.map(a =>
+        a.id === att.id ? { ...a, local_path: path } : a
+      ))
+      // Open the file after download
+      mailIpc.openFile(path).catch(() => {})
+    } catch (err) {
+      setToast({ message: `下载附件失败: ${err}`, type: "error" })
+    } finally {
+      setDownloadingAtts(prev => {
+        const next = new Set(prev)
+        next.delete(att.id)
+        return next
+      })
+    }
+  }, [selectedMessageId, setToast])
+
   // Sync & Refresh (merged)
   const handleSync = useCallback(async () => {
     if (!activeAccountId) return
@@ -1049,8 +1085,10 @@ function EmailPage() {
       let folderId: number | undefined
       const folder = dbFolders.find(f => f.role === activeFolder || f.remote_id === activeFolder)
       folderId = folder?.id ?? dbFolders.find(f => f.role === "inbox")?.id ?? undefined
-      const allMessages = await mailIpc.fetchMessages(activeAccountId, folderId, 1, 50)
-      setMessages(allMessages)
+      const allMessages = await mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE)
+      setMessages(allMessages.messages)
+      setTotalMessages(allMessages.total)
+      setPage(1)
       // Refresh unread counts after sync
       mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
         const map: Record<number, number> = {}
@@ -1075,11 +1113,21 @@ function EmailPage() {
   }, [activeAccountId, searchQuery, setMessages, setLoadingMessages, handleSync])
 
   // Pagination
-  const handleLoadMore = useCallback(async () => {
-    if (!activeAccountId) return
-    const nextPage = page + 1
-    try { const more = await mailIpc.fetchMessages(activeAccountId, undefined, nextPage, 50); if (more.length > 0) { setMessages([...messages, ...more]); setPage(nextPage) } } catch {}
-  }, [activeAccountId, page, messages, setMessages])
+  const handleGoToPage = useCallback(async (targetPage: number) => {
+    if (!activeAccountId || targetPage < 1 || targetPage > totalPages) return
+    const folderId: number | undefined = activeFolderId ?? undefined
+    setLoadingMessages(true)
+    try {
+      const result = await mailIpc.fetchMessages(activeAccountId, folderId, targetPage, PAGE_SIZE)
+      setMessages(result.messages)
+      setTotalMessages(result.total)
+      setPage(targetPage)
+    } catch {
+      setToast({ message: "加载失败", type: "error" })
+    } finally {
+      setLoadingMessages(false)
+    }
+  }, [activeAccountId, activeFolderId, totalPages, setMessages, setLoadingMessages])
 
   // Delete / Archive
   const handleDelete = useCallback(async (msgId: number) => {
@@ -1106,11 +1154,18 @@ function EmailPage() {
   // Folder click
   const handleFolderClick = useCallback((role: string, folderId: number | null) => {
     setActiveFolder(role, folderId); setStarredFilter(false); setThreadViewId(null)
+    setPage(1)
     if (folderId) {
       setLoadingMessages(true)
-      mailIpc.fetchMessages(activeAccountId!, folderId).then(setMessages).finally(() => setLoadingMessages(false))
+      mailIpc.fetchMessages(activeAccountId!, folderId, 1, PAGE_SIZE).then(r => {
+        setMessages(r.messages)
+        setTotalMessages(r.total)
+      }).finally(() => setLoadingMessages(false))
     } else {
-      mailIpc.fetchMessages(activeAccountId!).then(setMessages)
+      mailIpc.fetchMessages(activeAccountId!, undefined, 1, PAGE_SIZE).then(r => {
+        setMessages(r.messages)
+        setTotalMessages(r.total)
+      })
     }
   }, [activeAccountId, setActiveFolder, setMessages, setLoadingMessages])
 
@@ -1374,9 +1429,49 @@ function EmailPage() {
                     </div>
                   </div>
                 ))}
-                {displayMessages.length >= 50 && (
+                {displayMessages.length >= PAGE_SIZE && page < totalPages && (
                   <div className="px-4 py-2 text-center">
-                    <Button variant="ghost" size="sm" onClick={handleLoadMore}><ChevronDown size={14} />{t("mail.loadMore")}</Button>
+                    <Button variant="ghost" size="sm" onClick={() => handleGoToPage(page + 1)}><ChevronDown size={14} />{t("mail.loadMore")}</Button>
+                  </div>
+                )}
+                {/* Pagination controls */}
+                {totalPages > 1 && displayMessages.length > 0 && (
+                  <div className="flex items-center justify-center gap-1 px-4 py-3 border-t border-surface-100 dark:border-surface-800">
+                    <button
+                      onClick={() => handleGoToPage(1)}
+                      disabled={page <= 1}
+                      className="p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="11 17 6 12 11 7" /><polyline points="18 17 13 12 18 7" />
+                      </svg>
+                    </button>
+                    <button
+                      onClick={() => handleGoToPage(page - 1)}
+                      disabled={page <= 1}
+                      className="p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronDown size={14} className="rotate-90" />
+                    </button>
+                    <span className="text-xs text-surface-400 dark:text-surface-500 px-2 select-none whitespace-nowrap">
+                      {page} / {totalPages}
+                    </span>
+                    <button
+                      onClick={() => handleGoToPage(page + 1)}
+                      disabled={page >= totalPages}
+                      className="p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <ChevronDown size={14} className="-rotate-90" />
+                    </button>
+                    <button
+                      onClick={() => handleGoToPage(totalPages)}
+                      disabled={page >= totalPages}
+                      className="p-1 text-surface-400 hover:text-surface-600 dark:hover:text-surface-300 disabled:opacity-30 disabled:cursor-not-allowed"
+                    >
+                      <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="2" strokeLinecap="round" strokeLinejoin="round">
+                        <polyline points="13 17 18 12 13 7" /><polyline points="6 17 11 12 6 7" />
+                      </svg>
+                    </button>
                   </div>
                 )}
               </div>
@@ -1413,13 +1508,29 @@ function EmailPage() {
                     <div className="mb-3 p-2 lg:p-3 bg-surface-50 dark:bg-surface-800/50 rounded-lg">
                       <p className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5"><Paperclip size={12} className="inline mr-1" />{attachments.length} {t("mail.attachments")}</p>
                       <div className="space-y-1">
-                        {attachments.map(att => (
-                          <div key={att.id} className="flex items-center justify-between text-xs p-2 bg-white dark:bg-surface-900 rounded border border-surface-200 dark:border-surface-700">
-                            <span className="truncate flex-1">{att.filename}</span>
-                            <span className="text-surface-400 dark:text-surface-500 dark:text-surface-400 mx-2">{formatFileSize(att.size)}</span>
-                            <Download size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-primary-500 dark:text-primary-400 cursor-pointer" onClick={(e) => { e.stopPropagation(); mailIpc.openFile(att.local_path).catch(() => {}) }} />
-                          </div>
-                        ))}
+                        {attachments.map(att => {
+                          const isLazy = !att.local_path
+                          const isDownloading = downloadingAtts.has(att.id)
+                          return (
+                            <div key={att.id} className="flex items-center justify-between text-xs p-2 bg-white dark:bg-surface-900 rounded border border-surface-200 dark:border-surface-700">
+                              <span className="truncate flex-1">{att.filename}</span>
+                              <span className="text-surface-400 dark:text-surface-500 dark:text-surface-400 mx-2">{formatFileSize(att.size)}</span>
+                              {isLazy ? (
+                                isDownloading ? (
+                                  <Loader2 size={14} className="text-primary-500 dark:text-primary-400 animate-spin" />
+                                ) : (
+                                  <Download size={14} className="text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 cursor-pointer"
+                                    onClick={(e) => { e.stopPropagation(); handleDownloadAttachment(att) }}
+                                  />
+                                )
+                              ) : (
+                                <Download size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-primary-500 dark:text-primary-400 cursor-pointer"
+                                  onClick={(e) => { e.stopPropagation(); mailIpc.openFile(att.local_path).catch(() => {}) }}
+                                />
+                              )}
+                            </div>
+                          )
+                        })}
                       </div>
                     </div>
                   )}

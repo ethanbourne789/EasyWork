@@ -7,7 +7,7 @@
 
 // ── Helpers ──
 
-function buildSinaKey(symbol: string, _marketType: string): string {
+export function buildSinaKey(symbol: string, _marketType: string): string {
   if (symbol.startsWith("sh") || symbol.startsWith("sz")) return symbol
   // Auto-detect: 6xxxx = Shanghai, 0/3xxxx = Shenzhen
   const prefix = symbol.startsWith("6") ? "sh" : "sz"
@@ -150,10 +150,39 @@ export async function fetchKLine(
   if (scale === "week") {
     points = aggregateKLine(points, 5)  // ~5 trading days per week
   } else if (scale === "month") {
-    points = aggregateKLine(points, 21) // ~21 trading days per month
+    points = aggregateKLineByMonth(points)
   }
 
   return points
+}
+
+/**
+ * Aggregate daily K-line points into calendar months.
+ * Groups by year-month, computes OHLCV from the daily candles in that month.
+ */
+function aggregateKLineByMonth(data: KLinePoint[]): KLinePoint[] {
+  const groups = new Map<string, KLinePoint[]>()
+  for (const p of data) {
+    // date format: "2026-06-10"
+    const monthKey = p.date.slice(0, 7) // "2026-06"
+    if (!groups.has(monthKey)) groups.set(monthKey, [])
+    groups.get(monthKey)!.push(p)
+  }
+  const result: KLinePoint[] = []
+  // Iterate sorted by month key
+  const sortedKeys = Array.from(groups.keys()).sort()
+  for (const key of sortedKeys) {
+    const slice = groups.get(key)!
+    result.push({
+      date: key, // show "2026-06" instead of "2026-06-01" for clarity
+      open: slice[0].open,
+      close: slice[slice.length - 1].close,
+      high: Math.max(...slice.map(p => p.high)),
+      low: Math.min(...slice.map(p => p.low)),
+      volume: slice.reduce((s, p) => s + p.volume, 0),
+    })
+  }
+  return result
 }
 
 /** Aggregate daily K-line points into larger periods */

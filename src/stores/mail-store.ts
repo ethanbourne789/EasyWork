@@ -32,6 +32,13 @@ export interface MailMessageSummary {
   is_deleted?: boolean
 }
 
+export interface FetchMessagesResult {
+  messages: MailMessageSummary[]
+  total: number
+  page: number
+  page_size: number
+}
+
 export interface SyncStatus {
   syncing: boolean
   lastResult: string | null

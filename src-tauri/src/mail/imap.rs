@@ -518,6 +518,82 @@ pub async fn fetch_messages_raw_batch(
     Ok(results)
 }
 
+/// Fetch a single message by UID and return the full raw bytes.
+/// Used by download_attachment to retrieve a specific message on demand.
+pub async fn fetch_message_raw_by_uid(
+    session: &mut ImapSession,
+    uid: u32,
+) -> Result<Vec<u8>, Box<dyn std::error::Error + Send + Sync>> {
+    let fetch_cmd = "(UID BODY.PEEK[])";
+    let stream = session.uid_fetch(uid.to_string(), fetch_cmd).await?;
+    use futures::TryStreamExt;
+    let fetches: Vec<async_imap::types::Fetch> = stream.try_collect().await?;
+
+    for fetch in &fetches {
+        if fetch.uid == Some(uid) {
+            if let Some(body) = fetch.body() {
+                return Ok(body.to_vec());
+            }
+        }
+    }
+    Err(format!("No body returned for UID {}", uid).into())
+}
+
+/// Fetch only message headers (no body/attachments) by UID list.
+/// Uses (UID BODY.PEEK[HEADER] FLAGS) — much faster than fetching full bodies
+/// for first sync or header-only operations.
+pub async fn fetch_messages_headers_batch(
+    session: &mut ImapSession,
+    uids: &[u32],
+) -> Result<Vec<(u32, Vec<u8>, bool, bool)>, Box<dyn std::error::Error + Send + Sync>> {
+    if uids.is_empty() {
+        return Ok(Vec::new());
+    }
+
+    let uid_set = uids.iter()
+        .map(|u| u.to_string())
+        .collect::<Vec<_>>()
+        .join(",");
+
+    // Fetch only the RFC 2822 header section — no body, no attachments
+    let fetch_cmd = "(UID BODY.PEEK[HEADER] FLAGS)";
+
+    log::info!(
+        "Fetching headers-only for {} UIDs from set {{{}}}",
+        uids.len(),
+        if uid_set.len() > 80 { format!("{}...", &uid_set[..80]) } else { uid_set.clone() }
+    );
+
+    let stream = session.uid_fetch(uid_set, fetch_cmd).await?;
+    let fetches: Vec<async_imap::types::Fetch> = stream.try_collect().await?;
+
+    let mut results = Vec::new();
+    for fetch in &fetches {
+        match (fetch.uid, fetch.header()) {
+            (Some(uid), Some(header_bytes)) => {
+                let flags: Vec<_> = fetch.flags().collect();
+                let is_read = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Seen"));
+                let is_starred = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Flagged"));
+                results.push((uid, header_bytes.to_vec(), is_read, is_starred));
+            }
+            (uid_opt, header_opt) => {
+                log::debug!(
+                    "Header fetch item: uid={:?} header={} bytes",
+                    uid_opt,
+                    header_opt.map_or(0, |b| b.len())
+                );
+            }
+        }
+    }
+
+    log::info!(
+        "Fetched {}/{} headers",
+        results.len(),
+        uids.len()
+    );
+    Ok(results)
+}
+
 /// Check for new messages quickly by comparing highest UID in DB vs server.
 /// Returns the count of new UIDs found (none of them fetched yet).
 pub async fn check_new_uid_count(
