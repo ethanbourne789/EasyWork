@@ -1390,14 +1390,17 @@ pub fn update_contact_group(pool: &DbPool, group: &MailContactGroup) -> Result<(
         "UPDATE mail_contact_groups SET name=?1, color=?2, sort_order=?3 WHERE id=?4",
         params![group.name, group.color, group.sort_order, group.id],
     )?;
+    if let Some(id) = group.id {
+        crate::sync::helpers::mark_dirty(&conn, "mail_contact_groups", id)?;
+    }
     Ok(())
 }
 
 pub fn delete_contact_group(pool: &DbPool, id: i64) -> Result<i64> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    // ON DELETE SET NULL 已经把相关联系人 group_id 置空；这里返回受影响行数（联系人变更数）
+    // 软删除：标记为 deleting
     let affected = conn.execute(
-        "DELETE FROM mail_contact_groups WHERE id = ?1",
+        "UPDATE mail_contact_groups SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
         params![id],
     )?;
     Ok(affected as i64)
@@ -2108,7 +2111,9 @@ pub fn insert_signature(pool: &DbPool, signature: &MailSignature) -> Result<i64>
             signature.is_default as i32,
         ],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    crate::sync::helpers::mark_dirty(&conn, "mail_signatures", id)?;
+    Ok(id)
 }
 
 pub fn update_signature(pool: &DbPool, signature: &MailSignature) -> Result<()> {
@@ -2126,12 +2131,17 @@ pub fn update_signature(pool: &DbPool, signature: &MailSignature) -> Result<()> 
             id,
         ],
     )?;
+    crate::sync::helpers::mark_dirty(&conn, "mail_signatures", id)?;
     Ok(())
 }
 
 pub fn delete_signature(pool: &DbPool, id: i64) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    conn.execute("DELETE FROM mail_signatures WHERE id = ?1", params![id])?;
+    // 软删除：标记为 deleting
+    conn.execute(
+        "UPDATE mail_signatures SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
+        params![id],
+    )?;
     Ok(())
 }
 
