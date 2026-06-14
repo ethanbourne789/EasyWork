@@ -102,6 +102,7 @@ pub struct PendingOp {
     pub attempts: i32,
 }
 
+#[allow(dead_code)]
 #[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncState {
     pub last_sync_uid: Option<i64>,
@@ -148,4 +149,14 @@ pub struct ContactMailSummary {
     pub total: i64,
     pub account_ids: Vec<i64>,
     pub messages: Vec<MailMessageSummary>,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct MailSignature {
+    pub id: Option<i64>,
+    pub account_id: i64,
+    pub name: String,
+    pub signature_text: String,
+    pub signature_html: String,
+    pub is_default: bool,
 }

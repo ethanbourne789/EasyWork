@@ -3,8 +3,7 @@ use std::sync::Mutex;
 use tauri::State;
 use crate::db::ops;
 use crate::db::DbPool;
-use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact, MailContactGroup, ContactMailSummary};
-use base64::Engine;
+use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, MailContact, MailContactGroup, ContactMailSummary, MailSignature};
 
 /// Maximum attachment size (5MB) for auto-download during sync.
 /// Attachments larger than this are recorded in the DB with an empty
@@ -583,7 +582,7 @@ pub async fn send_mail(
             let to_list_for_record = to_list.clone();
             let cc_list_for_record = cc_list.clone();
             let in_reply_to_header = request.in_reply_to.clone();
-            let references_for_record = request.references.clone();
+            let _references_for_record = request.references.clone();
             let account_email_for_record = account.email.clone();
             let from_name_for_record = from_name.clone();
 
@@ -638,7 +637,7 @@ pub async fn send_mail(
                     .unwrap_or(0);
 
                 let now = chrono::Utc::now();
-                let date_iso = now.format("%Y-%m-%d %H:%M:%S").to_string();
+                let _date_iso = now.format("%Y-%m-%d %H:%M:%S").to_string();
 
                 let new_msg = MailMessage {
                     id: None,
@@ -737,6 +736,7 @@ pub async fn list_message_attachments(
 ///   4. Parse the raw message and extract the matching attachment by filename.
 ///   5. Save the attachment to disk and update the DB record's local_path.
 ///   6. Return the local_path so the frontend can open it immediately.
+#[allow(dead_code)]
 #[tauri::command]
 pub async fn download_attachment(
     pool: State<'_, DbPool>,
@@ -1318,4 +1318,54 @@ pub async fn get_remote_images_enabled(pool: State<'_, DbPool>) -> Result<bool, 
 pub async fn set_remote_images_enabled(pool: State<'_, DbPool>, enabled: bool) -> Result<(), String> {
     ops::set_config(&pool, "remote_images_enabled", if enabled { "1" } else { "0" });
     Ok(())
+}
+
+// ==================== Signatures ====================
+
+#[tauri::command]
+pub async fn list_signatures(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<Vec<MailSignature>, String> {
+    ops::list_signatures(&pool, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn add_signature(
+    pool: State<'_, DbPool>,
+    signature: MailSignature,
+) -> Result<i64, String> {
+    ops::insert_signature(&pool, &signature).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn update_signature(
+    pool: State<'_, DbPool>,
+    signature: MailSignature,
+) -> Result<(), String> {
+    ops::update_signature(&pool, &signature).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn delete_signature(
+    pool: State<'_, DbPool>,
+    id: i64,
+) -> Result<(), String> {
+    ops::delete_signature(&pool, id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn get_default_signature(
+    pool: State<'_, DbPool>,
+    account_id: i64,
+) -> Result<Option<MailSignature>, String> {
+    ops::get_default_signature(&pool, account_id).map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn set_default_signature(
+    pool: State<'_, DbPool>,
+    id: i64,
+) -> Result<(), String> {
+    ops::set_default_signature(&pool, id).map_err(|e| e.to_string())
 }

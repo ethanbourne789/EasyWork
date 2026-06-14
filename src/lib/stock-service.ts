@@ -8,6 +8,28 @@ import type { SinaQuote, KLinePoint } from "@easywork/shared"
 
 // ── Helpers ──
 
+/** Default request timeout in milliseconds */
+const DEFAULT_TIMEOUT_MS = 10_000
+
+/**
+ * Fetch with timeout support.
+ * Wraps the native fetch with AbortSignal.timeout to prevent
+ * requests from hanging indefinitely on network issues.
+ */
+async function fetchWithTimeout(
+  url: string,
+  timeoutMs: number = DEFAULT_TIMEOUT_MS,
+): Promise<Response> {
+  const controller = new AbortController()
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs)
+  try {
+    const resp = await fetch(url, { signal: controller.signal })
+    return resp
+  } finally {
+    clearTimeout(timeoutId)
+  }
+}
+
 export function buildSinaKey(symbol: string, _marketType: string): string {
   if (symbol.startsWith("sh") || symbol.startsWith("sz")) return symbol
   // Auto-detect: 6xxxx = Shanghai, 0/3xxxx = Shenzhen
@@ -35,7 +57,13 @@ export async function fetchQuotes(
     .join(",")
 
   const url = `https://qt.gtimg.cn/q=${keys}`
-  const resp = await fetch(url)
+  let resp: Response
+  try {
+    resp = await fetchWithTimeout(url)
+  } catch (e) {
+    console.warn("[fetchQuotes] request failed or timed out:", e)
+    return []
+  }
   // Tencent returns GBK encoding — decode properly for Chinese names
   const buffer = await resp.arrayBuffer()
   const decoder = new TextDecoder("gbk")
@@ -125,10 +153,10 @@ async function fetchKLineSina(
 
   let text: string
   try {
-    const resp = await fetch(url)
+    const resp = await fetchWithTimeout(url)
     text = await resp.text()
   } catch (e) {
-    console.warn("fetchKLineSina: network error", e)
+    console.warn("fetchKLineSina: network error or timeout", e)
     return []
   }
 
@@ -182,10 +210,10 @@ async function fetchKLineTencent(
 
   let json: any
   try {
-    const resp = await fetch(url)
+    const resp = await fetchWithTimeout(url)
     json = await resp.json()
   } catch (e) {
-    console.warn("fetchKLineTencent: network/parse error", e)
+    console.warn("fetchKLineTencent: network/parse error or timeout", e)
     return []
   }
 

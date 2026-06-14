@@ -1,6 +1,6 @@
 use rusqlite::{params, Result};
 use crate::db::DbPool;
-use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact, MailContactGroup, ContactMailSummary};
+use crate::mail::{self, MailAccount, MailFolder, MailMessage, MailMessageSummary, PendingOp, MailContact, MailContactGroup, ContactMailSummary, MailSignature};
 
 // =====================================================================
 // FTS5 NOTE (do not remove without testing):
@@ -51,6 +51,7 @@ pub fn insert_account(pool: &DbPool, account: &MailAccount) -> Result<i64> {
     Ok(id)
 }
 
+#[allow(dead_code)]
 fn base64_encode(data: &[u8]) -> Vec<u8> {
     use base64::Engine;
     base64::engine::general_purpose::STANDARD.encode(data).into_bytes()
@@ -758,10 +759,12 @@ pub fn find_mislinked_threads(pool: &DbPool, account_id: i64) -> Result<Vec<(i64
     for row in rows {
         if let Ok((id, ref thread_id, msg_id, subject)) = row {
             // Check if any other message references this msg_id with different thread_id
+            // Note: mail_messages doesn't have in_reply_to column, so we only check message_id_header
+            // Thread association is done via thread_id field which is computed during sync
             let mut check = conn.prepare(
                 "SELECT id, thread_id FROM mail_messages
                  WHERE account_id = ?1 AND is_deleted = 0
-                 AND (in_reply_to = ?2 OR message_id_header = ?2)
+                 AND message_id_header = ?2
                  AND thread_id != ?3
                  LIMIT 1"
             ).map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
@@ -772,7 +775,7 @@ pub fn find_mislinked_threads(pool: &DbPool, account_id: i64) -> Result<Vec<(i64
             ).map(Some)
              .or_else(|e| if e == rusqlite::Error::QueryReturnedNoRows { Ok(None) } else { Err(e) });
 
-            if let Ok(Some((_ref_id, ref_thread_id))) = ref_found {
+            if let Ok(Some((_ref_id, _ref_thread_id))) = ref_found {
                 results.push((id, thread_id.clone(), msg_id, subject));
             }
         }
@@ -1088,6 +1091,7 @@ pub fn archive_message(pool: &DbPool, message_id: i64) -> Result<()> {
 
 // ---- Message by folders ----
 
+#[allow(dead_code)]
 pub fn get_message_folder_ids(pool: &DbPool, message_id: i64) -> Result<Vec<i64>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare("SELECT folder_id FROM mail_message_folders WHERE message_id = ?1")?;
@@ -1232,6 +1236,7 @@ pub fn insert_attachment(
 }
 
 /// Update the local_path of an attachment (used when a lazy attachment is manually downloaded).
+#[allow(dead_code)]
 pub fn update_attachment_path(pool: &DbPool, attachment_id: i64, local_path: &str) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute(
@@ -2022,6 +2027,7 @@ pub fn fts_insert(pool: &DbPool, message_id: i64, subject: &str, from_name: &str
     Ok(())
 }
 
+#[allow(dead_code)]
 pub fn fts_delete(pool: &DbPool, message_id: i64) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.execute("DELETE FROM mail_fts WHERE rowid = ?1", params![message_id])?;
@@ -2052,3 +2058,430 @@ pub fn get_pending_ops_summary(pool: &DbPool) -> Result<serde_json::Value> {
         "total_active": pending + retrying,
     }))
 }
+
+// ---- Signatures ----
+
+pub fn list_signatures(pool: &DbPool, account_id: i64) -> Result<Vec<MailSignature>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, account_id, name, signature_text, signature_html, is_default
+         FROM mail_signatures WHERE account_id = ?1
+         ORDER BY is_default DESC, name COLLATE NOCASE ASC"
+    )?;
+    let signatures = stmt.query_map(params![account_id], |row| {
+        Ok(MailSignature {
+            id: Some(row.get(0)?),
+            account_id: row.get(1)?,
+            name: row.get(2)?,
+            signature_text: row.get(3)?,
+            signature_html: row.get(4)?,
+            is_default: row.get::<_, i32>(5)? != 0,
+        })
+    })?.filter_map(|r| r.ok()).collect();
+    Ok(signatures)
+}
+
+pub fn insert_signature(pool: &DbPool, signature: &MailSignature) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "INSERT INTO mail_signatures (account_id, name, signature_text, signature_html, is_default)
+         VALUES (?1, ?2, ?3, ?4, ?5)",
+        params![
+            signature.account_id,
+            signature.name,
+            signature.signature_text,
+            signature.signature_html,
+            signature.is_default as i32,
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+pub fn update_signature(pool: &DbPool, signature: &MailSignature) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let id = signature.id.ok_or_else(|| {
+        rusqlite::Error::InvalidParameterName("id is required for update".into())
+    })?;
+    conn.execute(
+        "UPDATE mail_signatures SET name=?1, signature_text=?2, signature_html=?3, is_default=?4, updated_at=datetime('now') WHERE id=?5",
+        params![
+            signature.name,
+            signature.signature_text,
+            signature.signature_html,
+            signature.is_default as i32,
+            id,
+        ],
+    )?;
+    Ok(())
+}
+
+pub fn delete_signature(pool: &DbPool, id: i64) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute("DELETE FROM mail_signatures WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
+pub fn get_default_signature(pool: &DbPool, account_id: i64) -> Result<Option<MailSignature>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let result = conn.query_row(
+        "SELECT id, account_id, name, signature_text, signature_html, is_default
+         FROM mail_signatures WHERE account_id = ?1 AND is_default = 1 LIMIT 1",
+        params![account_id],
+        |row| {
+            Ok(MailSignature {
+                id: Some(row.get(0)?),
+                account_id: row.get(1)?,
+                name: row.get(2)?,
+                signature_text: row.get(3)?,
+                signature_html: row.get(4)?,
+                is_default: row.get::<_, i32>(5)? != 0,
+            })
+        },
+    );
+    match result {
+        Ok(v) => Ok(Some(v)),
+        Err(rusqlite::Error::QueryReturnedNoRows) => Ok(None),
+        Err(e) => Err(e),
+    }
+}
+
+pub fn set_default_signature(pool: &DbPool, id: i64) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    // Get the account_id of this signature
+    let account_id: i64 = conn.query_row(
+        "SELECT account_id FROM mail_signatures WHERE id = ?1",
+        params![id],
+        |row| row.get(0),
+    )?;
+    // Clear all defaults for this account
+    conn.execute(
+        "UPDATE mail_signatures SET is_default = 0, updated_at = datetime('now') WHERE account_id = ?1",
+        params![account_id],
+    )?;
+    // Set this one as default
+    conn.execute(
+        "UPDATE mail_signatures SET is_default = 1, updated_at = datetime('now') WHERE id = ?1",
+        params![id],
+    )?;
+    Ok(())
+}
+
+// =====================================================================
+// Accounting Module - 记账模块数据操作
+// =====================================================================
+
+/// 交易记录结构体
+#[allow(dead_code)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Transaction {
+    pub id: i64,
+    #[serde(rename = "type")]
+    pub txn_type: String,
+    pub amount: f64,
+    pub category: String,
+    pub subcategory: Option<String>,
+    pub note: Option<String>,
+    pub date: String,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 分类结构体
+#[allow(dead_code)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Category {
+    pub id: i64,
+    pub name: String,
+    #[serde(rename = "type")]
+    pub category_type: String,
+    pub icon: String,
+    pub color: String,
+    pub parent_id: i64,
+    pub sort_order: i64,
+    pub created_at: String,
+}
+
+/// 预算结构体
+#[allow(dead_code)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct Budget {
+    pub id: i64,
+    pub category: String,
+    pub amount: f64,
+    pub year: i64,
+    pub month: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+/// 统计摘要结构体
+#[allow(dead_code)]
+#[derive(Debug, Clone, serde::Serialize, serde::Deserialize)]
+#[serde(rename_all = "camelCase")]
+pub struct AccountingSummary {
+    pub total_income: f64,
+    pub total_expense: f64,
+    pub balance: f64,
+    pub budget_usage_rate: f64,
+}
+
+// ---- Transactions ----
+
+/// 获取交易列表
+#[allow(dead_code)]
+pub fn list_transactions(
+    pool: &DbPool,
+    start_date: Option<&str>,
+    end_date: Option<&str>,
+) -> Result<Vec<Transaction>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    let (sql, params_vec): (String, Vec<Box<dyn rusqlite::types::ToSql>>) = match (start_date, end_date) {
+        (Some(start), Some(end)) => (
+            "SELECT id, type, amount, category, subcategory, note, date, created_at, updated_at \
+             FROM transactions WHERE date BETWEEN ?1 AND ?2 ORDER BY date DESC".to_string(),
+            vec![Box::new(start.to_string()), Box::new(end.to_string())],
+        ),
+        (Some(start), None) => (
+            "SELECT id, type, amount, category, subcategory, note, date, created_at, updated_at \
+             FROM transactions WHERE date >= ?1 ORDER BY date DESC".to_string(),
+            vec![Box::new(start.to_string())],
+        ),
+        (None, Some(end)) => (
+            "SELECT id, type, amount, category, subcategory, note, date, created_at, updated_at \
+             FROM transactions WHERE date <= ?1 ORDER BY date DESC".to_string(),
+            vec![Box::new(end.to_string())],
+        ),
+        (None, None) => (
+            "SELECT id, type, amount, category, subcategory, note, date, created_at, updated_at \
+             FROM transactions ORDER BY date DESC".to_string(),
+            vec![],
+        ),
+    };
+
+    let refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
+    let mut stmt = conn.prepare(&sql)?;
+    let rows = stmt.query_map(refs.as_slice(), |row| {
+        Ok(Transaction {
+            id: row.get(0)?,
+            txn_type: row.get(1)?,
+            amount: row.get(2)?,
+            category: row.get(3)?,
+            subcategory: row.get(4)?,
+            note: row.get(5)?,
+            date: row.get(6)?,
+            created_at: row.get(7)?,
+            updated_at: row.get(8)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 创建交易记录
+#[allow(dead_code)]
+pub fn insert_transaction(pool: &DbPool, txn: &Transaction) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "INSERT INTO transactions (type, amount, category, subcategory, note, date) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            txn.txn_type,
+            txn.amount,
+            txn.category,
+            txn.subcategory,
+            txn.note,
+            txn.date
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// 更新交易记录
+#[allow(dead_code)]
+pub fn update_transaction(pool: &DbPool, txn: &Transaction) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE transactions SET type=?1, amount=?2, category=?3, subcategory=?4, note=?5, date=?6, \
+         updated_at=datetime('now') WHERE id=?7",
+        params![
+            txn.txn_type,
+            txn.amount,
+            txn.category,
+            txn.subcategory,
+            txn.note,
+            txn.date,
+            txn.id
+        ],
+    )?;
+    Ok(())
+}
+
+/// 删除交易记录
+#[allow(dead_code)]
+pub fn delete_transaction(pool: &DbPool, id: i64) -> Result<bool> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let affected = conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
+    Ok(affected > 0)
+}
+
+// ---- Categories ----
+
+/// 获取分类列表
+#[allow(dead_code)]
+pub fn list_categories(pool: &DbPool) -> Result<Vec<Category>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, name, type, icon, color, parent_id, sort_order, created_at \
+         FROM categories ORDER BY sort_order ASC"
+    )?;
+    let rows = stmt.query_map([], |row| {
+        Ok(Category {
+            id: row.get(0)?,
+            name: row.get(1)?,
+            category_type: row.get(2)?,
+            icon: row.get(3)?,
+            color: row.get(4)?,
+            parent_id: row.get(5)?,
+            sort_order: row.get(6)?,
+            created_at: row.get(7)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 创建分类
+#[allow(dead_code)]
+pub fn insert_category(pool: &DbPool, cat: &Category) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "INSERT INTO categories (name, type, icon, color, parent_id, sort_order) \
+         VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
+        params![
+            cat.name,
+            cat.category_type,
+            cat.icon,
+            cat.color,
+            cat.parent_id,
+            cat.sort_order
+        ],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// 更新分类
+#[allow(dead_code)]
+pub fn update_category(pool: &DbPool, cat: &Category) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE categories SET name=?1, type=?2, icon=?3, color=?4, parent_id=?5, sort_order=?6 \
+         WHERE id=?7",
+        params![
+            cat.name,
+            cat.category_type,
+            cat.icon,
+            cat.color,
+            cat.parent_id,
+            cat.sort_order,
+            cat.id
+        ],
+    )?;
+    Ok(())
+}
+
+/// 删除分类
+#[allow(dead_code)]
+pub fn delete_category(pool: &DbPool, id: i64) -> Result<bool> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let affected = conn.execute("DELETE FROM categories WHERE id = ?1", params![id])?;
+    Ok(affected > 0)
+}
+
+// ---- Budgets ----
+
+/// 获取预算列表
+#[allow(dead_code)]
+pub fn list_budgets(pool: &DbPool, year: i64, month: i64) -> Result<Vec<Budget>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT id, category, amount, year, month, created_at, updated_at \
+         FROM budgets WHERE year = ?1 AND month = ?2 ORDER BY category"
+    )?;
+    let rows = stmt.query_map(params![year, month], |row| {
+        Ok(Budget {
+            id: row.get(0)?,
+            category: row.get(1)?,
+            amount: row.get(2)?,
+            year: row.get(3)?,
+            month: row.get(4)?,
+            created_at: row.get(5)?,
+            updated_at: row.get(6)?,
+        })
+    })?;
+    rows.collect()
+}
+
+/// 创建预算
+#[allow(dead_code)]
+pub fn insert_budget(pool: &DbPool, budget: &Budget) -> Result<i64> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "INSERT INTO budgets (category, amount, year, month) VALUES (?1, ?2, ?3, ?4)",
+        params![budget.category, budget.amount, budget.year, budget.month],
+    )?;
+    Ok(conn.last_insert_rowid())
+}
+
+/// 更新预算
+#[allow(dead_code)]
+pub fn update_budget(pool: &DbPool, budget: &Budget) -> Result<()> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    conn.execute(
+        "UPDATE budgets SET category=?1, amount=?2, updated_at=datetime('now') WHERE id=?3",
+        params![budget.category, budget.amount, budget.id],
+    )?;
+    Ok(())
+}
+
+/// 删除预算
+#[allow(dead_code)]
+pub fn delete_budget(pool: &DbPool, id: i64) -> Result<bool> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let affected = conn.execute("DELETE FROM budgets WHERE id = ?1", params![id])?;
+    Ok(affected > 0)
+}
+
+// ---- Statistics ----
+
+/// 获取记账统计摘要
+#[allow(dead_code)]
+pub fn get_accounting_summary(pool: &DbPool) -> Result<AccountingSummary> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+
+    let summary: (f64, f64) = conn.query_row(
+        "SELECT \
+         COALESCE(SUM(CASE WHEN type = 'income' THEN amount ELSE 0 END), 0), \
+         COALESCE(SUM(CASE WHEN type = 'expense' THEN amount ELSE 0 END), 0) \
+         FROM transactions",
+        [],
+        |row| Ok((row.get(0)?, row.get(1)?)),
+    )?;
+
+    let (total_income, total_expense) = summary;
+    let balance = total_income - total_expense;
+    let budget_usage_rate = if total_income > 0.0 {
+        total_expense / total_income
+    } else {
+        0.0
+    };
+
+    Ok(AccountingSummary {
+        total_income,
+        total_expense,
+        balance,
+        budget_usage_rate,
+    })
+}
+

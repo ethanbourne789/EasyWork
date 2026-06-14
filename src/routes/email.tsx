@@ -467,7 +467,7 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
   const handleAdd = async () => {
     if (!activeAccountId) return; setSaving(true)
     try {
-      await mailIpc.addContact({ account_id: activeAccountId, name: form.name, email: form.email, phone: form.phone, group_name: form.group_name, notes: form.notes })
+      await mailIpc.addContact({ account_id: activeAccountId, name: form.name, display_name: form.name, email: form.email, phone: form.phone, group_id: null, group_name: form.group_name, notes: form.notes })
       setContacts(await mailIpc.listContacts(activeAccountId))
       setShowAdd(false); setForm({ name: "", email: "", phone: "", group_name: "", notes: "" })
     } catch {} finally { setSaving(false) }
@@ -488,7 +488,7 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
 
   const openEdit = (c: MailContact) => {
     setEditingContact(c)
-    setForm({ name: c.name, email: c.email, phone: c.phone, group_name: c.group_name, notes: c.notes })
+    setForm({ name: c.name, email: c.email, phone: c.phone, group_name: c.group_name || "", notes: c.notes })
   }
 
   const defaultContacts: MailContact[] = [
@@ -572,8 +572,10 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
             await mailIpc.addContact({
               account_id: activeAccountId,
               name: fields[0].trim(),
+              display_name: fields[0].trim(),
               email: fields[1].trim(),
               phone: fields[2]?.trim() || "",
+              group_id: null,
               group_name: fields[3]?.trim() || "",
               notes: fields[4]?.trim() || "",
             })

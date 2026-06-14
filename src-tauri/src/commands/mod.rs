@@ -4,3 +4,4 @@ pub mod notification_handler;
 pub mod drafts;
 pub mod settings;
 pub mod system;
+pub mod accounting;

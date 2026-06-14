@@ -399,5 +399,209 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
             ON stock_watchlist(symbol, market_type);"
     );
 
+    // ── v5 migration: 补全其他模块表结构（V1 SQL 迁移文件中的表） ──
+    // 这些表在 V1__initial.sql 中定义，但 schema.rs 之前未创建
+    let _ = conn.execute_batch(
+        "
+        -- 任务表 (看板)
+        CREATE TABLE IF NOT EXISTS tasks (
+            id              INTEGER PRIMARY KEY AUTOINCREMENT,
+            title           TEXT    NOT NULL,
+            description     TEXT    DEFAULT '',
+            status          TEXT    NOT NULL DEFAULT 'todo',
+            priority        TEXT    DEFAULT 'medium',
+            urgency         TEXT    DEFAULT 'medium',
+            difficulty      TEXT    DEFAULT 'medium',
+            assignee        TEXT    DEFAULT '',
+            start_time      TEXT,
+            due_time        TEXT,
+            completed_at    TEXT,
+            rating          INTEGER DEFAULT 0,
+            created_at      TEXT    NOT NULL DEFAULT (datetime('now')),
+            updated_at      TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_tasks_status ON tasks(status);
+        CREATE INDEX IF NOT EXISTS idx_tasks_due_time ON tasks(due_time);
+
+        -- 交易记录表 (记账)
+        CREATE TABLE IF NOT EXISTS transactions (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            type        TEXT    NOT NULL,
+            amount      REAL    NOT NULL,
+            category    TEXT    NOT NULL,
+            subcategory TEXT    DEFAULT '',
+            note        TEXT    DEFAULT '',
+            date        TEXT    NOT NULL,
+            created_at  TEXT    NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_transactions_date ON transactions(date);
+
+        -- 日历事件表
+        CREATE TABLE IF NOT EXISTS calendars (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            title       TEXT    NOT NULL,
+            description TEXT    DEFAULT '',
+            start_at    TEXT    NOT NULL,
+            end_at      TEXT    NOT NULL,
+            type        TEXT    DEFAULT 'event',
+            color       TEXT    DEFAULT '#5BCFC4',
+            is_all_day  INTEGER DEFAULT 0,
+            created_at  TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_calendars_start ON calendars(start_at);
+
+        -- 笔记表
+        CREATE TABLE IF NOT EXISTS notes (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            title      TEXT    NOT NULL,
+            content    TEXT    DEFAULT '',
+            folder_id  INTEGER DEFAULT 0,
+            tags       TEXT    DEFAULT '[]',
+            created_at TEXT    DEFAULT (datetime('now')),
+            updated_at TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_notes_folder ON notes(folder_id);
+
+        -- 笔记文件夹表
+        CREATE TABLE IF NOT EXISTS note_folders (
+            id        INTEGER PRIMARY KEY AUTOINCREMENT,
+            name      TEXT    NOT NULL,
+            parent_id INTEGER
+        );
+
+        -- 运动记录表
+        CREATE TABLE IF NOT EXISTS sports_records (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            type       TEXT    NOT NULL,
+            duration   INTEGER NOT NULL,
+            distance   REAL,
+            calories   INTEGER,
+            date       TEXT    NOT NULL,
+            note       TEXT    DEFAULT '',
+            created_at TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_sports_records_date ON sports_records(date);
+
+        -- 设置键值表
+        CREATE TABLE IF NOT EXISTS settings (
+            key   TEXT PRIMARY KEY,
+            value TEXT NOT NULL DEFAULT ''
+        );
+
+        -- 日志表
+        CREATE TABLE IF NOT EXISTS logs (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            level      TEXT    NOT NULL DEFAULT 'INFO',
+            module     TEXT    NOT NULL DEFAULT 'app',
+            message    TEXT    NOT NULL,
+            created_at TEXT    DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_logs_level ON logs(level);
+        CREATE INDEX IF NOT EXISTS idx_logs_module ON logs(module);
+
+        -- 时间线节点表
+        CREATE TABLE IF NOT EXISTS timelines (
+            id         INTEGER PRIMARY KEY AUTOINCREMENT,
+            task_id    INTEGER,
+            node_desc  TEXT    NOT NULL,
+            created_at TEXT    DEFAULT (datetime('now'))
+        );
+        "
+    );
+
+    // ── v6 migration: 邮件签名 ──
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS mail_signatures (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            account_id INTEGER NOT NULL,
+            name TEXT NOT NULL,
+            signature_text TEXT NOT NULL DEFAULT '',
+            signature_html TEXT NOT NULL DEFAULT '',
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now')),
+            FOREIGN KEY (account_id) REFERENCES mail_accounts(id) ON DELETE CASCADE
+        );
+        CREATE INDEX IF NOT EXISTS idx_mail_signatures_account_id ON mail_signatures(account_id);"
+    );
+
+    // ── v7 migration: 记账模块完善 ──
+    // 1. 为 transactions 表添加 updated_at 字段
+    let has_txn_updated_at = conn
+        .prepare("SELECT updated_at FROM transactions LIMIT 0")
+        .is_ok();
+    if !has_txn_updated_at {
+        let _ = conn.execute_batch(
+            "ALTER TABLE transactions ADD COLUMN updated_at TEXT NOT NULL DEFAULT (datetime('now'));"
+        );
+    }
+
+    // 2. 创建 categories 表
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS categories (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL CHECK(type IN ('income','expense','investment','transfer')),
+            icon TEXT NOT NULL DEFAULT '',
+            color TEXT NOT NULL DEFAULT '',
+            parent_id INTEGER DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_categories_type ON categories(type);
+        CREATE INDEX IF NOT EXISTS idx_categories_parent ON categories(parent_id);"
+    );
+
+    // 3. 创建 budgets 表
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS budgets (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            category TEXT NOT NULL DEFAULT '',
+            amount REAL NOT NULL,
+            year INTEGER NOT NULL,
+            month INTEGER NOT NULL,
+            created_at TEXT NOT NULL DEFAULT (datetime('now')),
+            updated_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_budgets_year_month ON budgets(year, month);"
+    );
+
+    // 4. 创建 import_logs 表
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS import_logs (
+            id INTEGER PRIMARY KEY AUTOINCREMENT,
+            file_name TEXT NOT NULL,
+            total_count INTEGER NOT NULL DEFAULT 0,
+            success_count INTEGER NOT NULL DEFAULT 0,
+            fail_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL DEFAULT (datetime('now'))
+        );"
+    );
+
+    // 5. 插入默认分类（仅在表为空时）
+    let category_count: i64 = conn
+        .query_row("SELECT COUNT(*) FROM categories", [], |row| row.get(0))
+        .unwrap_or(0);
+    if category_count == 0 {
+        let _ = conn.execute_batch(
+            "INSERT INTO categories (name, type, icon, sort_order) VALUES
+                ('工资', 'income', '💰', 1),
+                ('兼职', 'income', '💼', 2),
+                ('理财', 'income', '📈', 3),
+                ('其他收入', 'income', '💵', 4),
+                ('餐饮', 'expense', '🍔', 10),
+                ('交通', 'expense', '🚗', 11),
+                ('购物', 'expense', '🛒', 12),
+                ('娱乐', 'expense', '🎮', 13),
+                ('医疗', 'expense', '🏥', 14),
+                ('教育', 'expense', '📚', 15),
+                ('住房', 'expense', '🏠', 16),
+                ('通讯', 'expense', '📱', 17),
+                ('其他支出', 'expense', '📦', 18),
+                ('投资', 'investment', '📊', 20),
+                ('转账', 'transfer', '🔄', 30);"
+        );
+    }
+
     Ok(())
 }

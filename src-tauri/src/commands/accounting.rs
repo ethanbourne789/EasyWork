@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::db::DbState;
+use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use rusqlite::params;
 
@@ -53,12 +53,11 @@ pub struct AccountingSummary {
 pub async fn txn_list(
     start_date: Option<String>,
     end_date: Option<String>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Vec<Transaction>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let rows = match (start_date, end_date) {
         (Some(start), Some(end)) => {
@@ -118,12 +117,11 @@ pub async fn txn_create(
     subcategory: Option<String>,
     note: Option<String>,
     date: String,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Transaction> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     if amount <= 0.0 {
         return Err(AppError::InvalidInput("金额必须大于 0".into()));
@@ -151,11 +149,10 @@ pub async fn txn_create(
 
 /// 删除交易记录
 #[tauri::command]
-pub async fn txn_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn txn_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let affected = conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
     Ok(affected > 0)
@@ -165,11 +162,10 @@ pub async fn txn_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> {
 
 /// 获取记账统计摘要
 #[tauri::command]
-pub async fn stats_summary(state: State<'_, DbState>) -> AppResult<AccountingSummary> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn stats_summary(pool: State<'_, DbPool>) -> AppResult<AccountingSummary> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     // 查询总收入和总支出
     let summary: (f64, f64) = conn.query_row(

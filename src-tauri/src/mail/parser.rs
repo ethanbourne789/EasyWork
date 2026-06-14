@@ -211,6 +211,7 @@ pub fn parse_raw_message(
 /// Use this for first sync or bulk operations where only metadata is needed.
 /// The returned `ParsedMessage` will have empty `body_text`, `body_html`,
 /// and `attachments` fields, which is significantly faster than full parsing.
+#[allow(dead_code)]
 pub fn parse_header_only(
     raw: &[u8],
 ) -> Result<ParsedMessage, Box<dyn std::error::Error + Send + Sync>> {
@@ -343,6 +344,7 @@ fn extract_body(parsed: &ParsedMail) -> (String, String, Vec<ParsedAttachment>) 
 
 /// Extract a specific attachment by filename from raw MIME message bytes.
 /// Returns the raw binary content of the matching attachment.
+#[allow(dead_code)]
 pub fn extract_attachment_by_name(
     raw: &[u8],
     target_filename: &str,

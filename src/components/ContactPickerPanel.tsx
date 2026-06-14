@@ -62,7 +62,7 @@ export function ContactPickerPanel({
       if (!map.has(key)) {
         map.set(key, {
           key,
-          name: key === "__ungrouped__" ? t("contacts.picker.ungrouped") : c.group_name,
+          name: key === "__ungrouped__" ? t("contacts.picker.ungrouped") : (c.group_name || key),
           contacts: [],
         })
       }

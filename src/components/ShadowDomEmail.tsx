@@ -168,6 +168,7 @@ function sanitizeHtml(html: string): string {
   const FORBIDDEN_TAGS = new Set([
     "script", "style", "iframe", "object", "embed", "applet",
     "form", "input", "button", "textarea", "select", "option",
+    "link", "meta", "base",
   ])
   doc.querySelectorAll(Array.from(FORBIDDEN_TAGS).join(",")).forEach((el) => {
     el.remove()
@@ -196,14 +197,40 @@ function sanitizeHtml(html: string): string {
       //    still allowed (used for cid: inline images in this product).
       if (
         (name === "href" || name === "src" || name === "action" ||
-         name === "formaction" || name === "xlink:href") &&
+         name === "formaction" || name === "xlink:href" || name === "background") &&
         JS_URL.test(value)
       ) {
         el.setAttribute(attr.name, "#")
+        continue
+      }
+
+      // 3) data: URIs in src/href can be used for XSS via SVG/HTML
+      //    Only allow data: for images (data:image/...)
+      if (
+        (name === "src" || name === "href") &&
+        /^\s*data:/i.test(value) &&
+        !/^\s*data:image\//i.test(value)
+      ) {
+        el.setAttribute(attr.name, "#")
+        continue
+      }
+
+      // 4) Remove style attributes that could contain expression() or url()
+      //    with javascript: or data: URIs
+      if (name === "style") {
+        const styleValue = value.toLowerCase()
+        if (
+          /expression\s*\(/.test(styleValue) ||
+          /javascript\s*:/i.test(styleValue) ||
+          /url\s*\(\s*['"]?\s*javascript:/i.test(styleValue) ||
+          /url\s*\(\s*['"]?\s*data:(?!image\/)/i.test(styleValue)
+        ) {
+          el.removeAttribute(attr.name)
+        }
       }
     }
 
-    // 3) Defensive: <a target="_blank"> without rel="noopener noreferrer"
+    // 5) Defensive: <a target="_blank"> without rel="noopener noreferrer"
     //    allows the opened page to navigate the opener. Tag-aware fixup.
     if (el.tagName === "A" && el.getAttribute("target") === "_blank") {
       const rel = el.getAttribute("rel") || ""

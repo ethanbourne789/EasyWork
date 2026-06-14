@@ -1,5 +1,5 @@
 use lettre::message::{
-    header::ContentType, Mailbox, Message, MessageBuilder, MultiPart, SinglePart,
+    header::ContentType, Mailbox, Message, MultiPart, SinglePart,
 };
 use lettre::{AsyncSmtpTransport, AsyncTransport, Tokio1Executor};
 use lettre::transport::smtp::authentication::Credentials;
@@ -27,6 +27,7 @@ fn parse_mailbox(input: &str) -> Result<Mailbox, Box<dyn std::error::Error + Sen
 }
 
 /// Parse a semicolon-separated list of recipients into Mailbox vec.
+#[allow(dead_code)]
 fn parse_recipients(input: &str) -> Vec<Result<Mailbox, Box<dyn std::error::Error + Send + Sync>>> {
     if input.is_empty() {
         return Vec::new();

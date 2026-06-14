@@ -1,35 +1,34 @@
 /// Compute a stable thread identifier from email headers.
 ///
 /// Strategy (matches Pebble pattern):
-/// 1. If message has its own Message-ID, use that as thread root
-/// 2. If In-Reply-To references a known thread, join that thread
-/// 3. If References contains known IDs, join the first matching thread
-/// 4. Otherwise, use the Message-ID as a new thread root
-/// 5. Fallback: use normalized subject as thread key
+/// 1. If In-Reply-To references a known message, join that thread
+/// 2. If References contains known IDs, join the first matching thread
+/// 3. Otherwise, use the Message-ID as a new thread root
+/// 4. Fallback: use normalized subject as thread key
 pub fn compute_thread_id(
     message_id: &str,
     in_reply_to: &str,
     references: &[String],
     subject: &str,
 ) -> String {
-    // Strategy 1: Use own Message-ID as thread root
-    let msg_id_clean = clean_message_id(message_id);
-    if !msg_id_clean.is_empty() {
-        return msg_id_clean;
-    }
-
-    // Strategy 2: Join via In-Reply-To
+    // Strategy 1: Join via In-Reply-To (reply to existing message)
     let irt_clean = clean_message_id(in_reply_to);
     if !irt_clean.is_empty() {
         return irt_clean;
     }
 
-    // Strategy 3: Join via References chain
+    // Strategy 2: Join via References chain (forward/reply chain)
     for ref_id in references {
         let cleaned = clean_message_id(ref_id);
         if !cleaned.is_empty() {
             return cleaned;
         }
+    }
+
+    // Strategy 3: Use own Message-ID as thread root (new conversation)
+    let msg_id_clean = clean_message_id(message_id);
+    if !msg_id_clean.is_empty() {
+        return msg_id_clean;
     }
 
     // Strategy 4: Fallback to normalized subject
@@ -61,8 +60,9 @@ fn normalize_subject(raw: &str) -> String {
     loop {
         let mut stripped = false;
         for prefix in &prefixes {
-            if result.starts_with(prefix) {
-                result = result[prefix.len()..].trim();
+            if let Some(rest) = result.strip_prefix(prefix) {
+                // Use strip_prefix to avoid panic on multi-byte UTF-8 boundaries
+                result = rest.trim();
                 stripped = true;
                 break;
             }

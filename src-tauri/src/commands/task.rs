@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::db::DbState;
+use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use rusqlite::params;
 
@@ -51,34 +51,30 @@ impl Task {
 #[tauri::command]
 pub async fn task_list(
     status: Option<String>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Vec<Task>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
-    let mut stmt = conn.prepare(
-        "SELECT id, title, description, status, priority, urgency, difficulty, \
-         assignee, start_time, due_time, completed_at, rating, created_at, updated_at \
-         FROM tasks \
-         WHERE 1=1 \
-         ORDER BY created_at DESC",
-    )?;
-
-        let rows = if let Some(ref s) = status {
-        // 动态构建带状态筛选的查询
-        drop(stmt);
-        let mut s2 = conn.prepare(
+    let rows = if let Some(ref s) = status {
+        // 带状态筛选的查询
+        let mut stmt = conn.prepare(
             "SELECT id, title, description, status, priority, urgency, difficulty, \
              assignee, start_time, due_time, completed_at, rating, created_at, updated_at \
              FROM tasks \
              WHERE status = ?1 \
              ORDER BY created_at DESC",
         )?;
-        let rows = s2.query_map(params![s], Task::from_row)?.collect::<Result<Vec<_>, _>>()?;
+        let rows = stmt.query_map(params![s], Task::from_row)?.collect::<Result<Vec<_>, _>>()?;
         rows
     } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, description, status, priority, urgency, difficulty, \
+             assignee, start_time, due_time, completed_at, rating, created_at, updated_at \
+             FROM tasks \
+             ORDER BY created_at DESC",
+        )?;
         let rows = stmt.query_map([], Task::from_row)?.collect::<Result<Vec<_>, _>>()?;
         rows
     };
@@ -96,12 +92,11 @@ pub async fn task_create(
     difficulty: Option<String>,
     assignee: Option<String>,
     due_time: Option<String>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Task> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     conn.execute(
         "INSERT INTO tasks (title, description, status, priority, urgency, difficulty, assignee, due_time) \
@@ -147,12 +142,11 @@ pub async fn task_update(
     due_time: Option<String>,
     completed_at: Option<String>,
     rating: Option<i32>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Task> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     // 构建动态 UPDATE 语句
     let mut sets = Vec::new();
@@ -235,11 +229,10 @@ pub async fn task_update(
 
 /// 删除任务
 #[tauri::command]
-pub async fn task_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn task_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let affected = conn.execute("DELETE FROM tasks WHERE id = ?1", params![id])?;
     Ok(affected > 0)
@@ -249,12 +242,11 @@ pub async fn task_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> 
 #[tauri::command]
 pub async fn task_batch_update(
     updates: Vec<TaskBatchUpdate>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<usize> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let mut total_affected = 0;
     for update in &updates {

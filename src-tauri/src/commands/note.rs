@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::db::DbState;
+use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use rusqlite::params;
 
@@ -65,29 +65,24 @@ impl NoteFolder {
 #[tauri::command]
 pub async fn note_list(
     folder_id: Option<i64>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Vec<Note>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
-
-    let mut stmt = if let Some(_fid) = folder_id {
-        conn.prepare(
-            "SELECT id, title, content, folder_id, tags, created_at, updated_at \
-             FROM notes WHERE folder_id = ?1 ORDER BY updated_at DESC",
-        )?
-    } else {
-        conn.prepare(
-            "SELECT id, title, content, folder_id, tags, created_at, updated_at \
-             FROM notes ORDER BY updated_at DESC",
-        )?
-    };
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let rows = if let Some(fid) = folder_id {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, content, folder_id, tags, created_at, updated_at \
+             FROM notes WHERE folder_id = ?1 ORDER BY updated_at DESC",
+        )?;
         stmt.query_map(params![fid], Note::from_row)?
             .collect::<Result<Vec<_>, _>>()?
     } else {
+        let mut stmt = conn.prepare(
+            "SELECT id, title, content, folder_id, tags, created_at, updated_at \
+             FROM notes ORDER BY updated_at DESC",
+        )?;
         stmt.query_map([], Note::from_row)?
             .collect::<Result<Vec<_>, _>>()?
     };
@@ -97,11 +92,10 @@ pub async fn note_list(
 
 /// 获取单条笔记详情
 #[tauri::command]
-pub async fn note_get(id: i64, state: State<'_, DbState>) -> AppResult<Note> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn note_get(id: i64, pool: State<'_, DbPool>) -> AppResult<Note> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let mut stmt = conn.prepare(
         "SELECT id, title, content, folder_id, tags, created_at, updated_at \
@@ -123,12 +117,11 @@ pub async fn note_save(
     content: String,
     folder_id: i64,
     tags: Option<String>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Note> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let tags_str = tags.unwrap_or_else(|| "[]".into());
 
@@ -170,11 +163,10 @@ pub async fn note_save(
 
 /// 删除笔记
 #[tauri::command]
-pub async fn note_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn note_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let affected = conn.execute("DELETE FROM notes WHERE id = ?1", params![id])?;
     Ok(affected > 0)
@@ -184,11 +176,10 @@ pub async fn note_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> 
 
 /// 获取笔记文件夹列表（含每个文件夹的笔记数量）
 #[tauri::command]
-pub async fn note_folder_list(state: State<'_, DbState>) -> AppResult<Vec<NoteFolder>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn note_folder_list(pool: State<'_, DbPool>) -> AppResult<Vec<NoteFolder>> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let mut stmt = conn.prepare(
         "SELECT f.id, f.name, COUNT(n.id) as note_count \

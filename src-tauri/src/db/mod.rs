@@ -3,22 +3,9 @@ pub mod ops;
 
 use r2d2::Pool;
 use r2d2_sqlite::SqliteConnectionManager;
-use rusqlite::Connection;
 use std::path::PathBuf;
-use std::sync::Mutex;
 
 pub type DbPool = Pool<SqliteConnectionManager>;
-
-/// Notes/calendar/task 等模块使用的本地连接状态。
-/// 内部直接持有一个 `Mutex<Connection>`，由命令函数 `state.0.lock()` 取得锁。
-/// 邮件模块使用 `DbPool`（r2d2 池）；此类型与池互不干扰。
-pub struct DbState(pub Mutex<Connection>);
-
-impl DbState {
-    pub fn new(conn: Connection) -> Self {
-        DbState(Mutex::new(conn))
-    }
-}
 
 pub fn init_db(app_data_dir: &PathBuf) -> Result<DbPool, Box<dyn std::error::Error>> {
     let db_dir = app_data_dir.join("easywork");

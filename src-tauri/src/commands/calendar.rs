@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::db::DbState;
+use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use rusqlite::params;
 
@@ -44,21 +44,18 @@ impl CalendarEvent {
 pub async fn event_list(
     year: Option<i32>,
     month: Option<i32>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Vec<CalendarEvent>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
-    let rows = if year.is_some() && month.is_some() {
-        let y = year.unwrap();
-        let m = month.unwrap();
+    let rows = if let (Some(y), Some(m)) = (year, month) {
         // 按年月筛选：匹配 YYYY-MM 格式
         let pattern = format!("{:04}-{:02}", y, m);
         let mut stmt = conn.prepare(
             "SELECT id, title, description, start_at, end_at, type, color, is_all_day, created_at \
-             FROM events \
+             FROM calendars \
              WHERE substr(start_at, 1, 7) = ?1 \
              ORDER BY start_at ASC",
         )?;
@@ -68,7 +65,7 @@ pub async fn event_list(
     } else {
         let mut stmt = conn.prepare(
             "SELECT id, title, description, start_at, end_at, type, color, is_all_day, created_at \
-             FROM events \
+             FROM calendars \
              ORDER BY start_at ASC",
         )?;
         let rows = stmt.query_map([], CalendarEvent::from_row)?
@@ -89,17 +86,16 @@ pub async fn event_create(
     event_type: Option<String>,
     color: Option<String>,
     is_all_day: Option<bool>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<CalendarEvent> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let all_day = is_all_day.unwrap_or(false);
 
     conn.execute(
-        "INSERT INTO events (title, description, start_at, end_at, type, color, is_all_day) \
+        "INSERT INTO calendars (title, description, start_at, end_at, type, color, is_all_day) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7)",
         params![
             title,
@@ -116,7 +112,7 @@ pub async fn event_create(
 
     let mut stmt = conn.prepare(
         "SELECT id, title, description, start_at, end_at, type, color, is_all_day, created_at \
-         FROM events WHERE id = ?1",
+         FROM calendars WHERE id = ?1",
     )?;
 
     let event = stmt
@@ -137,12 +133,11 @@ pub async fn event_update(
     event_type: Option<String>,
     color: Option<String>,
     is_all_day: Option<bool>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<CalendarEvent> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let mut sets = Vec::new();
     let mut values: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
@@ -180,7 +175,7 @@ pub async fn event_update(
         return Err(AppError::InvalidInput("没有提供要更新的字段".into()));
     }
 
-    let sql = format!("UPDATE events SET {} WHERE id = ?", sets.join(", "));
+    let sql = format!("UPDATE calendars SET {} WHERE id = ?", sets.join(", "));
     values.push(Box::new(id));
 
     let ref_values: Vec<&dyn rusqlite::types::ToSql> =
@@ -189,7 +184,7 @@ pub async fn event_update(
 
     let mut stmt = conn.prepare(
         "SELECT id, title, description, start_at, end_at, type, color, is_all_day, created_at \
-         FROM events WHERE id = ?1",
+         FROM calendars WHERE id = ?1",
     )?;
 
     let event = stmt
@@ -201,12 +196,11 @@ pub async fn event_update(
 
 /// 删除事件
 #[tauri::command]
-pub async fn event_delete(id: i64, state: State<'_, DbState>) -> AppResult<bool> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn event_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
-    let affected = conn.execute("DELETE FROM events WHERE id = ?1", params![id])?;
+    let affected = conn.execute("DELETE FROM calendars WHERE id = ?1", params![id])?;
     Ok(affected > 0)
 }

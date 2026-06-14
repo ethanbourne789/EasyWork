@@ -2,7 +2,7 @@
 use serde::{Deserialize, Serialize};
 use tauri::State;
 
-use crate::db::DbState;
+use crate::db::DbPool;
 use crate::error::{AppError, AppResult};
 use rusqlite::params;
 
@@ -50,17 +50,16 @@ pub struct SportGoal {
 #[tauri::command]
 pub async fn sport_list(
     sport_type: Option<String>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<Vec<SportRecord>> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let rows = if let Some(ref st) = sport_type {
         let mut stmt = conn.prepare(
             "SELECT id, type, duration, distance, calories, date, note, created_at \
-             FROM sports \
+             FROM sports_records \
              WHERE type = ?1 \
              ORDER BY date DESC",
         )?;
@@ -70,7 +69,7 @@ pub async fn sport_list(
     } else {
         let mut stmt = conn.prepare(
             "SELECT id, type, duration, distance, calories, date, note, created_at \
-             FROM sports \
+             FROM sports_records \
              ORDER BY date DESC",
         )?;
         let rows = stmt.query_map([], SportRecord::from_row)?
@@ -90,19 +89,18 @@ pub async fn sport_create(
     calories: Option<i32>,
     date: String,
     note: Option<String>,
-    state: State<'_, DbState>,
+    pool: State<'_, DbPool>,
 ) -> AppResult<SportRecord> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     if duration <= 0 {
         return Err(AppError::InvalidInput("时长必须大于 0".into()));
     }
 
     conn.execute(
-        "INSERT INTO sports (type, duration, distance, calories, date, note) \
+        "INSERT INTO sports_records (type, duration, distance, calories, date, note) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6)",
         params![
             sport_type,
@@ -118,7 +116,7 @@ pub async fn sport_create(
 
     let mut stmt = conn.prepare(
         "SELECT id, type, duration, distance, calories, date, note, created_at \
-         FROM sports WHERE id = ?1",
+         FROM sports_records WHERE id = ?1",
     )?;
 
     let record = stmt
@@ -132,11 +130,10 @@ pub async fn sport_create(
 
 /// 获取本周运动目标及完成情况
 #[tauri::command]
-pub async fn sport_goal_get(state: State<'_, DbState>) -> AppResult<SportGoal> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn sport_goal_get(pool: State<'_, DbPool>) -> AppResult<SportGoal> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     // 获取周目标设定值，默认 3 次
     let weekly_target: i32 = conn
@@ -149,7 +146,7 @@ pub async fn sport_goal_get(state: State<'_, DbState>) -> AppResult<SportGoal> {
 
     // 统计本周已完成次数（使用 SQLite 的日期函数）
     let weekly_completed: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sports \
+        "SELECT COUNT(*) FROM sports_records \
          WHERE date >= datetime('now', 'weekday 0', '-7 days', 'localtime') \
          AND date <= datetime('now', 'localtime')",
         [],
@@ -165,11 +162,10 @@ pub async fn sport_goal_get(state: State<'_, DbState>) -> AppResult<SportGoal> {
 
 /// 设置每周运动目标
 #[tauri::command]
-pub async fn sport_goal_set(weekly_target: i32, state: State<'_, DbState>) -> AppResult<SportGoal> {
-    let conn = state
-        .0
-        .lock()
-        .map_err(|_| AppError::Internal("数据库锁竞争".into()))?;
+pub async fn sport_goal_set(weekly_target: i32, pool: State<'_, DbPool>) -> AppResult<SportGoal> {
+    let conn = pool
+        .get()
+        .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     if weekly_target <= 0 {
         return Err(AppError::InvalidInput("目标必须大于 0".into()));
@@ -184,7 +180,7 @@ pub async fn sport_goal_set(weekly_target: i32, state: State<'_, DbState>) -> Ap
 
     // 同时返回当前完成情况
     let weekly_completed: i64 = conn.query_row(
-        "SELECT COUNT(*) FROM sports \
+        "SELECT COUNT(*) FROM sports_records \
          WHERE date >= datetime('now', 'weekday 0', '-7 days', 'localtime') \
          AND date <= datetime('now', 'localtime')",
         [],

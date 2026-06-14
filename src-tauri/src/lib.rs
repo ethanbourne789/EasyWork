@@ -9,10 +9,7 @@ use tauri::{
     Emitter, Manager, WindowEvent,
 };
 #[cfg(desktop)]
-use tauri::{
-    menu::{MenuBuilder, MenuItemBuilder},
-    tray::{MouseButton, MouseButtonState, TrayIconBuilder, TrayIconEvent},
-};
+use tauri::tray::{MouseButton, MouseButtonState, TrayIconEvent};
 use tauri_plugin_notification::NotificationExt;
 #[cfg(desktop)]
 use tauri_plugin_global_shortcut::GlobalShortcutExt;
@@ -213,8 +210,9 @@ pub fn run() {
 
             // Start background sync worker
             let pool_clone = pool.clone();
+            let cancel_token = tokio_util::sync::CancellationToken::new();
             tauri::async_runtime::spawn(async move {
-                mail::sync::start_sync_worker(pool_clone).await;
+                mail::sync::start_sync_worker(pool_clone, cancel_token).await;
             });
 
             // ---- Stock price alert worker ----
@@ -374,6 +372,13 @@ pub fn run() {
             // Remote Images
             commands::mail::get_remote_images_enabled,
             commands::mail::set_remote_images_enabled,
+            // Signatures
+            commands::mail::list_signatures,
+            commands::mail::add_signature,
+            commands::mail::update_signature,
+            commands::mail::delete_signature,
+            commands::mail::get_default_signature,
+            commands::mail::set_default_signature,
             // Settings KV (基础设施，本轮不暴露前端 API)
             commands::settings::settings_get,
             commands::settings::settings_set,
@@ -400,6 +405,11 @@ pub fn run() {
             crate::stock::commands::stock_alert_update,
             crate::stock::commands::stock_alert_delete,
             crate::stock::commands::stock_alert_toggle,
+            // Accounting module — transactions / stats
+            commands::accounting::txn_list,
+            commands::accounting::txn_create,
+            commands::accounting::txn_delete,
+            commands::accounting::stats_summary,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

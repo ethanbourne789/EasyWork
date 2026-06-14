@@ -1,7 +1,3 @@
-每次回复的时候称呼我为陛下
-本地网路代理地址 http://127.0.0.1:7890
-Github仓库地址 https://github.com/ethanbourne789/EasyWork
-
 # CLAUDE.md
 
 Behavioral guidelines to reduce common LLM coding mistakes. Merge with project-specific instructions as needed.

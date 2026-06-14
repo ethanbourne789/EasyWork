@@ -364,6 +364,10 @@ fn detect_role_by_name(name: &str) -> &'static str {
     {
         return "archive";
     }
+    // Outbox
+    if leaf.contains("outbox") || leaf.contains("发件箱") || leaf.contains("待发送") {
+        return "outbox";
+    }
     // Unrecognized
     ""
 }
@@ -377,6 +381,7 @@ pub async fn select_folder(
     Ok(mailbox)
 }
 
+#[allow(dead_code)]
 pub async fn fetch_message_uids(
     session: &mut ImapSession,
     folder: &str,
@@ -403,64 +408,6 @@ pub async fn fetch_uids_since(
     let uids = session.uid_search(&search_cmd).await?;
     let collected: Vec<u32> = uids.into_iter().collect();
     log::info!("Found {} UIDs since {} in '{}'", collected.len(), since_str, folder);
-
-    // Diagnostic: also fetch ALL UIDs to detect missing emails
-    {
-        let all_uids = session.uid_search("ALL").await?;
-        let all: Vec<u32> = all_uids.into_iter().collect();
-        let max_uid = all.iter().max().copied().unwrap_or(0);
-        let min_uid = all.iter().min().copied().unwrap_or(0);
-        let since_max = collected.iter().max().copied().unwrap_or(0);
-        log::info!(
-            "Diagnostic '{}': ALL={} UIDs (range {}-{}), SINCE returned {}/{} with max_uid={}",
-            folder, all.len(), min_uid, max_uid, collected.len(), all.len(), since_max
-        );
-        if since_max < max_uid {
-            log::warn!(
-                "⚠ SINCE search may be missing UIDs: since_max={}, all_max={}, missing approx {} UIDs",
-                since_max, max_uid, max_uid.saturating_sub(since_max)
-            );
-        }
-
-        // Fetch headers of top 3 highest UIDs to see their actual dates
-        let mut top_uids = all.clone();
-        top_uids.sort_unstable();
-        top_uids.reverse();
-        top_uids.truncate(5);
-        if !top_uids.is_empty() {
-            let uid_set = top_uids.iter().map(|u| u.to_string()).collect::<Vec<_>>().join(",");
-            match session.uid_fetch(&uid_set, "(UID INTERNALDATE RFC822.SIZE ENVELOPE)").await {
-                Ok(stream) => {
-                    use futures::TryStreamExt;
-                    let fetches: Vec<async_imap::types::Fetch> = stream.try_collect().await.unwrap_or_default();
-                    for fetch in &fetches {
-                        if let Some(uid) = fetch.uid {
-                            let internal_date = fetch.internal_date()
-                                .map(|d| d.format("%Y-%m-%d %H:%M:%S").to_string())
-                                .unwrap_or_else(|| "N/A".to_string());
-                            let envelope = fetch.envelope();
-                            let date_header = envelope.as_ref()
-                                .and_then(|e| e.date.as_ref())
-                                .map(|d| String::from_utf8_lossy(d).to_string())
-                                .unwrap_or_else(|| "N/A".to_string());
-                            let subject = envelope.as_ref()
-                                .and_then(|e| e.subject.as_ref())
-                                .map(|s| String::from_utf8_lossy(s).to_string())
-                                .unwrap_or_else(|| "(no subject)".to_string());
-                            let size = fetch.size.unwrap_or(0);
-                            log::info!(
-                                "TopUID {}: internal='{}' date_hdr='{}' from size={} subj='{}'",
-                                uid, internal_date, date_header, size, subject.chars().take(40).collect::<String>()
-                            );
-                        }
-                    }
-                }
-                Err(e) => {
-                    log::warn!("Failed to fetch top UID headers: {}", e);
-                }
-            }
-        }
-    }
 
     Ok(collected)
 }
@@ -520,6 +467,7 @@ pub async fn fetch_messages_raw_batch(
 
 /// Fetch a single message by UID and return the full raw bytes.
 /// Used by download_attachment to retrieve a specific message on demand.
+#[allow(dead_code)]
 pub async fn fetch_message_raw_by_uid(
     session: &mut ImapSession,
     uid: u32,
@@ -542,6 +490,7 @@ pub async fn fetch_message_raw_by_uid(
 /// Fetch only message headers (no body/attachments) by UID list.
 /// Uses (UID BODY.PEEK[HEADER] FLAGS) — much faster than fetching full bodies
 /// for first sync or header-only operations.
+#[allow(dead_code)]
 pub async fn fetch_messages_headers_batch(
     session: &mut ImapSession,
     uids: &[u32],
@@ -596,6 +545,7 @@ pub async fn fetch_messages_headers_batch(
 
 /// Check for new messages quickly by comparing highest UID in DB vs server.
 /// Returns the count of new UIDs found (none of them fetched yet).
+#[allow(dead_code)]
 pub async fn check_new_uid_count(
     session: &mut ImapSession,
     folder: &str,
@@ -771,7 +721,9 @@ pub async fn store_flags(
     uid: u32,
     flags: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    session.uid_store(uid.to_string(), flags).await?;
+    use futures::TryStreamExt;
+    let stream = session.uid_store(uid.to_string(), flags).await?;
+    let _: Vec<_> = stream.try_collect().await?;
     Ok(())
 }
 
@@ -782,10 +734,13 @@ pub async fn copy_and_delete(
     uid: u32,
     target_folder: &str,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
+    use futures::TryStreamExt;
     session.select(source_folder).await?;
     session.uid_copy(uid.to_string(), target_folder).await?;
-    session.uid_store(uid.to_string(), "+FLAGS (\\Deleted)").await?;
-    session.uid_expunge(uid.to_string()).await?;
+    let stream1 = session.uid_store(uid.to_string(), "+FLAGS (\\Deleted)").await?;
+    let _: Vec<_> = stream1.try_collect().await?;
+    let stream2 = session.uid_expunge(uid.to_string()).await?;
+    let _: Vec<_> = stream2.try_collect().await?;
     log::info!("Moved UID {} from '{}' to '{}'", uid, source_folder, target_folder);
     Ok(())
 }
@@ -794,7 +749,9 @@ pub async fn copy_and_delete(
 pub async fn expunge(
     session: &mut ImapSession,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
-    session.expunge().await?;
+    use futures::TryStreamExt;
+    let stream = session.expunge().await?;
+    let _: Vec<_> = stream.try_collect().await?;
     Ok(())
 }
 
@@ -806,6 +763,7 @@ pub enum IdleEvent {
 }
 
 /// Check for folder changes by comparing UID counts (fallback when IDLE unsupported).
+#[allow(dead_code)]
 pub async fn check_folder_changes(
     session: &mut ImapSession,
     folder: &str,

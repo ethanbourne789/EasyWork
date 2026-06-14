@@ -1,8 +1,10 @@
 use crate::db::{ops, DbPool};
 use crate::mail::{self, MailFolder, MailMessage, PendingOp};
+use std::collections::HashMap;
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
-use std::sync::Arc;
+use tokio::sync::mpsc;
+use tokio_util::sync::CancellationToken;
 
 /// App focus state for smart polling. When `true` (foreground), poll more aggressively.
 pub static APP_FOCUSED: AtomicBool = AtomicBool::new(false);
@@ -14,14 +16,21 @@ pub fn set_app_focused(focused: bool) {
 
 /// Smart poll intervals in seconds. Matches Pebble's RealtimePollPolicy.
 const POLL_FOREGROUND_ACTIVE_SECS: u64 = 10;
+#[allow(dead_code)]
 const POLL_FOREGROUND_IDLE_SECS: u64 = 30;
 const POLL_BACKGROUND_SECS: u64 = 120;
 const POLL_BASE_FLOOR_SECS: u64 = 15; // minimum interval per-account
 const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
 /// Start the background mail sync worker with exponential backoff + IDLE + circuit breaker.
-pub async fn start_sync_worker(pool: DbPool) {
+pub async fn start_sync_worker(pool: DbPool, cancel_token: CancellationToken) {
     let pool_clone = pool.clone();
+
+    // Channel for IDLE tasks to notify the main poll loop of new mail.
+    let (idle_tx, mut idle_rx) = mpsc::channel::<i64>(32);
+
+    // Track spawned IDLE tasks per account so we don't spawn duplicates.
+    let mut idle_tasks: HashMap<i64, tokio::task::JoinHandle<()>> = HashMap::new();
 
     // Main poll loop
     tokio::spawn(async move {
@@ -31,9 +40,21 @@ pub async fn start_sync_worker(pool: DbPool) {
         let mut circuit_open: std::collections::HashMap<i64, bool> = std::collections::HashMap::new();
         let mut reconcile_tick = 0u64;
 
-        tokio::time::sleep(Duration::from_secs(10)).await;
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+            _ = cancel_token.cancelled() => {
+                log::info!("Mail sync worker cancelled during initial delay");
+                return;
+            }
+        }
 
         loop {
+            // Check for cancellation before each iteration
+            if cancel_token.is_cancelled() {
+                log::info!("Mail sync worker shutting down gracefully");
+                break;
+            }
+
             let focused = APP_FOCUSED.load(Ordering::Relaxed);
 
             match poll_all_accounts(&pool, &mut backoff, &mut circuit_open).await {
@@ -44,6 +65,27 @@ pub async fn start_sync_worker(pool: DbPool) {
                     if accounts > 0 {
                         if let Err(e) = execute_pending_ops(&pool).await {
                             log::warn!("Failed to execute pending ops: {}", e);
+                        }
+
+                        // Spawn IDLE tasks for successfully synced accounts
+                        let account_list = ops::list_accounts(&pool).unwrap_or_default();
+                        for account in &account_list {
+                            let account_id = match account.id {
+                                Some(id) => id,
+                                None => continue,
+                            };
+                            if *circuit_open.get(&account_id).unwrap_or(&false) {
+                                continue;
+                            }
+                            if !idle_tasks.contains_key(&account_id) {
+                                let handle = spawn_idle_for_account(
+                                    account_id,
+                                    pool.clone(),
+                                    cancel_token.clone(),
+                                    idle_tx.clone(),
+                                );
+                                idle_tasks.insert(account_id, handle);
+                            }
                         }
                     }
                 }
@@ -58,8 +100,31 @@ pub async fn start_sync_worker(pool: DbPool) {
 
             let interval = get_next_poll_delay(&pool, &backoff, &circuit_open, focused);
             log::debug!("Next sync in {}s (focused={})", interval.as_secs(), focused);
-            tokio::time::sleep(interval).await;
+
+            // Use tokio::select! to allow cancellation during sleep and listen for IDLE notifications
+            tokio::select! {
+                _ = tokio::time::sleep(interval) => {}
+                _ = cancel_token.cancelled() => {
+                    log::info!("Mail sync worker cancelled during sleep");
+                    break;
+                }
+                Some(account_id) = idle_rx.recv() => {
+                    log::info!("IDLE notification: account {} detected new mail, triggering immediate sync", account_id);
+                    // Trigger immediate sync for this account
+                    if let Err(e) = sync_inbox_for_account(&pool, account_id).await {
+                        log::warn!("IDLE-triggered sync failed for account {}: {}", account_id, e);
+                    }
+                }
+            }
         }
+
+        // Cancel all IDLE tasks when shutting down
+        for (account_id, handle) in idle_tasks.drain() {
+            log::debug!("Cancelling IDLE task for account {}", account_id);
+            handle.abort();
+        }
+
+        log::info!("Mail sync worker stopped");
     });
 }
 
@@ -175,7 +240,6 @@ async fn poll_all_accounts(
             Ok(f) => f,
             Err(e) => {
                 log::warn!("Folder list failed for {}: {}", account.email, e);
-                account_had_error = true;
                 let _ = mail::imap::logout(session).await;
                 let fails = backoff.entry(account_id).or_insert(0);
                 *fails = (*fails).saturating_add(1).min(10);
@@ -186,13 +250,16 @@ async fn poll_all_accounts(
             }
         };
 
-        for (remote_id, name, role) in &folders {
+        for (remote_id, _name, role) in &folders {
             if role == "inbox" || role == "trash" || role == "junk" {
                 continue;
             }
             match sync_folder_with_cursor(pool, &mut session, account_id, remote_id, role, days).await {
                 Ok(n) => { total_new += n; }
-                Err(e) => log::debug!("Folder '{}' sync: {}", remote_id, e),
+                Err(e) => {
+                    log::debug!("Folder '{}' sync: {}", remote_id, e);
+                    account_had_error = true;
+                }
             }
         }
 
@@ -205,6 +272,10 @@ async fn poll_all_accounts(
         } else {
             let fails = backoff.entry(account_id).or_insert(0);
             *fails = (*fails).saturating_add(1).min(10);
+            if *fails >= CIRCUIT_BREAKER_THRESHOLD {
+                circuit_open.insert(account_id, true);
+                log::warn!("Account {}: circuit breaker OPENED after {} consecutive failures", account_id, *fails);
+            }
         }
         synced_accounts += 1;
         let _ = mail::imap::logout(session).await;
@@ -511,5 +582,142 @@ async fn execute_single_pending_op(
     };
 
     let _ = mail::imap::logout(session).await;
+    result
+}
+
+/// Spawn an IDLE monitoring task for a specific account.
+/// Returns a JoinHandle that can be used to cancel the task.
+fn spawn_idle_for_account(
+    account_id: i64,
+    pool: DbPool,
+    cancel_token: CancellationToken,
+    idle_tx: mpsc::Sender<i64>,
+) -> tokio::task::JoinHandle<()> {
+    tokio::spawn(async move {
+        log::info!("Starting IDLE monitor for account {}", account_id);
+        idle_monitor_account(account_id, pool, cancel_token, idle_tx).await;
+        log::info!("IDLE monitor stopped for account {}", account_id);
+    })
+}
+
+/// IDLE monitoring loop for a single account.
+/// Connects to IMAP, enters IDLE for INBOX, and notifies the main loop when new mail arrives.
+async fn idle_monitor_account(
+    account_id: i64,
+    pool: DbPool,
+    cancel_token: CancellationToken,
+    idle_tx: mpsc::Sender<i64>,
+) {
+    let mut consecutive_errors = 0u32;
+    const MAX_IDLE_ERRORS: u32 = 5;
+
+    loop {
+        if cancel_token.is_cancelled() {
+            break;
+        }
+
+        // Fetch account credentials
+        let account_info = match ops::get_account_with_password(&pool, account_id) {
+            Ok(Some((account, password))) => (account, password),
+            Ok(None) => {
+                log::warn!("Account {} not found, stopping IDLE monitor", account_id);
+                break;
+            }
+            Err(e) => {
+                log::error!("Failed to read account {}: {}", account_id, e);
+                break;
+            }
+        };
+        let (account, password) = account_info;
+
+        // Connect to IMAP
+        let session = match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password).await {
+            Ok(s) => s,
+            Err(e) => {
+                log::warn!("IDLE connect failed for account {}: {}", account_id, e);
+                consecutive_errors += 1;
+                if consecutive_errors >= MAX_IDLE_ERRORS {
+                    log::error!("IDLE monitor for account {} exceeded max errors, falling back to polling", account_id);
+                    break;
+                }
+                // Wait before retry
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                    _ = cancel_token.cancelled() => break,
+                }
+                continue;
+            }
+        };
+
+        // Enter IDLE loop
+        log::debug!("Account {} entering IDLE for INBOX", account_id);
+        let idle_timeout = Duration::from_secs(29 * 60); // RFC 2177: 29 minutes
+
+        let result = mail::imap::idle_wait(session, "INBOX", idle_timeout).await;
+
+        match result {
+            Ok((session, event)) => {
+                consecutive_errors = 0; // Reset on success
+
+                match event {
+                    mail::imap::IdleEvent::NewMail => {
+                        log::info!("IDLE: New mail detected for account {}", account_id);
+                        // Notify main loop
+                        let _ = idle_tx.send(account_id).await;
+                        // Logout before next IDLE cycle
+                        let _ = mail::imap::logout(session).await;
+                    }
+                    mail::imap::IdleEvent::Timeout => {
+                        log::debug!("IDLE: Timeout for account {}, re-entering IDLE", account_id);
+                        // Logout before next IDLE cycle
+                        let _ = mail::imap::logout(session).await;
+                    }
+                }
+            }
+            Err(e) => {
+                log::warn!("IDLE error for account {}: {}", account_id, e);
+                consecutive_errors += 1;
+                if consecutive_errors >= MAX_IDLE_ERRORS {
+                    log::error!("IDLE monitor for account {} exceeded max errors, falling back to polling", account_id);
+                    break;
+                }
+                // Wait before retry
+                tokio::select! {
+                    _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                    _ = cancel_token.cancelled() => break,
+                }
+            }
+        }
+
+        // Small delay before re-entering IDLE
+        tokio::select! {
+            _ = tokio::time::sleep(Duration::from_secs(2)) => {}
+            _ = cancel_token.cancelled() => break,
+        }
+    }
+}
+
+/// Sync INBOX for a specific account (called when IDLE detects new mail).
+async fn sync_inbox_for_account(pool: &DbPool, account_id: i64) -> Result<usize, String> {
+    let account = match ops::get_account_with_password(pool, account_id) {
+        Ok(Some((account, password))) => (account, password),
+        Ok(None) => return Err(format!("Account {} not found", account_id)),
+        Err(e) => return Err(format!("Failed to read account {}: {}", account_id, e)),
+    };
+    let (account, password) = account;
+
+    let days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
+
+    // Connect to IMAP
+    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password)
+        .await
+        .map_err(|e| format!("IMAP connect failed: {}", e))?;
+
+    // Sync INBOX
+    let result = sync_inbox_with_cursor(pool, &mut session, account_id, days).await;
+
+    // Logout
+    let _ = mail::imap::logout(session).await;
+
     result
 }

@@ -51,10 +51,20 @@ export interface MailContact {
   id?: number
   account_id: number
   name: string
+  display_name?: string
   email: string
   phone: string
-  group_name: string
+  group_id?: number | null
+  group_name?: string
   notes: string
+}
+
+export interface MailContactGroup {
+  id?: number
+  account_id: number
+  name: string
+  color: string
+  sort_order: number
 }
 
 export interface ComposeData {
@@ -124,6 +134,13 @@ interface MailState {
   // Contacts
   contacts: MailContact[]
   setContacts: (contacts: MailContact[]) => void
+
+  // Contact Groups
+  contactGroups: MailContactGroup[]
+  setContactGroups: (groups: MailContactGroup[]) => void
+  addContactGroup: (group: MailContactGroup) => void
+  updateContactGroup: (group: MailContactGroup) => void
+  removeContactGroup: (id: number) => void
 
   // Folders
   folderUnreadCounts: Record<number, number>
@@ -229,6 +246,16 @@ export const useMailStore = create<MailState>((set) => ({
 
   contacts: [],
   setContacts: (contacts) => set({ contacts }),
+
+  contactGroups: [],
+  setContactGroups: (groups) => set({ contactGroups: groups }),
+  addContactGroup: (group) => set((s) => ({ contactGroups: [...s.contactGroups, group] })),
+  updateContactGroup: (updated) => set((s) => ({
+    contactGroups: s.contactGroups.map((g) => g.id === updated.id ? { ...g, ...updated } : g),
+  })),
+  removeContactGroup: (id) => set((s) => ({
+    contactGroups: s.contactGroups.filter((g) => g.id !== id),
+  })),
 
   folderUnreadCounts: {},
   setFolderUnreadCounts: (counts) => set({ folderUnreadCounts: counts }),

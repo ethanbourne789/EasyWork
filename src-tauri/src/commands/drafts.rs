@@ -192,11 +192,29 @@ async fn append_draft(
     folder: &str,
     message: &[u8],
 ) -> Result<u32, Box<dyn std::error::Error + Send + Sync>> {
-    // async-imap 0.9.x's append() doesn't take flags. Just APPEND to Drafts folder
-    // (mail clients typically identify drafts by folder location, not \Draft flag).
+    // async-imap 0.9.x's append() doesn't return the UID directly.
+    // We need to:
+    // 1. Get the current highest UID before APPEND
+    // 2. APPEND the message
+    // 3. SEARCH for UIDs > the previous highest to find the new one
+    
+    // Get current highest UID
+    let uids_before: Vec<u32> = session.uid_search("ALL").await?
+        .into_iter().collect();
+    let max_uid_before = uids_before.iter().max().copied().unwrap_or(0);
+    
+    // APPEND to Drafts folder
     session.append(folder, message).await?;
-    // After APPEND, the message is in the folder but we don't have a UID
-    // from async-imap's append. Caller should re-select the folder and SEARCH ALL
-    // to find the new UID. For now, return 0 and let the caller handle it.
-    Ok(0)
+    
+    // Find the new UID (should be max_uid_before + 1, or search for it)
+    let uids_after: Vec<u32> = session.uid_search("ALL").await?
+        .into_iter().collect();
+    
+    // The new UID is the one that wasn't there before
+    let new_uid = uids_after.into_iter()
+        .find(|uid| *uid > max_uid_before)
+        .unwrap_or(max_uid_before + 1);
+    
+    log::info!("APPEND draft to '{}': new UID {} (previous max: {})", folder, new_uid, max_uid_before);
+    Ok(new_uid)
 }

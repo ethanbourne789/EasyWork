@@ -1,4 +1,4 @@
-import type { MailAccount, MailMessageSummary, MailContact } from "@/stores/mail-store"
+import type { MailAccount, MailMessageSummary, MailContact, MailContactGroup } from "@/stores/mail-store"
 
 export interface MailFolder {
   id: number | null
@@ -292,6 +292,24 @@ export async function deleteContact(id: number): Promise<void> {
 
 export async function updateContact(contact: MailContact): Promise<void> {
   return tauriInvoke("update_contact", { contact })
+}
+
+// ==================== Contact Groups ====================
+
+export async function listContactGroups(accountId: number): Promise<MailContactGroup[]> {
+  return tauriInvoke<MailContactGroup[]>("list_contact_groups", { accountId })
+}
+
+export async function addContactGroup(group: MailContactGroup): Promise<number> {
+  return tauriInvoke<number>("add_contact_group", { group })
+}
+
+export async function updateContactGroup(group: MailContactGroup): Promise<void> {
+  return tauriInvoke("update_contact_group", { group })
+}
+
+export async function deleteContactGroup(id: number): Promise<number> {
+  return tauriInvoke<number>("delete_contact_group", { id })
 }
 
 /** 按 email 查找联系人（前端预热浮层查询用）。 */

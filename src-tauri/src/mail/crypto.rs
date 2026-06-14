@@ -286,6 +286,7 @@ pub fn decrypt_password(encrypted_b64: &[u8]) -> Result<String, String> {
 /// the next call to `get_or_generate_key()` will generate a fresh key.
 ///
 /// Call this when the user removes all mail accounts.
+#[allow(dead_code)]
 pub fn clear_key() -> Result<(), String> {
     let entry = keyring::Entry::new(APP_KEY_NAME, KEY_ENTRY_NAME)
         .map_err(|e| format!("Failed to open keychain entry: {}", e))?;
