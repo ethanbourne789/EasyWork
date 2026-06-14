@@ -60,6 +60,25 @@ impl SyncManager {
         Ok(())
     }
 
+    /// GitHub OAuth 登录（PKCE + 本地重定向服务器）
+    pub async fn sign_in_github(&self) -> Result<(), AuthError> {
+        let config = self.config.as_ref().ok_or(AuthError::Failed(
+            "Supabase not configured".to_string(),
+        ))?;
+
+        let auth_resp = self.auth.sign_in_github().await?;
+
+        // 创建 Supabase 客户端并设置 JWT
+        let client = SupabaseClient::new(config);
+        client.set_jwt(Some(auth_resp.access_token.clone())).await;
+
+        // 注入到引擎
+        self.engine.set_client(client).await;
+
+        log::info!("User signed in via GitHub OAuth");
+        Ok(())
+    }
+
     /// 用户注册
     pub async fn sign_up(&self, email: &str, password: &str) -> Result<(), AuthError> {
         let config = self.config.as_ref().ok_or(AuthError::Failed(
@@ -97,6 +116,14 @@ pub async fn sync_sign_in(
 ) -> Result<(), String> {
     manager
         .sign_in(&email, &password)
+        .await
+        .map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub async fn sync_oauth_sign_in(manager: tauri::State<'_, SyncManager>) -> Result<(), String> {
+    manager
+        .sign_in_github()
         .await
         .map_err(|e| e.to_string())
 }

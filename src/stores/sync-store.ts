@@ -14,6 +14,7 @@ interface SyncState {
   refreshStatus: () => Promise<void>;
   signIn: (email: string, password: string) => Promise<void>;
   signUp: (email: string, password: string) => Promise<void>;
+  signInWithOAuth: () => Promise<void>;
   signOut: () => Promise<void>;
   syncNow: () => Promise<void>;
   checkConnectivity: () => Promise<boolean>;
@@ -58,6 +59,19 @@ export const useSyncStore = create<SyncState>((set, get) => ({
     set({ isLoading: true, error: null });
     try {
       await syncIpc.signUp(email, password);
+      await get().refreshStatus();
+    } catch (err) {
+      set({ error: String(err), isLoading: false });
+      throw err;
+    } finally {
+      set({ isLoading: false });
+    }
+  },
+
+  signInWithOAuth: async () => {
+    set({ isLoading: true, error: null });
+    try {
+      await syncIpc.signInWithOAuth();
       await get().refreshStatus();
     } catch (err) {
       set({ error: String(err), isLoading: false });

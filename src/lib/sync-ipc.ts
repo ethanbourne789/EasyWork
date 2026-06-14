@@ -25,6 +25,10 @@ export async function signUp(email: string, password: string): Promise<AuthRespo
   return invoke("sync_sign_up", { email, password });
 }
 
+export async function signInWithOAuth(): Promise<void> {
+  return invoke("sync_oauth_sign_in");
+}
+
 export async function signOut(): Promise<void> {
   return invoke("sync_sign_out");
 }

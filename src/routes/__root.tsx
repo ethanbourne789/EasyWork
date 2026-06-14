@@ -22,7 +22,7 @@ function RootLayout() {
 
         {/* Content — zero padding so child pages can fully fill the viewport.
             Each page is responsible for its own internal padding/spacing. */}
-        <main className="flex-1 overflow-hidden bg-surface-50 dark:bg-surface-950">
+        <main className="flex-1 overflow-y-auto bg-surface-50 dark:bg-surface-950">
           <Outlet />
         </main>
       </div>

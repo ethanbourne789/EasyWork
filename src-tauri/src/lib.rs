@@ -437,6 +437,7 @@ pub fn run() {
             sync::sync_sign_in,
             sync::sync_sign_up,
             sync::sync_sign_out,
+            sync::sync_oauth_sign_in,
             sync::sync_is_authenticated,
             sync::sync_get_status,
             sync::sync_now,

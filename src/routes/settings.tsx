@@ -403,29 +403,21 @@ function CloudSyncCard() {
     error,
     isLoading,
     refreshStatus,
-    signIn,
-    signUp,
+    signInWithOAuth,
     signOut,
     syncNow,
   } = useSyncStore();
 
-  const [email, setEmail] = useState("");
-  const [password, setPassword] = useState("");
-  const [isSignUp, setIsSignUp] = useState(false);
   const [localError, setLocalError] = useState<string | null>(null);
 
   useEffect(() => {
     refreshStatus();
   }, [refreshStatus]);
 
-  const handleAuth = async () => {
+  const handleOAuthLogin = async () => {
     setLocalError(null);
     try {
-      if (isSignUp) {
-        await signUp(email, password);
-      } else {
-        await signIn(email, password);
-      }
+      await signInWithOAuth();
     } catch (err) {
       setLocalError(String(err));
     }
@@ -481,41 +473,29 @@ function CloudSyncCard() {
         </div>
 
         {!isAuthenticated ? (
-          /* Login / Sign up form */
+          /* GitHub OAuth login button */
           <div className="space-y-3">
-            <input
-              type="email"
-              placeholder="邮箱"
-              value={email}
-              onChange={(e) => setEmail(e.target.value)}
-              className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-transparent dark:text-surface-200"
-            />
-            <input
-              type="password"
-              placeholder="密码"
-              value={password}
-              onChange={(e) => setPassword(e.target.value)}
-              className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-transparent dark:text-surface-200"
-            />
             {(localError || error) && (
               <p className="text-xs text-red-500">{localError || error}</p>
             )}
-            <div className="flex gap-2">
-              <Button
-                size="sm"
-                onClick={handleAuth}
-                disabled={!email || !password || isLoading}
-              >
-                {isSignUp ? "注册" : "登录"}
-              </Button>
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => setIsSignUp(!isSignUp)}
-              >
-                {isSignUp ? "已有账号？去登录" : "没有账号？去注册"}
-              </Button>
-            </div>
+            <p className="text-xs text-surface-500 dark:text-surface-400">
+              使用 GitHub 账号登录以在设备间同步数据
+            </p>
+            <Button
+              size="sm"
+              onClick={handleOAuthLogin}
+              disabled={isLoading}
+              className="gap-2"
+            >
+              {isLoading ? (
+                <RefreshCw size={14} className="animate-spin" />
+              ) : (
+                <svg viewBox="0 0 16 16" fill="currentColor" width={14} height={14}>
+                  <path d="M8 0C3.58 0 0 3.58 0 8c0 3.54 2.29 6.53 5.47 7.59.4.07.55-.17.55-.38 0-.19-.01-.82-.01-1.49-2.01.37-2.53-.49-2.69-.94-.09-.23-.48-.94-.82-1.13-.28-.15-.68-.52-.01-.53.63-.01 1.08.58 1.23.82.72 1.21 1.87.87 2.33.66.07-.52.28-.87.51-1.07-1.78-.2-3.64-.89-3.64-3.95 0-.87.31-1.59.82-2.15-.08-.2-.36-1.02.08-2.12 0 0 .67-.21 2.2.82.64-.18 1.32-.27 2-.27s1.36.09 2 .27c1.53-1.04 2.2-.82 2.2-.82.44 1.1.16 1.92.08 2.12.51.56.82 1.27.82 2.15 0 3.07-1.87 3.75-3.65 3.95.29.25.54.73.54 1.48 0 1.07-.01 1.93-.01 2.2 0 .21.15.46.55.38A8.013 8.013 0 0 0 16 8c0-4.42-3.58-8-8-8z"/>
+                </svg>
+              )}
+              {isLoading ? "正在打开浏览器..." : "使用 GitHub 登录"}
+            </Button>
           </div>
         ) : (
           /* Authenticated: sync button + sign out */
