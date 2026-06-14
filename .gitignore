@@ -35,6 +35,9 @@ portable/
 # AI agent workspace (local config/memory, not part of source)
 .workbuddy/
 
+# AI tool planning docs (local planning artifacts, not project source)
+.trae/
+
 # Brainstorm companion artifacts (local mockups, transient)
 .superpowers/
 
