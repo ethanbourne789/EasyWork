@@ -119,11 +119,21 @@ pub async fn txn_create(
     date: String,
     pool: State<'_, DbPool>,
 ) -> AppResult<Transaction> {
+    let trace_id = crate::logging::trace_id();
+    let params = serde_json::json!({
+        "type": txn_type,
+        "amount": amount,
+        "category": category,
+        "date": date,
+    });
+    log::info!("[{}] txn_create START {}", trace_id, params);
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     if amount <= 0.0 {
+        log::warn!("[{}] txn_create FAILED {}", trace_id, serde_json::json!({"error": "invalid_amount"}));
         return Err(AppError::InvalidInput("金额必须大于 0".into()));
     }
 
@@ -135,6 +145,9 @@ pub async fn txn_create(
 
     let id = conn.last_insert_rowid();
 
+    // 标记为 dirty，待同步
+    crate::sync::helpers::mark_dirty(&conn, "transactions", id)?;
+
     let mut stmt = conn.prepare(
         "SELECT id, type, amount, category, subcategory, note, date, created_at \
          FROM transactions WHERE id = ?1",
@@ -144,17 +157,31 @@ pub async fn txn_create(
         .query_row(params![id], Transaction::from_row)
         .map_err(|_| AppError::NotFound(format!("交易记录 {} 未找到", id)))?;
 
+    let result = serde_json::json!({
+        "transaction_id": id,
+    });
+    log::info!("[{}] txn_create SUCCESS {}", trace_id, result);
+
     Ok(txn)
 }
 
 /// 删除交易记录
 #[tauri::command]
 pub async fn txn_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> {
+    let trace_id = crate::logging::trace_id();
+    log::info!("[{}] txn_delete START {}", trace_id, serde_json::json!({"id": id}));
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
-    let affected = conn.execute("DELETE FROM transactions WHERE id = ?1", params![id])?;
+    // 软删除：标记为 deleting，待同步后物理删除
+    let affected = conn.execute(
+        "UPDATE transactions SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
+        params![id],
+    )?;
+    
+    log::info!("[{}] txn_delete SUCCESS {}", trace_id, serde_json::json!({"affected_rows": affected}));
     Ok(affected > 0)
 }
 
@@ -170,11 +197,22 @@ pub async fn txn_update(
     date: String,
     pool: State<'_, DbPool>,
 ) -> AppResult<bool> {
+    let trace_id = crate::logging::trace_id();
+    let params = serde_json::json!({
+        "id": id,
+        "type": txn_type,
+        "amount": amount,
+        "category": category,
+        "date": date,
+    });
+    log::info!("[{}] txn_update START {}", trace_id, params);
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     if amount <= 0.0 {
+        log::warn!("[{}] txn_update FAILED {}", trace_id, serde_json::json!({"error": "invalid_amount"}));
         return Err(AppError::InvalidInput("金额必须大于 0".into()));
     }
 
@@ -182,6 +220,13 @@ pub async fn txn_update(
         "UPDATE transactions SET type = ?1, amount = ?2, category = ?3, subcategory = ?4, note = ?5, date = ?6, updated_at = datetime('now') WHERE id = ?7",
         params![txn_type, amount, category, subcategory, note, date, id],
     )?;
+    
+    // 标记为 dirty，待同步
+    if affected > 0 {
+        crate::sync::helpers::mark_dirty(&conn, "transactions", id)?;
+    }
+    
+    log::info!("[{}] txn_update SUCCESS {}", trace_id, serde_json::json!({"affected_rows": affected}));
     Ok(affected > 0)
 }
 
@@ -243,6 +288,13 @@ pub async fn category_create(
     sort_order: Option<i64>,
     pool: State<'_, DbPool>,
 ) -> AppResult<i64> {
+    let trace_id = crate::logging::trace_id();
+    let params = serde_json::json!({
+        "name": name,
+        "type": r#type,
+    });
+    log::info!("[{}] category_create START {}", trace_id, params);
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
@@ -258,7 +310,13 @@ pub async fn category_create(
         params![name, r#type, icon, color, parent_id, sort_order],
     )?;
 
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    
+    // 标记为 dirty，待同步
+    crate::sync::helpers::mark_dirty(&conn, "categories", id)?;
+    
+    log::info!("[{}] category_create SUCCESS {}", trace_id, serde_json::json!({"category_id": id}));
+    Ok(id)
 }
 
 /// 更新分类
@@ -314,6 +372,11 @@ pub async fn category_update(
 
     let refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
     let affected = conn.execute(&sql, refs.as_slice())?;
+    
+    // 标记为 dirty，待同步
+    if affected > 0 {
+        crate::sync::helpers::mark_dirty(&conn, "categories", id)?;
+    }
     Ok(affected > 0)
 }
 
@@ -324,7 +387,11 @@ pub async fn category_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
-    let affected = conn.execute("DELETE FROM categories WHERE id = ?1", params![id])?;
+    // 软删除：标记为 deleting，待同步后物理删除
+    let affected = conn.execute(
+        "UPDATE categories SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
+        params![id],
+    )?;
     Ok(affected > 0)
 }
 
@@ -382,11 +449,21 @@ pub async fn budget_create(
     month: i64,
     pool: State<'_, DbPool>,
 ) -> AppResult<i64> {
+    let trace_id = crate::logging::trace_id();
+    let params = serde_json::json!({
+        "category": category,
+        "amount": amount,
+        "year": year,
+        "month": month,
+    });
+    log::info!("[{}] budget_create START {}", trace_id, params);
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     if amount <= 0.0 {
+        log::warn!("[{}] budget_create FAILED {}", trace_id, serde_json::json!({"error": "invalid_amount"}));
         return Err(AppError::InvalidInput("预算金额必须大于 0".into()));
     }
 
@@ -395,7 +472,13 @@ pub async fn budget_create(
         params![category, amount, year, month],
     )?;
 
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    
+    // 标记为 dirty，待同步
+    crate::sync::helpers::mark_dirty(&conn, "budgets", id)?;
+    
+    log::info!("[{}] budget_create SUCCESS {}", trace_id, serde_json::json!({"budget_id": id}));
+    Ok(id)
 }
 
 /// 更新预算
@@ -435,6 +518,11 @@ pub async fn budget_update(
 
     let refs: Vec<&dyn rusqlite::types::ToSql> = params_vec.iter().map(|p| p.as_ref()).collect();
     let affected = conn.execute(&sql, refs.as_slice())?;
+    
+    // 标记为 dirty，待同步
+    if affected > 0 {
+        crate::sync::helpers::mark_dirty(&conn, "budgets", id)?;
+    }
     Ok(affected > 0)
 }
 
@@ -452,7 +540,11 @@ pub async fn budget_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> 
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
-    let affected = conn.execute("DELETE FROM budgets WHERE id = ?1", params![id])?;
+    // 软删除：标记为 deleting，待同步后物理删除
+    let affected = conn.execute(
+        "UPDATE budgets SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
+        params![id],
+    )?;
     Ok(affected > 0)
 }
 
@@ -468,8 +560,9 @@ pub async fn budget_save_all(
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
+    // 软删除当月所有预算
     conn.execute(
-        "DELETE FROM budgets WHERE year = ?1 AND month = ?2",
+        "UPDATE budgets SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE year = ?1 AND month = ?2",
         params![year, month],
     )?;
 
@@ -479,6 +572,8 @@ pub async fn budget_save_all(
                 "INSERT INTO budgets (category, amount, year, month) VALUES (?1, ?2, ?3, ?4)",
                 params![item.category, item.amount, year, month],
             )?;
+            let id = conn.last_insert_rowid();
+            crate::sync::helpers::mark_dirty(&conn, "budgets", id)?;
         }
     }
 

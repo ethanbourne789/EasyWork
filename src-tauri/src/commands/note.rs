@@ -119,6 +119,15 @@ pub async fn note_save(
     tags: Option<String>,
     pool: State<'_, DbPool>,
 ) -> AppResult<Note> {
+    let trace_id = crate::logging::trace_id();
+    let is_update = id.is_some();
+    let params = serde_json::json!({
+        "id": id,
+        "title": title,
+        "folder_id": folder_id,
+    });
+    log::info!("[{}] note_save START {}", trace_id, params);
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
@@ -140,6 +149,8 @@ pub async fn note_save(
         let note = stmt
             .query_row(params![existing_id], Note::from_row)
             .map_err(|_| AppError::NotFound(format!("笔记 {} 未找到", existing_id)))?;
+        
+        log::info!("[{}] note_save SUCCESS {}", trace_id, serde_json::json!({"note_id": existing_id, "action": "update"}));
         Ok(note)
     } else {
         // 创建新笔记
@@ -157,6 +168,8 @@ pub async fn note_save(
         let note = stmt
             .query_row(params![new_id], Note::from_row)
             .map_err(|_| AppError::NotFound(format!("笔记 {} 未找到", new_id)))?;
+        
+        log::info!("[{}] note_save SUCCESS {}", trace_id, serde_json::json!({"note_id": new_id, "action": "create"}));
         Ok(note)
     }
 }
@@ -164,11 +177,16 @@ pub async fn note_save(
 /// 删除笔记
 #[tauri::command]
 pub async fn note_delete(id: i64, pool: State<'_, DbPool>) -> AppResult<bool> {
+    let trace_id = crate::logging::trace_id();
+    log::info!("[{}] note_delete START {}", trace_id, serde_json::json!({"id": id}));
+
     let conn = pool
         .get()
         .map_err(|e| AppError::Internal(format!("数据库连接失败: {}", e)))?;
 
     let affected = conn.execute("DELETE FROM notes WHERE id = ?1", params![id])?;
+    
+    log::info!("[{}] note_delete SUCCESS {}", trace_id, serde_json::json!({"affected_rows": affected}));
     Ok(affected > 0)
 }
 

@@ -129,7 +129,14 @@ pub async fn add_account(
     account: MailAccount,
 ) -> Result<i64, String> {
     let trace_id = crate::logging::trace_id();
-    log::info!("[{}] add_account START email={}", trace_id, account.email);
+    let params = serde_json::json!({
+        "email": account.email,
+        "imap_host": account.imap_host,
+        "imap_port": account.imap_port,
+        "smtp_host": account.smtp_host,
+        "smtp_port": account.smtp_port,
+    });
+    log::info!("[{}] add_account START {}", trace_id, params);
 
     // ── Step 1: Input validation ──
     validate_account_input(&account, &trace_id)?;
@@ -150,24 +157,26 @@ pub async fn add_account(
     })
     .await
     .map_err(|e| {
-        log::error!("[{trace_id}] add_account spawn_blocking panicked: {e}");
+        let error_msg = e.to_string();
+        log::error!("[{}] add_account FAILED {}", trace_id, serde_json::json!({"error": error_msg}));
         format!("内部错误: 后台任务异常")
     })?
     .map_err(|e| {
         let msg = if e.to_string().contains("UNIQUE constraint") {
-            log::warn!("[{trace_id}] duplicate email rejected: {}", account.email);
+            log::warn!("[{}] add_account FAILED {}", trace_id, serde_json::json!({"error": "duplicate_email", "email": account.email}));
             format!("该邮箱 {} 已存在，请勿重复添加", account.email)
         } else {
-            log::error!("[{trace_id}] insert_account DB error: {e}");
-            format!("数据库写入失败: {e}")
+            log::error!("[{}] add_account FAILED {}", trace_id, serde_json::json!({"error": e.to_string()}));
+            format!("数据库写入失败: {}", e)
         };
         msg
     })?;
 
-    log::info!(
-        "[{trace_id}] add_account OK: id={} email={}",
-        id, account.email,
-    );
+    let result = serde_json::json!({
+        "account_id": id,
+        "email": account.email,
+    });
+    log::info!("[{}] add_account SUCCESS {}", trace_id, result);
     Ok(id)
 }
 
@@ -513,7 +522,14 @@ pub async fn send_mail(
     pool: State<'_, DbPool>,
     request: SendMailRequest,
 ) -> Result<SendResult, String> {
-    log::info!("Sending mail from account {}: subject='{}' to='{}'", request.account_id, request.subject, request.to);
+    let trace_id = crate::logging::trace_id();
+    let params = serde_json::json!({
+        "account_id": request.account_id,
+        "to": request.to,
+        "subject": request.subject,
+        "has_attachments": request.attachments.as_ref().map(|a| !a.is_empty()).unwrap_or(false),
+    });
+    log::info!("[{}] send_mail START {}", trace_id, params);
 
     let (account, password) = ops::get_account_with_password(&pool, request.account_id)
         .map_err(|e| e.to_string())?
@@ -566,10 +582,17 @@ pub async fn send_mail(
         &request.body_text,
         request.body_html.as_deref(),
         &attachments,
+        account.use_tls,
     ).await {
         Ok(()) => {
-            log::info!("Mail sent successfully from {} (to={}, cc={}, bcc={}, attachments={})",
-                account.email, to_list.len(), cc_list.len(), bcc_list.len(), attachments.len());
+            let result = serde_json::json!({
+                "account_id": request.account_id,
+                "to_count": to_list.len(),
+                "cc_count": cc_list.len(),
+                "bcc_count": bcc_list.len(),
+                "attachment_count": attachments.len(),
+            });
+            log::info!("[{}] send_mail SUCCESS {}", trace_id, result);
 
             // Bug #8 fix: persist the sent message in the local DB and link it
             // back to the message it replied to (if any). We need the
@@ -695,7 +718,7 @@ pub async fn send_mail(
             })
         }
         Err(e) => {
-            log::error!("Failed to send mail: {}", e);
+            log::error!("[{}] send_mail FAILED {}", trace_id, serde_json::json!({"error": e.to_string()}));
             Ok(SendResult {
                 success: false,
                 error: Some(format!("发送失败: {}", e)),
@@ -771,7 +794,7 @@ pub async fn download_attachment(
 
     // 4. Connect to IMAP and fetch the full message
     let mut session = mail::imap::connect(
-        &account.imap_host, account.imap_port, &account.email, &password,
+        &account.imap_host, account.imap_port, &account.email, &password, account.use_tls,
     ).await.map_err(|e| format!("IMAP连接失败: {}", e))?;
 
     let _ = mail::imap::select_folder(&mut session, &folder_remote_id).await
@@ -934,46 +957,44 @@ pub async fn test_connection(
     account: MailAccount,
 ) -> Result<String, String> {
     let trace_id = crate::logging::trace_id();
-    log::info!(
-        "[{trace_id}] test_connection START imap={}:{} email={}",
-        account.imap_host, account.imap_port, account.email,
-    );
+    let params = serde_json::json!({
+        "imap_host": account.imap_host,
+        "imap_port": account.imap_port,
+        "email": account.email,
+    });
+    log::info!("[{}] test_connection START {}", trace_id, params);
 
     let result = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
         &account.email,
         &account.password,
+        account.use_tls,
     ).await;
 
     match result {
         Ok(session) => {
             let _ = mail::imap::logout(session).await;
-            log::info!("[{trace_id}] test_connection OK");
+            log::info!("[{}] test_connection SUCCESS", trace_id);
             Ok("连接成功: IMAP 服务器可达，认证通过".into())
         }
         Err(e) => {
             let msg = e.to_string();
             // Classify the error for better user feedback
-            let user_msg = if msg.contains("超时") {
-                log::warn!("[{trace_id}] test_connection TIMEOUT");
-                format!("连接超时: 无法在 15 秒内连接到 {}:{}\n请检查服务器地址和网络连接", account.imap_host, account.imap_port)
+            let (error_type, user_msg) = if msg.contains("超时") {
+                ("TIMEOUT", format!("连接超时: 无法在 15 秒内连接到 {}:{}\n请检查服务器地址和网络连接", account.imap_host, account.imap_port))
             } else if msg.contains("ILLEGAL.EMAIL") || msg.contains("ILLEGAL_EMAIL") {
-                log::warn!("[{trace_id}] test_connection ILLEGAL_EMAIL");
-                "登录失败: 用户名格式不正确，请使用完整的邮箱地址（如 user@domain.com）作为用户名".into()
+                ("ILLEGAL_EMAIL", "登录失败: 用户名格式不正确，请使用完整的邮箱地址（如 user@domain.com）作为用户名".into())
             } else if msg.contains("authentication") || msg.contains("AUTHENTICATIONFAILED") || msg.contains("Login") {
-                log::warn!("[{trace_id}] test_connection AUTH_FAILED");
-                "登录失败: 用户名或密码/授权码不正确".into()
+                ("AUTH_FAILED", "登录失败: 用户名或密码/授权码不正确".into())
             } else if msg.contains("No such host") || msg.contains("dns") || msg.contains("Name or service not known") {
-                log::warn!("[{trace_id}] test_connection DNS_FAILED: {}", account.imap_host);
-                format!("无法解析服务器地址: {}\n请检查 IMAP 服务器域名是否正确", account.imap_host)
+                ("DNS_FAILED", format!("无法解析服务器地址: {}\n请检查 IMAP 服务器域名是否正确", account.imap_host))
             } else if msg.contains("Connection refused") {
-                log::warn!("[{trace_id}] test_connection CONN_REFUSED");
-                format!("连接被拒绝: {}:{}\n端口可能不对或服务器未开启 IMAP", account.imap_host, account.imap_port)
+                ("CONN_REFUSED", format!("连接被拒绝: {}:{}\n端口可能不对或服务器未开启 IMAP", account.imap_host, account.imap_port))
             } else {
-                log::error!("[{trace_id}] test_connection ERROR: {msg}");
-                format!("连接失败: {msg}")
+                ("UNKNOWN", format!("连接失败: {}", msg))
             };
+            log::error!("[{}] test_connection FAILED {}", trace_id, serde_json::json!({"error_type": error_type, "error": msg}));
             Err(user_msg)
         }
     }
@@ -1003,7 +1024,11 @@ pub async fn sync_account_impl_with_lock(
         None => None,
     };
 
-    log::info!("Starting sync for account {}", account_id);
+    let trace_id = crate::logging::trace_id();
+    let params = serde_json::json!({
+        "account_id": account_id,
+    });
+    log::info!("[{}] sync_account START {}", trace_id, params);
 
     let (account, password) = ops::get_account_with_password(&pool, account_id)
         .map_err(|e| e.to_string())?
@@ -1017,6 +1042,7 @@ pub async fn sync_account_impl_with_lock(
         account.imap_port,
         &account.email,
         &password,
+        account.use_tls,
     )
     .await
     .map_err(|e| {
@@ -1210,11 +1236,15 @@ pub async fn sync_account_impl_with_lock(
 
     let _ = mail::imap::logout(session).await;
 
-    log::info!(
-        "Sync complete for account {}: {} folders ({} skipped), {} new / {} total ({} parse fail, {} insert fail)",
-        account_id, folder_db_ids.len(), folders_skipped, total_new, total_all,
-        total_failed_parse, total_failed_insert
-    );
+    let result = serde_json::json!({
+        "folders_count": folder_db_ids.len(),
+        "messages_new": total_new,
+        "messages_total": total_all,
+        "folders_skipped": folders_skipped,
+        "parse_failures": total_failed_parse,
+        "insert_failures": total_failed_insert,
+    });
+    log::info!("[{}] sync_account SUCCESS {}", trace_id, result);
 
     Ok(SyncResult {
         success: true,

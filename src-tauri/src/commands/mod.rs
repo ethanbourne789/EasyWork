@@ -5,3 +5,4 @@ pub mod drafts;
 pub mod settings;
 pub mod system;
 pub mod accounting;
+pub mod log;

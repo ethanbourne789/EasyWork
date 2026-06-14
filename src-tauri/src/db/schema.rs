@@ -603,5 +603,86 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
         );
     }
 
+    // ── v8 migration: app_logs 增强日志表 ──
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS app_logs (
+            id          INTEGER PRIMARY KEY AUTOINCREMENT,
+            trace_id    TEXT,
+            level       TEXT NOT NULL DEFAULT 'INFO',
+            module      TEXT NOT NULL DEFAULT 'system',
+            action      TEXT,
+            status      TEXT,
+            params      TEXT,
+            result      TEXT,
+            error_msg   TEXT,
+            duration_ms INTEGER,
+            source_file TEXT,
+            source_line INTEGER,
+            created_at  TEXT NOT NULL DEFAULT (datetime('now'))
+        );
+        CREATE INDEX IF NOT EXISTS idx_app_logs_created ON app_logs(created_at DESC);
+        CREATE INDEX IF NOT EXISTS idx_app_logs_module ON app_logs(module);
+        CREATE INDEX IF NOT EXISTS idx_app_logs_level ON app_logs(level);
+        CREATE INDEX IF NOT EXISTS idx_app_logs_trace ON app_logs(trace_id);
+        CREATE INDEX IF NOT EXISTS idx_app_logs_action ON app_logs(module, action);"
+    );
+
+    // ── v9 migration: 云同步追踪字段 ──
+    // 为需要同步的表添加 sync_version 和 sync_status 字段
+    let sync_tables = [
+        "transactions",
+        "categories",
+        "budgets",
+        "sports_records",
+        "stock_watchlist",
+        "stock_trades",
+        "stock_alerts",
+        "mail_accounts",
+        "mail_folders",
+        "mail_signatures",
+        "mail_contacts",
+        "mail_contact_groups",
+        "notes",
+        "note_folders",
+        "calendars",
+        "tasks",
+        "timelines",
+        "settings",
+        "app_config",
+    ];
+
+    for table in sync_tables {
+        // 添加 sync_version 字段
+        let has_sync_version = conn
+            .prepare(&format!("SELECT sync_version FROM {} LIMIT 0", table))
+            .is_ok();
+        if !has_sync_version {
+            let _ = conn.execute_batch(&format!(
+                "ALTER TABLE {} ADD COLUMN sync_version INTEGER NOT NULL DEFAULT 0;",
+                table
+            ));
+        }
+
+        // 添加 sync_status 字段
+        let has_sync_status = conn
+            .prepare(&format!("SELECT sync_status FROM {} LIMIT 0", table))
+            .is_ok();
+        if !has_sync_status {
+            let _ = conn.execute_batch(&format!(
+                "ALTER TABLE {} ADD COLUMN sync_status TEXT NOT NULL DEFAULT 'clean';",
+                table
+            ));
+        }
+    }
+
+    // 创建同步版本追踪表
+    let _ = conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS sync_global_version (
+            table_name TEXT PRIMARY KEY,
+            last_synced_version INTEGER NOT NULL DEFAULT 0,
+            last_synced_at TEXT
+        );"
+    );
+
     Ok(())
 }

@@ -32,12 +32,15 @@ pub struct AutoconfigResult {
 
 #[tauri::command]
 pub async fn autodiscover_account(email: String) -> Result<AutoconfigResult, String> {
+    let trace_id = crate::logging::trace_id();
     let trimmed = email.trim().to_lowercase();
     let at_pos = trimmed.find('@').ok_or_else(|| "邮箱格式错误（缺少 @）".to_string())?;
     let domain = trimmed[at_pos + 1..].trim().to_string();
     if domain.is_empty() {
         return Err("邮箱域名不能为空".to_string());
     }
+
+    log::info!("[{}] autodiscover START {}", trace_id, serde_json::json!({"email": trimmed, "domain": domain}));
 
     let mut imap_cfg: Option<ServerConfig> = None;
     let mut smtp_cfg: Option<ServerConfig> = None;
@@ -61,11 +64,19 @@ pub async fn autodiscover_account(email: String) -> Result<AutoconfigResult, Str
             }
             Ok(None) => {} // not found, try next
             Err(e) => {
-                log::debug!("autoconfig URL {} failed: {}", url, e);
+                log::debug!("[{}] autodiscover URL {} failed: {}", trace_id, url, e);
                 last_error = Some(e);
             }
         }
     }
+
+    let result = serde_json::json!({
+        "domain": domain,
+        "imap_found": imap_cfg.is_some(),
+        "smtp_found": smtp_cfg.is_some(),
+        "source": source,
+    });
+    log::info!("[{}] autodiscover SUCCESS {}", trace_id, result);
 
     Ok(AutoconfigResult {
         email: trimmed,
