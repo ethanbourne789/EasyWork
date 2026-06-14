@@ -40,7 +40,7 @@ pub struct LogWriter {
     pool: DbPool,
     receiver: mpsc::Receiver<LogEntry>,
     buffer: Vec<LogEntry>,
-    last_flush: Instant,
+    last_cleanup: Instant,
 }
 
 impl LogWriter {
@@ -50,13 +50,22 @@ impl LogWriter {
             pool,
             receiver,
             buffer: Vec::with_capacity(BATCH_SIZE),
-            last_flush: Instant::now(),
+            last_cleanup: Instant::now(),
         }
     }
 
     /// 运行写入循环（阻塞，应在独立线程中运行）
     pub fn run(mut self) {
-        log::info!("LogWriter started");
+        // 尝试先写一条测试日志，验证 SQLite 写入正常
+        if let Ok(conn) = self.pool.get() {
+            if conn.execute(
+                "INSERT INTO app_logs (level, module, action, status) VALUES ('INFO', 'log_writer', 'start', 'OK')",
+                [],
+            ).is_ok() {
+                // 再删掉测试记录
+                let _ = conn.execute("DELETE FROM app_logs WHERE module = 'log_writer' AND action = 'start'", []);
+            }
+        }
 
         loop {
             // 尝试接收日志条目
@@ -85,18 +94,15 @@ impl LogWriter {
                 }
                 Err(mpsc::RecvTimeoutError::Disconnected) => {
                     // 发送端已关闭，刷新剩余并退出
-                    if !self.buffer.is_empty() {
-                        self.flush();
-                    }
-                    log::info!("LogWriter: channel disconnected, exiting");
+                    self.flush();
                     break;
                 }
             }
 
-            // 定期检查是否需要清理
-            if self.last_flush.elapsed() > Duration::from_secs(60) {
+            // 定期检查是否需要清理（每 60 秒）
+            if self.last_cleanup.elapsed() > Duration::from_secs(60) {
                 self.cleanup();
-                self.last_flush = Instant::now();
+                self.last_cleanup = Instant::now();
             }
         }
     }
@@ -110,19 +116,18 @@ impl LogWriter {
         let conn = match self.pool.get() {
             Ok(conn) => conn,
             Err(e) => {
-                log::error!("LogWriter: failed to get DB connection: {}", e);
+                eprintln!("LogWriter: failed to get DB connection: {}", e);
                 return;
             }
         };
 
-        // 批量插入
         let mut stmt = match conn.prepare(
             "INSERT INTO app_logs (trace_id, level, module, action, status, params, result, error_msg, duration_ms, source_file, source_line)
              VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9, ?10, ?11)"
         ) {
             Ok(stmt) => stmt,
             Err(e) => {
-                log::error!("LogWriter: failed to prepare statement: {}", e);
+                eprintln!("LogWriter: failed to prepare statement: {}", e);
                 return;
             }
         };
@@ -142,14 +147,14 @@ impl LogWriter {
                 entry.source_file,
                 entry.source_line,
             ]) {
-                log::error!("LogWriter: failed to insert log: {}", e);
+                eprintln!("LogWriter: failed to insert log: {}", e);
             } else {
                 inserted += 1;
             }
         }
 
         if inserted > 0 {
-            log::debug!("LogWriter: flushed {} logs to database", inserted);
+            eprintln!("LogWriter: flushed {} logs to database", inserted);
         }
     }
 
@@ -158,28 +163,22 @@ impl LogWriter {
         let conn = match self.pool.get() {
             Ok(conn) => conn,
             Err(e) => {
-                log::error!("LogWriter cleanup: failed to get DB connection: {}", e);
+                eprintln!("LogWriter cleanup: failed to get DB connection: {}", e);
                 return;
             }
         };
 
         // 按时间清理：删除 7 天前的日志
-        let deleted_by_time: i64 = conn.execute(
+        let _ = conn.execute(
             "DELETE FROM app_logs WHERE created_at < datetime('now', ?1)",
             params![format!("-{} days", RETENTION_DAYS)],
-        ).unwrap_or(0) as i64;
+        );
 
         // 按数量清理：保留最新的 MAX_LOG_COUNT 条
-        let deleted_by_count: i64 = conn.execute(
+        let _ = conn.execute(
             "DELETE FROM app_logs WHERE id NOT IN (SELECT id FROM app_logs ORDER BY created_at DESC LIMIT ?1)",
             params![MAX_LOG_COUNT],
-        ).unwrap_or(0) as i64;
-
-        let total_deleted = deleted_by_time + deleted_by_count;
-        if total_deleted > 0 {
-            log::info!("LogWriter cleanup: deleted {} old logs ({} by time, {} by count)",
-                total_deleted, deleted_by_time, deleted_by_count);
-        }
+        );
     }
 }
 

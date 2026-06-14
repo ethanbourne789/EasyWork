@@ -228,7 +228,7 @@ function AccountingPage() {
 
   return (
     <div className="space-y-6 max-w-[1400px]">
-      <div className="flex items-center justify-between">
+        <div className="flex items-center justify-between flex-wrap gap-2">
         <div>
           <h1 className="text-2xl font-bold tracking-tight dark:text-white">记账</h1>
           <div className="flex items-center gap-2 mt-1">
@@ -243,24 +243,24 @@ function AccountingPage() {
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2">
+        <div className="flex items-center gap-2 flex-wrap">
           <Button variant="outline" size="sm" onClick={handleImportCsv}>
-            <Upload size={16} className="mr-1" />
-            导入
+            <Upload size={16} />
+            <span className="hidden sm:inline ml-1">导入</span>
           </Button>
           <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download size={16} className="mr-1" />
-            导出
+            <Download size={16} />
+            <span className="hidden sm:inline ml-1">导出</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowBudgetManager(true)}>
-            <Target size={16} className="mr-1" />
-            预算管理
+            <Target size={16} />
+            <span className="hidden sm:inline ml-1">预算管理</span>
           </Button>
           <Button variant="outline" size="sm" onClick={() => setShowCategoryManager(true)}>
-            <Settings size={16} className="mr-1" />
-            管理分类
+            <Settings size={16} />
+            <span className="hidden sm:inline ml-1">管理分类</span>
           </Button>
-          <Button onClick={() => setShowForm(true)}><Plus size={16} />记一笔</Button>
+          <Button onClick={() => setShowForm(true)}><Plus size={16} /><span className="hidden sm:inline ml-1">记一笔</span></Button>
         </div>
       </div>
 

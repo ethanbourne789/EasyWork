@@ -228,6 +228,12 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
     setSaving(true); setError(null); setSyncResult(null)
 
+    // 超时保护：30 秒后自动恢复按钮状态
+    const timeoutId = setTimeout(() => {
+      setSaving(false)
+      setError("操作超时，请检查网络连接后重试")
+    }, 30000)
+
     if (editingId) {
       // ── Edit path ──
       // The password field is intentionally left empty by startEdit() — the
@@ -236,6 +242,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       // to log in with an empty password and always fail.
       try {
         await mailIpc.updateAccount({ ...form, id: editingId })
+        clearTimeout(timeoutId)
         updateAccountLocal({ ...form, id: editingId })
         setEditingId(null)
         setShowAdd(false)
@@ -259,6 +266,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     let insertedId: number | null = null
     try {
       insertedId = await mailIpc.addAccount(form)
+      clearTimeout(timeoutId)
       const connResult = await mailIpc.testConnection(form)
       setTestResult(connResult)
       if (!connResult.includes("成功")) {
@@ -285,10 +293,11 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
       setShowAdd(false)
       onClose()
       setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
-    } catch (err: unknown) {
-      const msg = err instanceof Error ? err.message : String(err)
-      console.error("add_account failed:", msg)
-      setError(`操作失败: ${msg}`)
+      } catch (err: unknown) {
+        const msg = err instanceof Error ? err.message : String(err)
+        console.error("add_account failed:", msg)
+        clearTimeout(timeoutId)
+        setError(`操作失败: ${msg}`)
       if (insertedId != null) {
         try {
           await mailIpc.deleteAccount(insertedId)
@@ -345,8 +354,15 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
   const handleTest = async () => {
     setTesting(true); setTestResult(null)
-    try { setTestResult(await mailIpc.testConnection(form)) }
-    catch { setTestResult("连接失败") }
+    try {
+      const result = await Promise.race([
+        mailIpc.testConnection(form),
+        new Promise<string>((_, reject) => setTimeout(() => reject(new Error("连接测试超时（15秒）")), 15000))
+      ])
+      setTestResult(result)
+    } catch (err) {
+      setTestResult(err instanceof Error ? err.message : "连接失败")
+    }
     finally { setTesting(false) }
   }
 

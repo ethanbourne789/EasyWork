@@ -76,6 +76,22 @@ pub async fn query_logs(
 ) -> Result<LogQueryResult, String> {
     let conn = pool.get().map_err(|e| e.to_string())?;
 
+    // 检查 app_logs 表是否存在
+    let table_exists: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='app_logs'",
+        [],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
+
+    if !table_exists {
+        return Ok(LogQueryResult {
+            logs: vec![],
+            total: 0,
+            page: query.page.unwrap_or(1),
+            page_size: query.page_size.unwrap_or(50),
+        });
+    }
+
     let page = query.page.unwrap_or(1).max(1);
     let page_size = query.page_size.unwrap_or(50).max(1).min(200);
     let offset = (page - 1) * page_size;
@@ -129,7 +145,7 @@ pub async fn query_logs(
     if let Some(ref keyword) = query.keyword {
         if !keyword.is_empty() {
             conditions.push(format!(
-                "(message LIKE ?{0} OR params LIKE ?{0} OR error_msg LIKE ?{0})",
+                "(action LIKE ?{0} OR status LIKE ?{0} OR params LIKE ?{0} OR error_msg LIKE ?{0} OR module LIKE ?{0} OR trace_id LIKE ?{0})",
                 param_values.len() + 1
             ));
             param_values.push(Box::new(format!("%{}%", keyword)));
@@ -235,6 +251,21 @@ pub async fn get_trace_chain(
 #[tauri::command]
 pub async fn get_log_stats(pool: State<'_, DbPool>) -> Result<LogStats, String> {
     let conn = pool.get().map_err(|e| e.to_string())?;
+
+    // 检查 app_logs 表是否存在
+    let table_exists: bool = conn.query_row(
+        "SELECT COUNT(*) FROM sqlite_master WHERE type='table' AND name='app_logs'",
+        [],
+        |row| row.get::<_, i64>(0),
+    ).unwrap_or(0) > 0;
+
+    if !table_exists {
+        eprintln!("LOG_WARN: app_logs table does not exist");
+        return Ok(LogStats {
+            total: 0, today: 0, error_count: 0,
+            warn_count: 0, info_count: 0, debug_count: 0,
+        });
+    }
 
     let total: i64 = conn.query_row("SELECT COUNT(*) FROM app_logs", [], |row| row.get(0))
         .unwrap_or(0);
