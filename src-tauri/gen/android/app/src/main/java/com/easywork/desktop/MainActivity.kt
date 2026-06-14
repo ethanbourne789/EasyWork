@@ -1,5 +1,8 @@
 package com.easywork.desktop
 
+import android.app.NotificationChannel
+import android.app.NotificationManager
+import android.content.Context
 import android.os.Build
 import android.os.Bundle
 import android.content.res.Configuration
@@ -13,6 +16,13 @@ import androidx.core.content.ContextCompat
 class MainActivity : TauriActivity() {
     companion object {
         private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+
+        // Notification channel IDs — must match the Rust side (tauri-plugin-notification
+        // uses these on Android 8+). Register them in onCreate BEFORE any notification
+        // is posted, otherwise the system will silently drop them.
+        const val CHANNEL_MAIL_ID = "easywork_mail"
+        const val CHANNEL_MAIL_NAME = "新邮件提醒"
+        const val CHANNEL_MAIL_DESC = "新邮件到达时通知用户"
     }
 
     override fun onCreate(savedInstanceState: Bundle?) {
@@ -32,9 +42,39 @@ class MainActivity : TauriActivity() {
         //  - 暗色模式 → 白色文字（isAppearanceLight = false）
         applyStatusBarAppearance()
 
+        // ─── 注册通知渠道 (Android 8+ 必须) ─────────────────────
+        // 必须在请求通知权限之前完成注册，
+        // 否则系统将静默丢弃所有通知。
+        registerNotificationChannels()
+
         // ─── 通知权限请求 (Android 13+) ─────────────────────────
         // Android 13 (API 33) 开始需要运行时申请通知权限
         requestNotificationPermission()
+    }
+
+    /**
+     * 注册所有通知渠道（Android 8+ 必需）。
+     * 渠道配置完成后才能成功发送通知。
+     */
+    private fun registerNotificationChannels() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+            val manager = getSystemService(Context.NOTIFICATION_SERVICE) as NotificationManager
+
+            // 新邮件渠道 — 高优先级
+            val mailChannel = NotificationChannel(
+                CHANNEL_MAIL_ID,
+                CHANNEL_MAIL_NAME,
+                NotificationManager.IMPORTANCE_HIGH,
+            ).apply {
+                description = CHANNEL_MAIL_DESC
+                enableLights(true)
+                enableVibration(true)
+                setShowBadge(true)
+            }
+            manager.createNotificationChannel(mailChannel)
+
+            android.util.Log.i("EasyWork", "Notification channel '$CHANNEL_MAIL_ID' registered")
+        }
     }
 
     /**

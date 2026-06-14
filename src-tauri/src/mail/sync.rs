@@ -1,8 +1,11 @@
 use crate::db::{ops, DbPool};
 use crate::mail::{self, MailFolder, MailMessage, PendingOp};
-use std::collections::HashMap;
+use std::collections::{HashMap, HashSet};
+use std::sync::Arc;
 use std::time::Duration;
 use std::sync::atomic::{AtomicBool, Ordering};
+use tauri::async_runtime::Mutex as AsyncMutex;
+use tauri::{AppHandle, Emitter};
 use tokio::sync::mpsc;
 use tokio_util::sync::CancellationToken;
 
@@ -22,8 +25,94 @@ const POLL_BACKGROUND_SECS: u64 = 120;
 const POLL_BASE_FLOOR_SECS: u64 = 15; // minimum interval per-account
 const CIRCUIT_BREAKER_THRESHOLD: u32 = 5;
 
+/// Shared set of in-flight account IDs across all sync paths
+/// (smart-poll worker, IDLE callbacks, manual button, auto-fetch,
+/// system tray). Prevents two paths from concurrently using IMAP
+/// sessions for the same account.
+pub type InFlightLock = Arc<AsyncMutex<HashSet<i64>>>;
+
+pub fn new_in_flight_lock() -> InFlightLock {
+    Arc::new(AsyncMutex::new(HashSet::new()))
+}
+
+/// Try to claim the slot for `account_id`. Returns Some(guard) if
+/// claimed, None if another sync is already running.
+pub async fn try_claim(lock: &InFlightLock, account_id: i64) -> Option<InFlightGuard> {
+    let mut guard = lock.lock().await;
+    if guard.contains(&account_id) {
+        return None;
+    }
+    guard.insert(account_id);
+    Some(InFlightGuard { lock: lock.clone(), account_id })
+}
+
+/// RAII guard that releases the slot on drop.
+pub struct InFlightGuard {
+    lock: InFlightLock,
+    account_id: i64,
+}
+
+impl Drop for InFlightGuard {
+    fn drop(&mut self) {
+        let lock = self.lock.clone();
+        let account_id = self.account_id;
+        tauri::async_runtime::spawn(async move {
+            let mut guard = lock.lock().await;
+            guard.remove(&account_id);
+        });
+    }
+}
+
+/// Emit a `new-mail` event AND, on desktop, post a system notification
+/// when new messages arrive. On Android, the frontend listens to the
+/// `new-mail` event for in-app toasts; system notifications are posted
+/// by the Android `MailSyncPlugin` after the channel is registered.
+fn emit_new_mail(
+    app_handle: &AppHandle,
+    account_id: i64,
+    account_email: &str,
+    new_count: usize,
+) {
+    if new_count == 0 {
+        return;
+    }
+    let _ = app_handle.emit("new-mail", serde_json::json!({
+        "account_id": account_id,
+        "account_email": account_email,
+        "count": new_count,
+    }));
+
+    // Desktop only: use tauri-plugin-notification.
+    // Android: tauri-plugin-notification on Android requires the channel
+    // to be pre-registered in MainActivity.kt; we still call the same API
+    // so the Android plugin handles delivery. If channel is missing, the
+    // plugin will log a warning but the event above will still reach the
+    // frontend.
+    #[cfg(any(target_os = "android", target_os = "ios", target_os = "macos", target_os = "windows", target_os = "linux"))]
+    {
+        use tauri_plugin_notification::NotificationExt;
+        let title = if new_count == 1 {
+            format!("新邮件 · {}", account_email)
+        } else {
+            format!("{} 封新邮件 · {}", new_count, account_email)
+        };
+        let _ = app_handle
+            .notification()
+            .builder()
+            .title(&title)
+            .body(&format!("点击查看（账户 ID: {}）", account_id))
+            .id((account_id as i32) + 1)
+            .show();
+    }
+}
+
 /// Start the background mail sync worker with exponential backoff + IDLE + circuit breaker.
-pub async fn start_sync_worker(pool: DbPool, cancel_token: CancellationToken) {
+pub async fn start_sync_worker(
+    pool: DbPool,
+    cancel_token: CancellationToken,
+    in_flight: InFlightLock,
+    app_handle: AppHandle,
+) {
     let pool_clone = pool.clone();
 
     // Channel for IDLE tasks to notify the main poll loop of new mail.
@@ -57,7 +146,7 @@ pub async fn start_sync_worker(pool: DbPool, cancel_token: CancellationToken) {
 
             let focused = APP_FOCUSED.load(Ordering::Relaxed);
 
-            match poll_all_accounts(&pool, &mut backoff, &mut circuit_open).await {
+            match poll_all_accounts(&pool, &in_flight, &mut backoff, &mut circuit_open, &app_handle).await {
                 Ok((accounts, messages)) => {
                     if accounts > 0 && messages > 0 {
                         log::info!("Background sync: {} accounts, {} new messages", accounts, messages);
@@ -111,7 +200,7 @@ pub async fn start_sync_worker(pool: DbPool, cancel_token: CancellationToken) {
                 Some(account_id) = idle_rx.recv() => {
                     log::info!("IDLE notification: account {} detected new mail, triggering immediate sync", account_id);
                     // Trigger immediate sync for this account
-                    if let Err(e) = sync_inbox_for_account(&pool, account_id).await {
+                    if let Err(e) = sync_inbox_for_account(&pool, &in_flight, account_id, &app_handle).await {
                         log::warn!("IDLE-triggered sync failed for account {}: {}", account_id, e);
                     }
                 }
@@ -168,8 +257,10 @@ fn get_min_sync_interval(pool: &DbPool) -> Option<u64> {
 
 async fn poll_all_accounts(
     pool: &DbPool,
+    in_flight: &InFlightLock,
     backoff: &mut std::collections::HashMap<i64, u32>,
     circuit_open: &mut std::collections::HashMap<i64, bool>,
+    app_handle: &AppHandle,
 ) -> Result<(usize, usize), String> {
     let accounts = ops::list_accounts(pool).map_err(|e| e.to_string())?;
     if accounts.is_empty() { return Ok((0, 0)); }
@@ -193,6 +284,17 @@ async fn poll_all_accounts(
         };
 
         let days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
+
+        // Acquire the global in-flight slot to prevent IDLE callbacks,
+        // manual buttons, tray, and auto-fetch from racing on the same
+        // account. Drop releases the slot.
+        let _guard = match try_claim(in_flight, account_id).await {
+            Some(g) => g,
+            None => {
+                log::debug!("Account {}: in-flight slot busy, skipping this cycle", account_id);
+                continue;
+            }
+        };
 
         // Try connect with one retry on connection-class errors.
         let mut session = None;
@@ -225,10 +327,11 @@ async fn poll_all_accounts(
             }
         };
 
+        let mut account_new_total = 0usize;
         let mut account_had_error = false;
 
         match sync_inbox_with_cursor(pool, &mut session, account_id, days).await {
-            Ok(n) => { total_new += n; }
+            Ok(n) => { account_new_total += n; }
             Err(e) => {
                 log::warn!("Inbox sync failed for {}: {}", account.email, e);
                 account_had_error = true;
@@ -255,12 +358,18 @@ async fn poll_all_accounts(
                 continue;
             }
             match sync_folder_with_cursor(pool, &mut session, account_id, remote_id, role, days).await {
-                Ok(n) => { total_new += n; }
+                Ok(n) => { account_new_total += n; }
                 Err(e) => {
                     log::debug!("Folder '{}' sync: {}", remote_id, e);
                     account_had_error = true;
                 }
             }
+        }
+
+        // Emit single new-mail event + (desktop) notification for this account
+        if account_new_total > 0 {
+            emit_new_mail(app_handle, account_id, &account.email, account_new_total);
+            total_new += account_new_total;
         }
 
         // Success: clear backoff and close circuit
@@ -279,6 +388,7 @@ async fn poll_all_accounts(
         }
         synced_accounts += 1;
         let _ = mail::imap::logout(session).await;
+        // _guard released here
     }
     Ok((synced_accounts, total_new))
 }
@@ -736,13 +846,28 @@ async fn idle_monitor_account(
 }
 
 /// Sync INBOX for a specific account (called when IDLE detects new mail).
-async fn sync_inbox_for_account(pool: &DbPool, account_id: i64) -> Result<usize, String> {
-    let account = match ops::get_account_with_password(pool, account_id) {
-        Ok(Some((account, password))) => (account, password),
+async fn sync_inbox_for_account(
+    pool: &DbPool,
+    in_flight: &InFlightLock,
+    account_id: i64,
+    app_handle: &AppHandle,
+) -> Result<usize, String> {
+    let (account, password) = match ops::get_account_with_password(pool, account_id) {
+        Ok(Some(v)) => v,
         Ok(None) => return Err(format!("Account {} not found", account_id)),
         Err(e) => return Err(format!("Failed to read account {}: {}", account_id, e)),
     };
-    let (account, password) = account;
+
+    // Reuse the global in-flight slot — if the smart-poll worker is
+    // already syncing this account, skip (the worker will pick up the
+    // new mail anyway).
+    let _guard = match try_claim(in_flight, account_id).await {
+        Some(g) => g,
+        None => {
+            log::debug!("sync_inbox_for_account({}): in-flight slot busy, skipping", account_id);
+            return Ok(0);
+        }
+    };
 
     let days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
 
@@ -757,5 +882,9 @@ async fn sync_inbox_for_account(pool: &DbPool, account_id: i64) -> Result<usize,
     // Logout
     let _ = mail::imap::logout(session).await;
 
+    let new_count = result.clone().unwrap_or(0);
+    if new_count > 0 {
+        emit_new_mail(app_handle, account_id, &account.email, new_count);
+    }
     result
 }

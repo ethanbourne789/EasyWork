@@ -4,6 +4,22 @@
     <!-- Android 13+ (API 33+) requires runtime permission for notifications -->
     <uses-permission android:name="android.permission.POST_NOTIFICATIONS" />
 
+    <!-- Foreground service for sync (Android 9+ requires FOREGROUND_SERVICE,
+         Android 14+ additionally requires a typed permission) -->
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE" />
+    <uses-permission android:name="android.permission.FOREGROUND_SERVICE_DATA_SYNC" />
+
+    <!-- Hold a partial wake lock while IDLE connection / sync is active -->
+    <uses-permission android:name="android.permission.WAKE_LOCK" />
+
+    <!-- Allow user to whitelist the app from battery optimizations
+         so IMAP IDLE + smart polling survive Doze mode -->
+    <uses-permission android:name="android.permission.REQUEST_IGNORE_BATTERY_OPTIMIZATIONS" />
+
+    <!-- Reboot-time rescheduling of background sync (when paired with
+         a BootReceiver in a future plugin) -->
+    <uses-permission android:name="android.permission.RECEIVE_BOOT_COMPLETED" />
+
     <!-- AndroidTV support -->
     <uses-feature android:name="android.software.leanback" android:required="false" />
 

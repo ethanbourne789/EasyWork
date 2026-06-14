@@ -193,6 +193,10 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
     // ↑ All ALTER TABLE migrations must run BEFORE these indexes.
     // The columns below may not exist in old versions of the DB,
     // so the index creation is placed here, after the migration block.
+    //
+    // UNIQUE on (account_id, remote_uid) prevents duplicate rows when the
+    // same message appears in multiple folders — the many-to-many
+    // mail_message_folders table tracks which folders it lives in.
     let _ = conn.execute_batch(
         "CREATE INDEX IF NOT EXISTS idx_mail_messages_thread_id ON mail_messages(thread_id);
          CREATE INDEX IF NOT EXISTS idx_mail_messages_is_deleted ON mail_messages(is_deleted);
@@ -200,7 +204,9 @@ pub fn create_tables(conn: &Connection) -> Result<()> {
          CREATE INDEX IF NOT EXISTS idx_mail_messages_date_sort ON mail_messages(date_sort);
          CREATE INDEX IF NOT EXISTS idx_mail_messages_account_date ON mail_messages(account_id, date_sort);
          CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_messages_msgid ON mail_messages(account_id, message_id_header)
-             WHERE message_id_header != '';"
+             WHERE message_id_header != '';
+         CREATE UNIQUE INDEX IF NOT EXISTS idx_mail_messages_account_uid
+             ON mail_messages(account_id, remote_uid);"
     );
 
     // ── New column migrations for v2 features (Combined inbox / Notifications) ──

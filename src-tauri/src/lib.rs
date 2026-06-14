@@ -68,6 +68,19 @@ fn setup_tray(app: &tauri::AppHandle) -> Result<(), Box<dyn std::error::Error>> 
                         for account in &accounts {
                             if let Some(id) = account.id {
                                 log::info!("Tray fetch: syncing account {}", id);
+                                // Use the manual command which acquires SyncLock
+                                // so we don't race with the smart-poll worker
+                                // or IDLE callbacks. If the slot is busy,
+                                // the user gets a friendly error in the log
+                                // and the worker will pick up the next cycle.
+                                let lock = handle.state::<commands::mail::SyncLock>();
+                                let _guard = match commands::mail::SyncLockGuard::acquire(lock.inner(), id) {
+                                    Ok(g) => g,
+                                    Err(busy) => {
+                                        log::debug!("Tray fetch: skipping account {} ({})", id, busy);
+                                        continue;
+                                    }
+                                };
                                 let _ = commands::mail::sync_account_impl(
                                     pool.clone(), id,
                                 ).await;
@@ -217,8 +230,11 @@ pub fn run() {
             // Start background sync worker
             let pool_clone = pool.clone();
             let cancel_token = tokio_util::sync::CancellationToken::new();
+            // Shared in-flight lock across smart-poll, IDLE, manual, tray, auto-fetch
+            let in_flight = mail::sync::new_in_flight_lock();
+            let app_handle_for_sync = app.handle().clone();
             tauri::async_runtime::spawn(async move {
-                mail::sync::start_sync_worker(pool_clone, cancel_token).await;
+                mail::sync::start_sync_worker(pool_clone, cancel_token, in_flight, app_handle_for_sync).await;
             });
 
             // ---- Stock price alert worker ----
@@ -233,55 +249,55 @@ pub fn run() {
             #[cfg(desktop)]
             setup_tray(app.handle())?;
 
-            // ---- Auto-fetch scheduler ----
-            let pool_for_fetch = pool.clone();
-            let app_handle = app.handle().clone();
-            tauri::async_runtime::spawn(async move {
-                loop {
-                    // Read configured interval (default 5 min)
-                    let interval_secs = db::ops::get_config(&pool_for_fetch, "auto_fetch_interval")
-                        .and_then(|v| v.parse::<u64>().ok())
-                        .unwrap_or(300);
+            // ---- Auto-fetch scheduler (desktop only) ----
+            // On Android, background sync is handled by a native plugin +
+            // WorkManager (see MailSyncPlugin.kt). The tokio-based loop below
+            // would be killed by the OS as soon as the app is backgrounded.
+            #[cfg(desktop)]
+            {
+                let pool_for_fetch = pool.clone();
+                let app_handle = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    loop {
+                        // Read configured interval (default 5 min)
+                        let interval_secs = db::ops::get_config(&pool_for_fetch, "auto_fetch_interval")
+                            .and_then(|v| v.parse::<u64>().ok())
+                            .unwrap_or(300);
 
-                    tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
+                        tokio::time::sleep(tokio::time::Duration::from_secs(interval_secs)).await;
 
-                    // Sync all accounts
-                    let accounts = db::ops::list_accounts(&pool_for_fetch).unwrap_or_default();
-                    for account in &accounts {
-                        if let Some(id) = account.id {
-                            // Acquire per-account lock so we don't race with
-                            // the manual button or the smart-poll worker.
-                            let lock = app_handle.state::<commands::mail::SyncLock>();
-                            let _guard = match commands::mail::SyncLockGuard::acquire(lock.inner(), id) {
-                                Ok(g) => g,
-                                Err(busy) => {
-                                    log::debug!("auto-fetch: skipping account {} ({})", id, busy);
-                                    continue;
-                                }
-                            };
-                            match commands::mail::sync_account_impl(
-                                pool_for_fetch.clone(), id,
-                            ).await {
-                                Ok(result) => {
-                                    if result.messages_new > 0 {
-                                        // Send notification for new messages
-                                        let _ = app_handle.emit("new-mail", result.messages_new);
-                                        // Also send system notification
-                                        let _ = app_handle.notification()
-                                            .builder()
-                                            .title("EasyWork")
-                                            .body(&format!("收到 {} 封新邮件", result.messages_new))
-                                            .show();
+                        // Sync all accounts
+                        let accounts = db::ops::list_accounts(&pool_for_fetch).unwrap_or_default();
+                        for account in &accounts {
+                            if let Some(id) = account.id {
+                                // Acquire per-account lock so we don't race with
+                                // the manual button or the smart-poll worker.
+                                let lock = app_handle.state::<commands::mail::SyncLock>();
+                                let _guard = match commands::mail::SyncLockGuard::acquire(lock.inner(), id) {
+                                    Ok(g) => g,
+                                    Err(busy) => {
+                                        log::debug!("auto-fetch: skipping account {} ({})", id, busy);
+                                        continue;
                                     }
-                                }
-                                Err(e) => {
-                                    log::warn!("Auto-fetch error for account {}: {}", id, e);
+                                };
+                                match commands::mail::sync_account_impl(
+                                    pool_for_fetch.clone(), id,
+                                ).await {
+                                    Ok(result) => {
+                                        if result.messages_new > 0 {
+                                            // Emit event for frontend listeners
+                                            let _ = app_handle.emit("new-mail", result.messages_new);
+                                        }
+                                    }
+                                    Err(e) => {
+                                        log::warn!("Auto-fetch error for account {}: {}", id, e);
+                                    }
                                 }
                             }
                         }
                     }
-                }
-            });
+                });
+            }
 
             log::info!("EasyWork mail module initialized with tray");
             Ok(())

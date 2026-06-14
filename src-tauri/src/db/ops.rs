@@ -332,9 +332,13 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
     }
 
     // ── New message ──
+    // Use INSERT OR IGNORE so concurrent inserts of the same (account_id,
+    // remote_uid) — which can happen if the smart-poll worker and an IDLE
+    // callback run in the same millisecond — are race-safe. The unique
+    // index on (account_id, remote_uid) is the source of truth.
     let hash = compute_content_hash(&msg.subject, &msg.from_email, &msg.date);
-    conn.execute(
-        "INSERT INTO mail_messages (account_id, remote_uid, message_id_header, subject, from_name, from_email,
+    let changed = conn.execute(
+        "INSERT OR IGNORE INTO mail_messages (account_id, remote_uid, message_id_header, subject, from_name, from_email,
          to_list, cc_list, date, body_text, body_html, is_read, is_starred, has_attachment, size, thread_id, content_hash, date_sort)
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17,?18)",
         params![
@@ -345,6 +349,22 @@ pub fn insert_message(pool: &DbPool, msg: &MailMessage) -> Result<i64> {
             msg.has_attachment as i32, msg.size, msg.thread_id, hash, date_sort
         ],
     )?;
+
+    if changed == 0 {
+        // Lost the race — another concurrent insert added the same row.
+        // Look it up and return its id without touching any data.
+        log::debug!(
+            "Race-safe dedup: (account={}, uid={}) already inserted by sibling, reusing",
+            msg.account_id, msg.remote_uid
+        );
+        let id: i64 = conn.query_row(
+            "SELECT id FROM mail_messages WHERE account_id = ?1 AND remote_uid = ?2",
+            params![msg.account_id, msg.remote_uid],
+            |row| row.get(0),
+        )?;
+        return Ok(id);
+    }
+
     let new_id = conn.last_insert_rowid();
     log::debug!("New message inserted: id={} (account={}, uid={})", new_id, msg.account_id, msg.remote_uid);
     Ok(new_id)
