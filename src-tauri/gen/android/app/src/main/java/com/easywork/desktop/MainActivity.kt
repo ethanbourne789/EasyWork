@@ -1,11 +1,20 @@
 package com.easywork.desktop
 
+import android.os.Build
 import android.os.Bundle
 import android.content.res.Configuration
+import android.Manifest
+import android.content.pm.PackageManager
 import androidx.core.view.WindowCompat
 import androidx.core.view.WindowInsetsControllerCompat
+import androidx.core.app.ActivityCompat
+import androidx.core.content.ContextCompat
 
 class MainActivity : TauriActivity() {
+    companion object {
+        private const val NOTIFICATION_PERMISSION_REQUEST_CODE = 1001
+    }
+
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
 
@@ -22,6 +31,51 @@ class MainActivity : TauriActivity() {
         //  - 亮色模式 → 深色文字（isAppearanceLight = true）
         //  - 暗色模式 → 白色文字（isAppearanceLight = false）
         applyStatusBarAppearance()
+
+        // ─── 通知权限请求 (Android 13+) ─────────────────────────
+        // Android 13 (API 33) 开始需要运行时申请通知权限
+        requestNotificationPermission()
+    }
+
+    /**
+     * 请求通知权限（仅 Android 13+ 需要）
+     * Android 12 及以下版本通知权限在安装时自动授予
+     */
+    private fun requestNotificationPermission() {
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU) {
+            // Android 13+
+            if (ContextCompat.checkSelfPermission(
+                    this,
+                    Manifest.permission.POST_NOTIFICATIONS
+                ) != PackageManager.PERMISSION_GRANTED
+            ) {
+                // 权限未授予，请求用户授权
+                ActivityCompat.requestPermissions(
+                    this,
+                    arrayOf(Manifest.permission.POST_NOTIFICATIONS),
+                    NOTIFICATION_PERMISSION_REQUEST_CODE
+                )
+            }
+        }
+    }
+
+    /**
+     * 权限请求结果回调
+     * 可用于处理用户拒绝/授予权限后的逻辑
+     */
+    override fun onRequestPermissionsResult(
+        requestCode: Int,
+        permissions: Array<out String>,
+        grantResults: IntArray
+    ) {
+        super.onRequestPermissionsResult(requestCode, permissions, grantResults)
+        if (requestCode == NOTIFICATION_PERMISSION_REQUEST_CODE) {
+            if (grantResults.isNotEmpty() && grantResults[0] == PackageManager.PERMISSION_GRANTED) {
+                android.util.Log.i("EasyWork", "Notification permission granted")
+            } else {
+                android.util.Log.w("EasyWork", "Notification permission denied - push notifications will not work")
+            }
+        }
     }
 
     /** 响应系统主题变化（用户切换亮色/暗色模式时回调） */

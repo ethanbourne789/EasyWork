@@ -91,8 +91,7 @@ dependencies {
 
 apply(from = "tauri.build.gradle.kts")
 
-// Enable Rust cross-compilation for Android
-// Pre-built libapp_lib.so is in jniLibs — uncomment the next lines to skip Rust rebuild
+// Disable Rust build tasks - .so files are manually copied
 tasks.matching { it.name.startsWith("rustBuild") }.configureEach {
     enabled = false
 }
