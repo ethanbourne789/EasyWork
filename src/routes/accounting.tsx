@@ -5,6 +5,8 @@ import { Button } from "@/components/ui/button"
 import {
   listTransactions,
   listCategories,
+  listBudgets,
+  saveAllBudgets,
   createTransaction,
   updateTransaction,
   deleteTransaction,
@@ -14,10 +16,11 @@ import {
   importCsv,
   exportCsv,
 } from "@/lib/accounting-ipc"
-import type { Transaction, Category } from "@easywork/shared"
+import type { Transaction, Category, Budget } from "@easywork/shared"
 import { TransactionForm, type TransactionFormData } from "@/components/accounting/TransactionForm"
 import { CategoryManager, type CategoryFormData } from "@/components/accounting/CategoryManager"
-import { Plus, TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight, Settings, Upload, Download, Trash2 } from "lucide-react"
+import { BudgetManager, type BudgetFormData } from "@/components/accounting/BudgetManager"
+import { Plus, TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight, Settings, Upload, Download, Trash2, Target } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
 const PIE_COLORS = [
@@ -28,6 +31,7 @@ const PIE_COLORS = [
 function AccountingPage() {
   const [transactions, setTransactions] = useState<Transaction[]>([])
   const [categories, setCategories] = useState<Category[]>([])
+  const [budgets, setBudgets] = useState<Budget[]>([])
   const [loading, setLoading] = useState(true)
   const [error, setError] = useState<string | null>(null)
 
@@ -35,6 +39,7 @@ function AccountingPage() {
   const [showForm, setShowForm] = useState(false)
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showCategoryManager, setShowCategoryManager] = useState(false)
+  const [showBudgetManager, setShowBudgetManager] = useState(false)
 
   const now = new Date()
   const [currentYear, setCurrentYear] = useState(now.getFullYear())
@@ -49,12 +54,14 @@ function AccountingPage() {
       const daysInMonth = new Date(currentYear, currentMonth, 0).getDate()
       const endDate = `${currentYear}-${monthStr}-${daysInMonth}`
 
-      const [txns, cats] = await Promise.all([
+      const [txns, cats, bgs] = await Promise.all([
         listTransactions({ startDate, endDate }),
         listCategories(),
+        listBudgets(currentYear, currentMonth),
       ])
       setTransactions(txns)
       setCategories(cats)
+      setBudgets(bgs)
     } catch (e) {
       setError(e instanceof Error ? e.message : String(e))
     } finally {
@@ -74,7 +81,14 @@ function AccountingPage() {
     () => transactions.filter((r) => r.type === "expense").reduce((sum, r) => sum + r.amount, 0),
     [transactions],
   )
-  const balance = useMemo(() => totalIncome - totalExpense, [totalIncome, totalExpense])
+  const totalBudget = useMemo(
+    () => budgets.reduce((sum, b) => sum + b.amount, 0),
+    [budgets],
+  )
+  const budgetRemaining = useMemo(
+    () => totalBudget - totalExpense,
+    [totalBudget, totalExpense],
+  )
 
   const categoryIconMap = useMemo(() => {
     const map: Record<string, string> = {}
@@ -135,6 +149,12 @@ function AccountingPage() {
 
   const handleDeleteCategory = async (id: number) => {
     await deleteCategory(id)
+    await loadData()
+  }
+
+  // Budget handlers
+  const handleSaveBudgets = async (items: BudgetFormData[]) => {
+    await saveAllBudgets(currentYear, currentMonth, items)
     await loadData()
   }
 
@@ -232,6 +252,10 @@ function AccountingPage() {
             <Download size={16} className="mr-1" />
             导出
           </Button>
+          <Button variant="outline" size="sm" onClick={() => setShowBudgetManager(true)}>
+            <Target size={16} className="mr-1" />
+            预算管理
+          </Button>
           <Button variant="outline" size="sm" onClick={() => setShowCategoryManager(true)}>
             <Settings size={16} className="mr-1" />
             管理分类
@@ -274,12 +298,18 @@ function AccountingPage() {
           <CardContent className="p-5">
             <div className="flex items-center gap-3">
               <div className="w-10 h-10 rounded-xl bg-primary-100 flex items-center justify-center">
-                <Wallet size={20} className="text-primary-600" />
+                <Target size={20} className="text-primary-600" />
               </div>
               <div>
-                <p className="text-xs font-medium text-primary-700">本月结余</p>
-                <p className="text-xl font-bold text-primary-800">
-                  ¥{balance.toLocaleString()}
+                <p className="text-xs font-medium text-primary-700">预算剩余</p>
+                <p className={`text-xl font-bold ${
+                  totalBudget === 0
+                    ? "text-surface-400"
+                    : budgetRemaining >= 0
+                      ? "text-primary-800"
+                      : "text-red-600"
+                }`}>
+                  {totalBudget === 0 ? "--" : `¥${budgetRemaining.toLocaleString()}`}
                 </p>
               </div>
             </div>
@@ -405,6 +435,15 @@ function AccountingPage() {
         onCreate={handleCreateCategory}
         onUpdate={handleUpdateCategory}
         onDelete={handleDeleteCategory}
+      />
+
+      {/* Budget Manager Dialog */}
+      <BudgetManager
+        open={showBudgetManager}
+        onOpenChange={setShowBudgetManager}
+        budgets={budgets}
+        totalExpense={totalExpense}
+        onSave={handleSaveBudgets}
       />
     </div>
   )

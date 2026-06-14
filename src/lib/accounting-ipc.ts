@@ -17,13 +17,10 @@ async function tauriInvoke<T>(cmd: string, args?: Record<string, unknown>): Prom
 export interface TransactionFilters {
   startDate?: string
   endDate?: string
-  type?: string
-  category?: string
-  keyword?: string
 }
 
 export interface TransactionInput {
-  type: string
+  txnType: string
   amount: number
   category: string
   subcategory?: string
@@ -32,19 +29,37 @@ export interface TransactionInput {
 }
 
 export async function listTransactions(filters?: TransactionFilters): Promise<Transaction[]> {
-  return tauriInvoke<Transaction[]>("accounting_transaction_list", { filters })
+  return tauriInvoke<Transaction[]>("txn_list", {
+    startDate: filters?.startDate,
+    endDate: filters?.endDate,
+  })
 }
 
-export async function createTransaction(data: TransactionInput): Promise<number> {
-  return tauriInvoke<number>("accounting_transaction_create", { data })
+export async function createTransaction(data: TransactionInput): Promise<Transaction> {
+  return tauriInvoke<Transaction>("txn_create", {
+    txnType: data.txnType,
+    amount: data.amount,
+    category: data.category,
+    subcategory: data.subcategory,
+    note: data.note,
+    date: data.date,
+  })
 }
 
-export async function updateTransaction(id: number, data: Partial<TransactionInput>): Promise<void> {
-  return tauriInvoke<void>("accounting_transaction_update", { id, data })
+export async function updateTransaction(id: number, data: Partial<TransactionInput>): Promise<boolean> {
+  return tauriInvoke<boolean>("txn_update", {
+    id,
+    txnType: data.txnType,
+    amount: data.amount,
+    category: data.category,
+    subcategory: data.subcategory,
+    note: data.note,
+    date: data.date,
+  })
 }
 
-export async function deleteTransaction(id: number): Promise<void> {
-  return tauriInvoke<void>("accounting_transaction_delete", { id })
+export async function deleteTransaction(id: number): Promise<boolean> {
+  return tauriInvoke<boolean>("txn_delete", { id })
 }
 
 // ==================== 分类 ====================
@@ -59,19 +74,34 @@ export interface CategoryInput {
 }
 
 export async function listCategories(): Promise<Category[]> {
-  return tauriInvoke<Category[]>("accounting_category_list")
+  return tauriInvoke<Category[]>("category_list")
 }
 
 export async function createCategory(data: CategoryInput): Promise<number> {
-  return tauriInvoke<number>("accounting_category_create", { data })
+  return tauriInvoke<number>("category_create", {
+    name: data.name,
+    type: data.type,
+    icon: data.icon,
+    color: data.color,
+    parentId: data.parentId,
+    sortOrder: data.sortOrder,
+  })
 }
 
-export async function updateCategory(id: number, data: Partial<CategoryInput>): Promise<void> {
-  return tauriInvoke<void>("accounting_category_update", { id, data })
+export async function updateCategory(id: number, data: Partial<CategoryInput>): Promise<boolean> {
+  return tauriInvoke<boolean>("category_update", {
+    id,
+    name: data.name,
+    type: data.type,
+    icon: data.icon,
+    color: data.color,
+    parentId: data.parentId,
+    sortOrder: data.sortOrder,
+  })
 }
 
-export async function deleteCategory(id: number): Promise<void> {
-  return tauriInvoke<void>("accounting_category_delete", { id })
+export async function deleteCategory(id: number): Promise<boolean> {
+  return tauriInvoke<boolean>("category_delete", { id })
 }
 
 // ==================== 预算 ====================
@@ -84,25 +114,43 @@ export interface BudgetInput {
 }
 
 export async function listBudgets(year: number, month: number): Promise<Budget[]> {
-  return tauriInvoke<Budget[]>("accounting_budget_list", { year, month })
+  return tauriInvoke<Budget[]>("budget_list", { year, month })
 }
 
 export async function createBudget(data: BudgetInput): Promise<number> {
-  return tauriInvoke<number>("accounting_budget_create", { data })
+  return tauriInvoke<number>("budget_create", {
+    category: data.category,
+    amount: data.amount,
+    year: data.year,
+    month: data.month,
+  })
 }
 
-export async function updateBudget(id: number, data: Partial<BudgetInput>): Promise<void> {
-  return tauriInvoke<void>("accounting_budget_update", { id, data })
+export async function updateBudget(id: number, data: Partial<BudgetInput>): Promise<boolean> {
+  return tauriInvoke<boolean>("budget_update", {
+    id,
+    category: data.category,
+    amount: data.amount,
+  })
 }
 
-export async function deleteBudget(id: number): Promise<void> {
-  return tauriInvoke<void>("accounting_budget_delete", { id })
+export async function deleteBudget(id: number): Promise<boolean> {
+  return tauriInvoke<boolean>("budget_delete", { id })
+}
+
+export interface BudgetItem {
+  category: string
+  amount: number
+}
+
+export async function saveAllBudgets(year: number, month: number, items: BudgetItem[]): Promise<boolean> {
+  return tauriInvoke<boolean>("budget_save_all", { year, month, items })
 }
 
 // ==================== 统计 ====================
 
-export async function getStats(year: number, month: number): Promise<AccountingSummary> {
-  return tauriInvoke<AccountingSummary>("accounting_stats_get", { year, month })
+export async function getStats(): Promise<AccountingSummary> {
+  return tauriInvoke<AccountingSummary>("stats_summary")
 }
 
 // ==================== CSV ====================
@@ -115,9 +163,9 @@ export interface ImportResult {
 }
 
 export async function importCsv(filePath: string): Promise<ImportResult> {
-  return tauriInvoke<ImportResult>("accounting_csv_import", { filePath })
+  return tauriInvoke<ImportResult>("csv_import", { filePath })
 }
 
 export async function exportCsv(year: number, month: number): Promise<string> {
-  return tauriInvoke<string>("accounting_csv_export", { year, month })
+  return tauriInvoke<string>("csv_export", { year, month })
 }

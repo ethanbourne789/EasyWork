@@ -2,180 +2,211 @@ import { useState, useEffect } from "react"
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog"
 import { Button } from "@/components/ui/button"
 import { Input } from "@/components/ui/input"
-import { Plus, Pencil, Trash2 } from "lucide-react"
-import type { Budget, Category } from "@easywork/shared"
+import { Plus, Trash2, Target } from "lucide-react"
+import type { Budget } from "@easywork/shared"
 
 interface BudgetManagerProps {
   open: boolean
   onOpenChange: (open: boolean) => void
   budgets: Budget[]
-  categories: Category[]
-  year: number
-  month: number
-  onCreate: (data: BudgetFormData) => Promise<void>
-  onUpdate: (id: number, data: Partial<BudgetFormData>) => Promise<void>
-  onDelete: (id: number) => Promise<void>
+  totalExpense: number
+  onSave: (budgets: BudgetFormData[]) => Promise<void>
 }
 
 export interface BudgetFormData {
+  id?: number
   category: string
   amount: number
-  year: number
-  month: number
 }
+
+const PRESET_CATEGORIES = [
+  { name: "水费", icon: "💧" },
+  { name: "电费", icon: "⚡" },
+  { name: "网费", icon: "🌐" },
+  { name: "油费", icon: "" },
+  { name: "话费", icon: "📱" },
+  { name: "房租", icon: "🏠" },
+  { name: "餐费", icon: "️" },
+]
 
 export function BudgetManager({
   open,
   onOpenChange,
   budgets,
-  categories,
-  year,
-  month,
-  onCreate,
-  onUpdate,
-  onDelete,
+  totalExpense,
+  onSave,
 }: BudgetManagerProps) {
-  const [showForm, setShowForm] = useState(false)
-  const [editingBudget, setEditingBudget] = useState<Budget | null>(null)
-  const [formData, setFormData] = useState<BudgetFormData>({
-    category: "",
-    amount: 0,
-    year,
-    month,
-  })
+  const [items, setItems] = useState<BudgetFormData[]>([])
+  const [showCustomInput, setShowCustomInput] = useState(false)
+  const [customName, setCustomName] = useState("")
+  const [saving, setSaving] = useState(false)
 
   useEffect(() => {
-    setFormData({ category: "", amount: 0, year, month })
-  }, [year, month, open])
-
-  const resetForm = () => {
-    setFormData({ category: "", amount: 0, year, month })
-    setEditingBudget(null)
-    setShowForm(false)
-  }
-
-  const openEditForm = (budget: Budget) => {
-    setEditingBudget(budget)
-    setFormData({
-      category: budget.category,
-      amount: budget.amount,
-      year: budget.year,
-      month: budget.month,
-    })
-    setShowForm(true)
-  }
-
-  const handleSubmit = async (e: React.FormEvent) => {
-    e.preventDefault()
-    if (editingBudget) {
-      await onUpdate(editingBudget.id, formData)
-    } else {
-      await onCreate(formData)
+    if (open) {
+      setItems(budgets.map((b) => ({ id: b.id, category: b.category, amount: b.amount })))
+      setShowCustomInput(false)
+      setCustomName("")
     }
-    resetForm()
+  }, [open, budgets])
+
+  const totalBudget = items.reduce((sum, item) => sum + item.amount, 0)
+  const budgetRemaining = totalBudget - totalExpense
+
+  const addItem = (category: string) => {
+    setItems([...items, { category, amount: 0 }])
   }
 
-  const handleDelete = async (id: number) => {
-    if (!confirm("确定要删除这个预算吗？")) return
-    await onDelete(id)
+  const removeItem = (index: number) => {
+    setItems(items.filter((_, i) => i !== index))
   }
 
-  const expenseCategories = categories.filter((c) => c.type === "expense")
+  const updateAmount = (index: number, amount: number) => {
+    const newItems = [...items]
+    newItems[index].amount = amount
+    setItems(newItems)
+  }
+
+  const handleSave = async () => {
+    setSaving(true)
+    try {
+      await onSave(items)
+      onOpenChange(false)
+    } catch (error) {
+      console.error("保存失败:", error)
+    } finally {
+      setSaving(false)
+    }
+  }
+
+  const getIcon = (category: string) => {
+    const preset = PRESET_CATEGORIES.find((p) => p.name === category)
+    return preset?.icon || "📌"
+  }
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle className="flex items-center justify-between">
-            <span>{year}年{month}月 预算管理</span>
-            <Button size="sm" onClick={() => setShowForm(true)}>
-              <Plus size={16} className="mr-1" />
-              添加预算
-            </Button>
+          <DialogTitle className="flex items-center gap-2">
+            <Target size={20} />
+            预算管理
           </DialogTitle>
         </DialogHeader>
 
-        {/* Budget List */}
-        <div className="space-y-2">
-          {budgets.length === 0 ? (
-            <div className="text-center py-8 text-surface-400">
-              <p>暂无预算</p>
-            </div>
-          ) : (
-            budgets.map((budget) => (
-              <div
-                key={budget.id}
-                className="flex items-center justify-between p-3 rounded-lg border border-surface-200 dark:border-surface-700"
+        {/* 预算总额显示 */}
+        <div className="bg-primary-50 dark:bg-primary-950/30 rounded-lg p-4 mb-4">
+          <div className="flex justify-between items-center mb-2">
+            <span className="text-sm font-medium text-primary-700 dark:text-primary-400">
+              预算总额
+            </span>
+            <span className="text-2xl font-bold text-primary-800 dark:text-primary-300">
+              ¥{totalBudget.toLocaleString()}
+            </span>
+          </div>
+          <div className="flex justify-between items-center text-sm">
+            <span className="text-surface-600 dark:text-surface-400">当月已花费</span>
+            <span className="text-red-600 font-medium">¥{totalExpense.toLocaleString()}</span>
+          </div>
+          <div className="flex justify-between items-center text-sm mt-1">
+            <span className="text-surface-600 dark:text-surface-400">预算剩余</span>
+            <span className={`font-bold ${budgetRemaining >= 0 ? "text-emerald-600" : "text-red-600"}`}>
+              ¥{budgetRemaining.toLocaleString()}
+            </span>
+          </div>
+        </div>
+
+        {/* 预算分项列表 */}
+        <div className="space-y-2 max-h-[300px] overflow-y-auto mb-4">
+          {items.map((item, index) => (
+            <div
+              key={index}
+              className="flex items-center gap-2 p-2 rounded-lg border border-surface-200 dark:border-surface-700"
+            >
+              <span className="text-xl w-8 text-center">{getIcon(item.category)}</span>
+              <span className="flex-1 text-sm font-medium">{item.category}</span>
+              <Input
+                type="number"
+                step="0.01"
+                min="0"
+                value={item.amount || ""}
+                onChange={(e) => updateAmount(index, parseFloat(e.target.value) || 0)}
+                placeholder="0.00"
+                className="w-24 h-8 text-right"
+              />
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => removeItem(index)}
               >
-                <div>
-                  <p className="text-sm font-medium">
-                    {budget.category || "总预算"}
-                  </p>
-                  <p className="text-lg font-bold text-primary-600">
-                    ¥{budget.amount.toLocaleString()}
-                  </p>
-                </div>
-                <div className="flex items-center gap-1">
-                  <Button variant="ghost" size="sm" onClick={() => openEditForm(budget)}>
-                    <Pencil size={14} />
-                  </Button>
-                  <Button variant="ghost" size="sm" onClick={() => handleDelete(budget.id)}>
-                    <Trash2 size={14} className="text-red-500" />
-                  </Button>
-                </div>
-              </div>
-            ))
+                <Trash2 size={14} className="text-red-500" />
+              </Button>
+            </div>
+          ))}
+
+          {showCustomInput && (
+            <div className="flex items-center gap-2 p-2 rounded-lg border border-surface-200 dark:border-surface-700">
+              <Input
+                value={customName}
+                onChange={(e) => setCustomName(e.target.value)}
+                placeholder="自定义分类名称"
+                className="flex-1 h-8"
+              />
+              <Button
+                size="sm"
+                onClick={() => {
+                  if (customName.trim()) {
+                    addItem(customName.trim())
+                    setCustomName("")
+                    setShowCustomInput(false)
+                  }
+                }}
+              >
+                添加
+              </Button>
+              <Button
+                variant="ghost"
+                size="sm"
+                onClick={() => {
+                  setShowCustomInput(false)
+                  setCustomName("")
+                }}
+              >
+                取消
+              </Button>
+            </div>
           )}
         </div>
 
-        {/* Add/Edit Form */}
-        {showForm && (
-          <div className="border-t pt-4 mt-4">
-            <h3 className="text-sm font-semibold mb-3">
-              {editingBudget ? "编辑预算" : "添加预算"}
-            </h3>
-            <form onSubmit={handleSubmit} className="space-y-3">
-              <div>
-                <label className="text-sm font-medium mb-1 block">分类</label>
-                <select
-                  className="w-full h-9 rounded-md border border-input bg-background px-3 text-sm"
-                  value={formData.category}
-                  onChange={(e) => setFormData({ ...formData, category: e.target.value })}
-                  required
-                >
-                  <option value="">总预算</option>
-                  {expenseCategories.map((cat) => (
-                    <option key={cat.id} value={cat.name}>
-                      {cat.icon} {cat.name}
-                    </option>
-                  ))}
-                </select>
-              </div>
-              <div>
-                <label className="text-sm font-medium mb-1 block">预算金额</label>
-                <Input
-                  type="number"
-                  step="0.01"
-                  min="0"
-                  value={formData.amount || ""}
-                  onChange={(e) =>
-                    setFormData({ ...formData, amount: parseFloat(e.target.value) || 0 })
-                  }
-                  placeholder="0.00"
-                  required
-                />
-              </div>
-              <div className="flex justify-end gap-2">
-                <Button type="button" variant="outline" onClick={resetForm}>
-                  取消
-                </Button>
-                <Button type="submit">
-                  {editingBudget ? "保存" : "添加"}
-                </Button>
-              </div>
-            </form>
-          </div>
-        )}
+        {/* 添加预算项按钮 */}
+        <div className="flex flex-wrap gap-2 mb-4">
+          {PRESET_CATEGORIES
+            .filter((p) => !items.some((i) => i.category === p.name))
+            .map((preset) => (
+              <Button
+                key={preset.name}
+                variant="outline"
+                size="sm"
+                onClick={() => addItem(preset.name)}
+              >
+                {preset.icon} {preset.name}
+              </Button>
+            ))}
+          <Button
+            variant="outline"
+            size="sm"
+            onClick={() => setShowCustomInput(true)}
+          >
+            <Plus size={14} className="mr-1" />
+            自定义
+          </Button>
+        </div>
+
+        {/* 保存按钮 */}
+        <div className="flex justify-end">
+          <Button onClick={handleSave} disabled={saving}>
+            {saving ? "保存中..." : "保存"}
+          </Button>
+        </div>
       </DialogContent>
     </Dialog>
   )

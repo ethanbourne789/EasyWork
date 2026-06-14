@@ -405,10 +405,20 @@ pub fn run() {
             crate::stock::commands::stock_alert_update,
             crate::stock::commands::stock_alert_delete,
             crate::stock::commands::stock_alert_toggle,
-            // Accounting module — transactions / stats
+            // Accounting module — transactions / categories / budgets / stats
             commands::accounting::txn_list,
             commands::accounting::txn_create,
+            commands::accounting::txn_update,
             commands::accounting::txn_delete,
+            commands::accounting::category_list,
+            commands::accounting::category_create,
+            commands::accounting::category_update,
+            commands::accounting::category_delete,
+            commands::accounting::budget_list,
+            commands::accounting::budget_create,
+            commands::accounting::budget_update,
+            commands::accounting::budget_delete,
+            commands::accounting::budget_save_all,
             commands::accounting::stats_summary,
         ])
         .run(tauri::generate_context!())
