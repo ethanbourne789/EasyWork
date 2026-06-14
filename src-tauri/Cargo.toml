@@ -16,14 +16,15 @@ crate-type = ["staticlib", "cdylib", "rlib"]
 tauri-build = { version = "2.6.2", features = [] }
 
 [features]
-# Default: enable TLS via rustls (works everywhere, no external dependencies).
+# Default: use rustls for TLS (works everywhere, no external dependencies).
 # With rustls, IMAP/SMTP TLS is handled without OpenSSL, avoiding cross-compile
 # headaches for Android and platform-specific OpenSSL quirks.
 #
 # Optional: "desktop-native-tls" switches IMAP TLS to native-tls (schannel on
 # Windows, Security.framework on macOS, OpenSSL on Linux). Enable this only
 # if you need the OS trust store for corporate/internal PKI scenarios.
-default = ["desktop-native-tls"]
+# Desktop users can opt in with: cargo build --features desktop-native-tls
+default = []
 
 # native-tls with vendored OpenSSL (desktop-only; requires Perl+make for
 # cross-compilation to Android)
