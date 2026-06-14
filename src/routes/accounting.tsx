@@ -20,7 +20,7 @@ import type { Transaction, Category, Budget } from "@easywork/shared"
 import { TransactionForm, type TransactionFormData } from "@/components/accounting/TransactionForm"
 import { CategoryManager, type CategoryFormData } from "@/components/accounting/CategoryManager"
 import { BudgetManager, type BudgetFormData } from "@/components/accounting/BudgetManager"
-import { Plus, TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight, Settings, Upload, Download, Trash2, Target } from "lucide-react"
+import { Plus, TrendingUp, TrendingDown, Wallet, ChevronLeft, ChevronRight, Settings, Upload, Download, Trash2, Target, X } from "lucide-react"
 import { PieChart, Pie, Cell, ResponsiveContainer, Tooltip } from "recharts"
 
 const PIE_COLORS = [
@@ -40,6 +40,7 @@ function AccountingPage() {
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null)
   const [showCategoryManager, setShowCategoryManager] = useState(false)
   const [showBudgetManager, setShowBudgetManager] = useState(false)
+  const [showSettings, setShowSettings] = useState(false)
 
   const now = new Date()
   const [currentYear, setCurrentYear] = useState(now.getFullYear())
@@ -243,24 +244,10 @@ function AccountingPage() {
             </Button>
           </div>
         </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button variant="outline" size="sm" onClick={handleImportCsv}>
-            <Upload size={16} />
-            <span className="hidden sm:inline ml-1">导入</span>
+        <div className="flex items-center gap-2">
+          <Button variant="ghost" size="sm" onClick={() => setShowSettings(true)} title="设置">
+            <Settings size={18} className="text-surface-500" />
           </Button>
-          <Button variant="outline" size="sm" onClick={handleExportCsv}>
-            <Download size={16} />
-            <span className="hidden sm:inline ml-1">导出</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowBudgetManager(true)}>
-            <Target size={16} />
-            <span className="hidden sm:inline ml-1">预算管理</span>
-          </Button>
-          <Button variant="outline" size="sm" onClick={() => setShowCategoryManager(true)}>
-            <Settings size={16} />
-            <span className="hidden sm:inline ml-1">管理分类</span>
-          </Button>
-          <Button onClick={() => setShowForm(true)}><Plus size={16} /><span className="hidden sm:inline ml-1">记一笔</span></Button>
         </div>
       </div>
 
@@ -445,6 +432,57 @@ function AccountingPage() {
         totalExpense={totalExpense}
         onSave={handleSaveBudgets}
       />
+
+      {/* Settings Modal */}
+      {showSettings && (
+        <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/30" onClick={() => setShowSettings(false)}>
+          <div className="w-72 bg-white dark:bg-surface-900 rounded-2xl shadow-2xl p-5 space-y-2" onClick={e => e.stopPropagation()}>
+            <div className="flex items-center justify-between mb-2">
+              <h3 className="font-semibold text-sm dark:text-white">设置</h3>
+              <button onClick={() => setShowSettings(false)} className="text-surface-400 hover:text-surface-600">
+                <X size={16} />
+              </button>
+            </div>
+            <button
+              onClick={() => { setShowSettings(false); handleImportCsv() }}
+              className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors text-sm"
+            >
+              <Upload size={18} className="text-surface-500" />
+              <span className="dark:text-surface-200">导入 CSV</span>
+            </button>
+            <button
+              onClick={() => { setShowSettings(false); handleExportCsv() }}
+              className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors text-sm"
+            >
+              <Download size={18} className="text-surface-500" />
+              <span className="dark:text-surface-200">导出 CSV</span>
+            </button>
+            <button
+              onClick={() => { setShowSettings(false); setShowBudgetManager(true) }}
+              className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors text-sm"
+            >
+              <Target size={18} className="text-surface-500" />
+              <span className="dark:text-surface-200">预算管理</span>
+            </button>
+            <button
+              onClick={() => { setShowSettings(false); setShowCategoryManager(true) }}
+              className="flex items-center gap-3 w-full p-3 rounded-xl hover:bg-surface-50 dark:hover:bg-surface-800 transition-colors text-sm"
+            >
+              <Settings size={18} className="text-surface-500" />
+              <span className="dark:text-surface-200">管理分类</span>
+            </button>
+          </div>
+        </div>
+      )}
+
+      {/* FAB — 记一笔悬浮按钮 */}
+      <button
+        onClick={() => setShowForm(true)}
+        className="fixed bottom-6 right-6 z-40 w-12 h-12 rounded-full bg-primary-600 hover:bg-primary-700 shadow-lg flex items-center justify-center text-white transition-colors"
+        title="记一笔"
+      >
+        <Plus size={24} />
+      </button>
     </div>
   )
 }
