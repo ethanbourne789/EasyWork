@@ -47,6 +47,7 @@ async-imap = "0.9"
 tokio-rustls = "0.26"
 rustls = "0.23"
 webpki-roots = "1.0"
+socket2 = "0.5"
 # native-tls for all platforms.
 # Windows uses schannel, macOS uses Security.framework,
 # Linux/Android use OpenSSL (compiled from source via the `vendored` feature,
@@ -68,7 +69,7 @@ sanitize-filename = "0.6"
 open = "5"
 fern = "0.7"
 # Mozilla autoconfig + general HTTP
-reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream"] }
+reqwest = { version = "0.12", default-features = false, features = ["rustls-tls", "stream", "json"] }
 regex = "1"
 sha2 = "0.10"
 hex = "0.4"
