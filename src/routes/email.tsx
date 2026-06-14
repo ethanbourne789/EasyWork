@@ -176,6 +176,7 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
   const [testResult, setTestResult] = useState<string | null>(null)
   const [testing, setTesting] = useState(false)
   const [saving, setSaving] = useState(false)
+  const [savePhase, setSavePhase] = useState<"idle" | "writing" | "testing" | "syncing">("idle")
   const [syncResult, setSyncResult] = useState<string | null>(null)
   const [error, setError] = useState<string | null>(null)
 
@@ -219,95 +220,141 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     }
   }, [form.email])
 
+  // 保存流程状态机：idle → writing → testing → syncing → idle
+  // 每阶段独立超时，互不阻塞；任何阶段失败均可回滚或重试
   const handleAdd = async () => {
-    // ── Front-end validation (fast, no round-trip) ──
+    // ── 阶段 0: 前端校验（同步、快速） ──
     if (!form.email.includes("@")) { setError("请输入有效的邮箱地址"); return }
     if (!form.imap_host.trim()) { setError("请输入 IMAP 服务器地址"); return }
     if (!form.smtp_host.trim()) { setError("请输入 SMTP 服务器地址"); return }
     if (!form.password.trim()) { setError("请输入密码或授权码"); return }
 
-    setSaving(true); setError(null); setSyncResult(null)
+    // 进入写入阶段
+    setSaving(true)
+    setSavePhase("writing")
+    setError(null)
+    setSyncResult(null)
+    setTestResult(null)
 
-    // 超时保护：30 秒后自动恢复按钮状态
-    const timeoutId = setTimeout(() => {
-      setSaving(false)
-      setError("操作超时，请检查网络连接后重试")
-    }, 30000)
-
+    // 编辑模式：跳过测试连接直接更新（密码空时后端保留原密码）
     if (editingId) {
-      // ── Edit path ──
-      // The password field is intentionally left empty by startEdit() — the
-      // backend (update_account) treats an empty password as "keep the stored
-      // one". We therefore must NOT call testConnection() here: it would try
-      // to log in with an empty password and always fail.
       try {
         await mailIpc.updateAccount({ ...form, id: editingId })
-        clearTimeout(timeoutId)
         updateAccountLocal({ ...form, id: editingId })
         setEditingId(null)
         setShowAdd(false)
         setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
         setSyncResult("账户已更新（如修改了密码请点击「测试连接」验证）")
+        setSavePhase("idle")
       } catch (err: unknown) {
         const msg = err instanceof Error ? err.message : String(err)
         console.error("update_account failed:", msg)
         setError(`更新失败: ${msg}`)
-      } finally { setSaving(false) }
+        setSavePhase("idle")
+      } finally {
+        setSaving(false)
+      }
       return
     }
 
-    // ── Add new account ──
-    // Two-phase commit:
-    //   Phase A: insert (idempotent rollback if test_connection fails)
-    //   Phase B: test connection — if it fails, delete the just-inserted row
-    //
-    // If the rollback delete itself fails (e.g. backend transient error),
-    // surface the error to the user so they can retry — do NOT swallow it.
+    // ── 新建模式：两阶段提交 + 后续同步分离 ──
     let insertedId: number | null = null
     try {
+      // ── 阶段 A: 写入数据库（极快，应 < 200ms） ──
       insertedId = await mailIpc.addAccount(form)
-      clearTimeout(timeoutId)
-      const connResult = await mailIpc.testConnection(form)
-      setTestResult(connResult)
-      if (!connResult.includes("成功")) {
-        setError(connResult)
-        // Best-effort rollback. Log the error rather than silently swallowing.
-        try {
-          await mailIpc.deleteAccount(insertedId)
-        } catch (rollbackErr) {
-          const rmsg = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
-          console.error("add_account rollback failed:", rmsg)
-          setError(prev => `${prev}\n警告：回滚失败 (id=${insertedId})，请在账户管理中手动删除`)
-        }
+      setSavePhase("testing")
+
+      // ── 阶段 B: 测试连接（最慢，单独 10 秒超时保护） ──
+      let connResult: string
+      try {
+        connResult = await Promise.race([
+          mailIpc.testConnection(form),
+          new Promise<string>((_, reject) =>
+            setTimeout(() => reject(new Error("连接测试超时（10秒）")), 10000)
+          ),
+        ])
+      } catch (testErr) {
+        const testMsg = testErr instanceof Error ? testErr.message : "连接测试失败"
+        setError(`账户已保存（id=${insertedId}），但连接测试失败：${testMsg}\n请在账户列表中点击「测试连接」重试`)
+        // 不删除账户（已保存成功），让用户可手动重试
+        setTestResult(testMsg)
+        setSavePhase("idle")
         setSaving(false)
         return
       }
+
+      setTestResult(connResult)
+      const ok = connResult.includes("成功")
+      if (!ok) {
+        setError(connResult)
+        // 测试失败，提示用户是否删除刚保存的账户
+        const shouldDelete = confirm(
+          `连接测试未通过：${connResult}\n\n是否删除已保存的账户？\n（点取消可保留并稍后手动测试）`
+        )
+        if (shouldDelete) {
+          try {
+            await mailIpc.deleteAccount(insertedId)
+          } catch (rollbackErr) {
+            const rmsg = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
+            console.error("rollback failed:", rmsg)
+            setError(prev => `${prev}\n警告：回滚失败 (id=${insertedId})，请在账户管理中手动删除`)
+          }
+        } else {
+          // 保留账户，标记为可手动重试
+          addAccountLocal({ ...form, id: insertedId })
+        }
+        setSavePhase("idle")
+        setSaving(false)
+        return
+      }
+
+      // ── 阶段 C: 全部成功，加入本地状态 ──
       addAccountLocal({ ...form, id: insertedId })
       setActiveAccountId(insertedId!)
-      mailIpc.syncAccount(insertedId).then(() => {
-        mailIpc.fetchMessages(insertedId!).then(result => {
-          useMailStore.getState().setMessages(result.messages)
-        }).catch(err => console.warn("fetchMessages after add failed:", err))
-      }).catch(err => console.warn("syncAccount after add failed:", err))
-      setSyncResult("账户已添加，后台同步已启动")
+      setSyncResult("账户已添加")
       setShowAdd(false)
       onClose()
       setForm({ email: "", provider: "imap", imap_host: "", imap_port: 993, smtp_host: "", smtp_port: 465, username: "", password: "", use_tls: true, sync_interval_secs: 300, sync_period_days: 30 })
-      } catch (err: unknown) {
-        const msg = err instanceof Error ? err.message : String(err)
-        console.error("add_account failed:", msg)
-        clearTimeout(timeoutId)
-        setError(`操作失败: ${msg}`)
+
+      // ── 阶段 D: 后台同步（不阻塞 UI，单独 setTimeout 0 让弹窗先关闭） ──
+      setSavePhase("syncing")
+      setTimeout(() => {
+        mailIpc.syncAccount(insertedId!)
+          .then(() => {
+            mailIpc.fetchMessages(insertedId!)
+              .then(result => { useMailStore.getState().setMessages(result.messages) })
+              .catch(err => console.warn("fetchMessages after add failed:", err))
+            setSyncResult("账户已添加，首次同步完成")
+          })
+          .catch(err => {
+            console.warn("syncAccount after add failed:", err)
+            setSyncResult("账户已添加（首次同步失败，可手动重试）")
+          })
+          .finally(() => {
+            setSavePhase("idle")
+            setSaving(false)
+          })
+      }, 0)
+      // 立即把 saving 置 false（同步已在后台跑，不阻塞关闭）
+      setSaving(false)
+    } catch (err: unknown) {
+      // 写入阶段或之前抛出：尚未有 insertedId，或 addAccount 本身失败
+      const msg = err instanceof Error ? err.message : String(err)
+      console.error("add_account failed:", msg)
+      setError(`保存失败: ${msg}`)
+      // 若已插入但后续报错，仍尝试回滚
       if (insertedId != null) {
         try {
           await mailIpc.deleteAccount(insertedId)
         } catch (rollbackErr) {
           const rmsg = rollbackErr instanceof Error ? rollbackErr.message : String(rollbackErr)
-          console.error("add_account rollback failed:", rmsg)
-          setError(prev => `${prev}\n警告：回滚失败 (id=${insertedId})，请在账户管理中手动删除`)
+          console.error("rollback failed:", rmsg)
+          setError(prev => `${prev}\n警告：回滚失败 (id=${insertedId})，请手动删除`)
         }
       }
-    } finally { setSaving(false) }
+      setSavePhase("idle")
+      setSaving(false)
+    }
   }
 
   const [deleteConfirmId, setDeleteConfirmId] = useState<number | null>(null)
@@ -457,10 +504,19 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
             {testResult && <div className={`text-xs p-2 rounded ${testResult.includes("成功") ? "bg-emerald-50 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300" : "bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300"}`}>{testResult}</div>}
             {error && <div className="text-xs p-2 rounded bg-red-50 dark:bg-red-900/30 text-red-700 dark:text-red-300">{error}</div>}
             {syncResult && <div className="text-xs p-2 rounded bg-blue-50 dark:bg-blue-900/30 text-blue-700 dark:text-blue-300">{syncResult}</div>}
-            <div className="flex gap-2">
-              <Button size="sm" onClick={handleAdd} disabled={saving}>{saving ? <Loader2 size={14} className="animate-spin" /> : null}{editingId ? "保存修改" : t("account.save")}</Button>
-              <Button size="sm" variant="outline" onClick={handleTest} disabled={testing}>{t("account.testConnection")}</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setError(null); setEditingId(null) }}>{t("mail.cancel")}</Button>
+            <div className="flex gap-2 items-center">
+              <Button size="sm" onClick={handleAdd} disabled={saving}>
+                {saving && <Loader2 size={14} className="animate-spin mr-1" />}
+                {savePhase === "writing" ? "保存中..." :
+                 savePhase === "testing" ? "测试连接..." :
+                 savePhase === "syncing" ? "后台同步..." :
+                 editingId ? "保存修改" : t("account.save")}
+              </Button>
+              <Button size="sm" variant="outline" onClick={handleTest} disabled={testing || saving}>
+                {testing && <Loader2 size={14} className="animate-spin mr-1" />}
+                {testing ? "测试中..." : t("account.testConnection")}
+              </Button>
+              <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setError(null); setEditingId(null) }} disabled={saving}>{t("mail.cancel")}</Button>
             </div>
           </div>
         )}
