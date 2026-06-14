@@ -38,6 +38,16 @@ pub async fn settings_set(key: String, value: String, pool: State<'_, DbPool>) -
         params![key, value],
     )?;
 
+    // 标记为 dirty，待同步
+    let id: Option<i64> = conn.query_row(
+        "SELECT id FROM settings WHERE key = ?1 LIMIT 1",
+        params![key],
+        |row| row.get(0),
+    ).ok();
+    if let Some(id) = id {
+        crate::sync::helpers::mark_dirty(&conn, "settings", id).ok();
+    }
+
     Ok(())
 }
 

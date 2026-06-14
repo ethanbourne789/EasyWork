@@ -4,6 +4,8 @@ mod mail;
 mod stock;
 mod commands;
 mod logging;
+mod log_writer;
+mod sync;
 
 use tauri::{
     Emitter, Manager, WindowEvent,
@@ -158,14 +160,14 @@ pub fn run() {
                 .app_data_dir()
                 .expect("Failed to get app data dir");
 
-            // ── Initialize structured file+console logging BEFORE anything else ──
-            if let Err(e) = logging::init(&app_data_dir) {
-                eprintln!("WARN: logging::init failed: {}. Logging to stderr only.", e);
-            }
-
             // ── Initialize database (stock module DDL is part of schema.rs) ──
             let pool = db::init_db(&app_data_dir)
                 .expect("Failed to initialize mail database");
+
+            // ── Initialize structured file+console+SQLite logging ──
+            if let Err(e) = logging::init(&app_data_dir, pool.clone()) {
+                eprintln!("WARN: logging::init failed: {}. Logging to stderr only.", e);
+            }
 
             // ---- Global shortcut (desktop only) ----
             #[cfg(desktop)]
@@ -200,6 +202,10 @@ pub fn run() {
 
             // Store app_data_dir in config so background workers can find it
             db::ops::set_config(&pool, "app_data_dir", &app_data_dir.to_string_lossy());
+
+            // ── Initialize cloud sync manager ──
+            let sync_manager = sync::SyncManager::new(pool.clone());
+            app.manage(sync_manager);
 
             // Per-account sync lock — prevents manual button, auto-fetch
             // scheduler, and smart-poll worker from all syncing the same
@@ -420,6 +426,21 @@ pub fn run() {
             commands::accounting::budget_delete,
             commands::accounting::budget_save_all,
             commands::accounting::stats_summary,
+            // Log module — query / export / clear / stats
+            commands::log::query_logs,
+            commands::log::get_trace_chain,
+            commands::log::get_log_stats,
+            commands::log::clear_logs,
+            commands::log::export_logs,
+            commands::log::get_log_modules,
+            // Cloud sync module
+            sync::sync_sign_in,
+            sync::sync_sign_up,
+            sync::sync_sign_out,
+            sync::sync_is_authenticated,
+            sync::sync_get_status,
+            sync::sync_now,
+            sync::sync_check_connectivity,
         ])
         .run(tauri::generate_context!())
         .expect("error while running tauri application");

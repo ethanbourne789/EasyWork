@@ -126,7 +126,11 @@ pub fn watchlist_add(pool: &DbPool, item: &StockWatchItem) -> Result<i64, String
          VALUES (?1, ?2, ?3, ?4)",
         params![item.symbol, item.name, item.market_type, item.sort_order],
     ) {
-        Ok(_) => Ok(conn.last_insert_rowid()),
+        Ok(_) => {
+            let id = conn.last_insert_rowid();
+            crate::sync::helpers::mark_dirty(&conn, "stock_watchlist", id).map_err(|e| e.to_string())?;
+            Ok(id)
+        }
         Err(rusqlite::Error::SqliteFailure(err, _))
             if err.code == rusqlite::ErrorCode::ConstraintViolation =>
         {
@@ -138,8 +142,9 @@ pub fn watchlist_add(pool: &DbPool, item: &StockWatchItem) -> Result<i64, String
 
 pub fn watchlist_remove(pool: &DbPool, symbol: &str, market_type: &str) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    // 软删除：标记为 deleting
     conn.execute(
-        "DELETE FROM stock_watchlist WHERE symbol = ?1 AND market_type = ?2",
+        "UPDATE stock_watchlist SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE symbol = ?1 AND market_type = ?2",
         params![symbol, market_type],
     )?;
     Ok(())
@@ -183,6 +188,17 @@ pub fn watchlist_reorder(pool: &DbPool, order: &[(String, String)]) -> Result<()
         .map_err(|e| format!("reorder update: {}", e))?;
     }
     tx.commit().map_err(|e| format!("tx commit: {}", e))?;
+    // 标记所有涉及的记录为 dirty
+    for (symbol, market_type) in order {
+        let id: Option<i64> = conn.query_row(
+            "SELECT id FROM stock_watchlist WHERE symbol = ?1 AND market_type = ?2 LIMIT 1",
+            params![symbol, market_type],
+            |row| row.get(0),
+        ).ok();
+        if let Some(id) = id {
+            crate::sync::helpers::mark_dirty(&conn, "stock_watchlist", id).map_err(|e| e.to_string())?;
+        }
+    }
     Ok(())
 }
 
@@ -199,13 +215,15 @@ pub fn trade_add(pool: &DbPool, trade: &StockTrade) -> Result<i64, String> {
         ],
     )
     .map_err(|e| format!("Insert trade error: {}", e))?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    crate::sync::helpers::mark_dirty(&conn, "stock_trades", id).map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
 pub fn trade_delete(pool: &DbPool, id: i64) -> Result<bool, String> {
     let conn = pool.get().map_err(|e| format!("DB connection error: {}", e))?;
     let affected = conn.execute(
-        "DELETE FROM stock_trades WHERE id = ?1",
+        "UPDATE stock_trades SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
         params![id],
     )
     .map_err(|e| format!("Delete trade error: {}", e))?;
@@ -405,7 +423,9 @@ pub fn alert_add(pool: &DbPool, alert: &StockAlert) -> Result<i64, String> {
         ],
     )
     .map_err(|e| format!("Insert alert error: {}", e))?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    crate::sync::helpers::mark_dirty(&conn, "stock_alerts", id).map_err(|e| e.to_string())?;
+    Ok(id)
 }
 
 pub fn alert_update(pool: &DbPool, alert: &StockAlert) -> Result<bool, String> {
@@ -423,13 +443,19 @@ pub fn alert_update(pool: &DbPool, alert: &StockAlert) -> Result<bool, String> {
         ],
     )
     .map_err(|e| format!("Update alert error: {}", e))?;
+    if n > 0 {
+        crate::sync::helpers::mark_dirty(&conn, "stock_alerts", id).map_err(|e| e.to_string())?;
+    }
     Ok(n > 0)
 }
 
 pub fn alert_delete(pool: &DbPool, id: i64) -> Result<bool, String> {
     let conn = pool.get().map_err(|e| format!("DB connection error: {}", e))?;
-    let n = conn.execute("DELETE FROM stock_alerts WHERE id = ?1", params![id])
-        .map_err(|e| format!("Delete alert error: {}", e))?;
+    let n = conn.execute(
+        "UPDATE stock_alerts SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
+        params![id],
+    )
+    .map_err(|e| format!("Delete alert error: {}", e))?;
     Ok(n > 0)
 }
 
@@ -449,6 +475,7 @@ pub fn alert_toggle(pool: &DbPool, id: i64) -> Result<bool, String> {
         params![new_val, id],
     )
     .map_err(|e| format!("Toggle alert error: {e}"))?;
+    crate::sync::helpers::mark_dirty(&conn, "stock_alerts", id).map_err(|e| e.to_string())?;
     Ok(!current)
 }
 

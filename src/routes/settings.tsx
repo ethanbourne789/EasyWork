@@ -5,10 +5,11 @@ import { Card, CardContent, CardHeader, CardTitle, CardDescription } from "@/com
 import { Badge } from "@/components/ui/badge"
 import { Button } from "@/components/ui/button"
 import { useThemeStore } from "@/stores/theme-store"
+import { useSyncStore } from "@/stores/sync-store"
 import * as mailIpc from "@/lib/mail-ipc"
 import {
   Monitor, Sun, Moon, Database, Keyboard, Bell, Globe, Info, ChevronRight, Check,
-  LogOut, Minimize2, Mail, Clock,
+  LogOut, Minimize2, Mail, Clock, Cloud, CloudOff, RefreshCw, CheckCircle, XCircle,
 } from "lucide-react"
 
 const themeOptions = [
@@ -318,6 +319,9 @@ function SettingsPage() {
         </CardContent>
       </Card>
 
+      {/* Cloud Sync */}
+      <CloudSyncCard />
+
       {/* Data */}
       <Card className="dark:bg-surface-800 dark:border-surface-700">
         <CardHeader>
@@ -389,6 +393,158 @@ function SettingsPage() {
       )}
     </div>
   )
+}
+
+function CloudSyncCard() {
+  const {
+    status,
+    isAuthenticated,
+    lastSyncedAt,
+    error,
+    isLoading,
+    refreshStatus,
+    signIn,
+    signUp,
+    signOut,
+    syncNow,
+  } = useSyncStore();
+
+  const [email, setEmail] = useState("");
+  const [password, setPassword] = useState("");
+  const [isSignUp, setIsSignUp] = useState(false);
+  const [localError, setLocalError] = useState<string | null>(null);
+
+  useEffect(() => {
+    refreshStatus();
+  }, [refreshStatus]);
+
+  const handleAuth = async () => {
+    setLocalError(null);
+    try {
+      if (isSignUp) {
+        await signUp(email, password);
+      } else {
+        await signIn(email, password);
+      }
+    } catch (err) {
+      setLocalError(String(err));
+    }
+  };
+
+  const handleSignOut = async () => {
+    await signOut();
+  };
+
+  const handleSync = async () => {
+    setLocalError(null);
+    try {
+      await syncNow();
+    } catch (err) {
+      setLocalError(String(err));
+    }
+  };
+
+  const statusConfig = {
+    not_authenticated: { icon: CloudOff, color: "text-surface-400", label: "未连接" },
+    offline: { icon: CloudOff, color: "text-amber-500", label: "离线" },
+    syncing: { icon: RefreshCw, color: "text-blue-500 animate-spin", label: "同步中..." },
+    synced: { icon: CheckCircle, color: "text-green-500", label: "已同步" },
+    failed: { icon: XCircle, color: "text-red-500", label: "同步失败" },
+  };
+
+  const cfg = statusConfig[status] ?? statusConfig.not_authenticated;
+  const StatusIcon = cfg.icon;
+
+  return (
+    <Card className="dark:bg-surface-800 dark:border-surface-700">
+      <CardHeader>
+        <CardTitle className="flex items-center gap-2 dark:text-white">
+          <Cloud size={18} className="text-blue-500" />
+          云同步
+        </CardTitle>
+        <CardDescription className="dark:text-surface-400">
+          在 Windows 和 Android 设备间同步记账、运动、股票、邮件等数据
+        </CardDescription>
+      </CardHeader>
+      <CardContent className="space-y-4">
+        {/* Status bar */}
+        <div className="flex items-center justify-between py-2">
+          <div className="flex items-center gap-2">
+            <StatusIcon size={16} className={cfg.color} />
+            <span className="text-sm dark:text-surface-200">{cfg.label}</span>
+          </div>
+          {lastSyncedAt && (
+            <span className="text-xs text-surface-400">
+              上次同步: {new Date(lastSyncedAt).toLocaleString()}
+            </span>
+          )}
+        </div>
+
+        {!isAuthenticated ? (
+          /* Login / Sign up form */
+          <div className="space-y-3">
+            <input
+              type="email"
+              placeholder="邮箱"
+              value={email}
+              onChange={(e) => setEmail(e.target.value)}
+              className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-transparent dark:text-surface-200"
+            />
+            <input
+              type="password"
+              placeholder="密码"
+              value={password}
+              onChange={(e) => setPassword(e.target.value)}
+              className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-transparent dark:text-surface-200"
+            />
+            {(localError || error) && (
+              <p className="text-xs text-red-500">{localError || error}</p>
+            )}
+            <div className="flex gap-2">
+              <Button
+                size="sm"
+                onClick={handleAuth}
+                disabled={!email || !password || isLoading}
+              >
+                {isSignUp ? "注册" : "登录"}
+              </Button>
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => setIsSignUp(!isSignUp)}
+              >
+                {isSignUp ? "已有账号？去登录" : "没有账号？去注册"}
+              </Button>
+            </div>
+          </div>
+        ) : (
+          /* Authenticated: sync button + sign out */
+          <div className="flex items-center gap-2">
+            <Button
+              size="sm"
+              onClick={handleSync}
+              disabled={status === "syncing" || isLoading}
+            >
+              <RefreshCw size={14} className={status === "syncing" ? "animate-spin" : ""} />
+              {status === "syncing" ? "同步中..." : "立即同步"}
+            </Button>
+            <Button
+              size="sm"
+              variant="outline"
+              onClick={handleSignOut}
+              disabled={status === "syncing" || isLoading}
+            >
+              <LogOut size={14} />
+              退出登录
+            </Button>
+            {(localError || error) && (
+              <p className="text-xs text-red-500 ml-2">{localError || error}</p>
+            )}
+          </div>
+        )}
+      </CardContent>
+    </Card>
+  );
 }
 
 export const Route = createFileRoute("/settings")({

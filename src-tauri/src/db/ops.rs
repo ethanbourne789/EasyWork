@@ -1297,7 +1297,9 @@ pub fn insert_contact(pool: &DbPool, contact: &MailContact) -> Result<i64> {
             contact.group_id, contact.display_name, contact.notes
         ],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    crate::sync::helpers::mark_dirty(&conn, "mail_contacts", id)?;
+    Ok(id)
 }
 
 pub fn list_contacts(pool: &DbPool, account_id: i64) -> Result<Vec<MailContact>> {
@@ -1324,7 +1326,11 @@ pub fn list_contacts(pool: &DbPool, account_id: i64) -> Result<Vec<MailContact>>
 
 pub fn delete_contact(pool: &DbPool, id: i64) -> Result<()> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
-    conn.execute("DELETE FROM mail_contacts WHERE id = ?1", params![id])?;
+    // 软删除：标记为 deleting
+    conn.execute(
+        "UPDATE mail_contacts SET sync_status = 'deleting', sync_version = sync_version + 1 WHERE id = ?1",
+        params![id],
+    )?;
     Ok(())
 }
 
@@ -1337,6 +1343,9 @@ pub fn update_contact(pool: &DbPool, contact: &MailContact) -> Result<()> {
             contact.display_name, contact.notes, contact.id
         ],
     )?;
+    if let Some(id) = contact.id {
+        crate::sync::helpers::mark_dirty(&conn, "mail_contacts", id)?;
+    }
     Ok(())
 }
 
@@ -1367,7 +1376,9 @@ pub fn insert_contact_group(pool: &DbPool, group: &MailContactGroup) -> Result<i
         "INSERT INTO mail_contact_groups (account_id, name, color, sort_order) VALUES (?1,?2,?3,?4)",
         params![group.account_id, group.name, group.color, group.sort_order],
     )?;
-    Ok(conn.last_insert_rowid())
+    let id = conn.last_insert_rowid();
+    crate::sync::helpers::mark_dirty(&conn, "mail_contact_groups", id)?;
+    Ok(id)
 }
 
 pub fn update_contact_group(pool: &DbPool, group: &MailContactGroup) -> Result<()> {
