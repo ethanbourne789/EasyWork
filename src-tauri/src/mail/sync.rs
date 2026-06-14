@@ -198,7 +198,7 @@ async fn poll_all_accounts(
         let mut session = None;
         let mut last_err = String::new();
         for attempt in 1..=2 {
-            match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password).await {
+            match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password, account.use_tls).await {
                 Ok(s) => { session = Some(s); break; }
                 Err(e) => {
                     last_err = e.to_string();
@@ -505,7 +505,7 @@ async fn execute_single_pending_op(
     password: &str,
     op: &PendingOp,
 ) -> Result<(), String> {
-    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.email, password)
+    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.email, password, account.use_tls)
         .await.map_err(|e| format!("IMAP connect failed: {}", e))?;
 
     let result = match op.op_type.as_str() {
@@ -602,6 +602,7 @@ fn spawn_idle_for_account(
 
 /// IDLE monitoring loop for a single account.
 /// Connects to IMAP, enters IDLE for INBOX, and notifies the main loop when new mail arrives.
+/// BUG-11 fix: Implements exponential backoff for Android Doze mode recovery.
 async fn idle_monitor_account(
     account_id: i64,
     pool: DbPool,
@@ -610,6 +611,9 @@ async fn idle_monitor_account(
 ) {
     let mut consecutive_errors = 0u32;
     const MAX_IDLE_ERRORS: u32 = 5;
+    // Exponential backoff: 2^0, 2^1, 2^2, 2^3, 2^4 = 1, 2, 4, 8, 16 seconds
+    const BASE_BACKOFF_SECS: u64 = 1;
+    const MAX_BACKOFF_SECS: u64 = 60;
 
     loop {
         if cancel_token.is_cancelled() {
@@ -631,23 +635,42 @@ async fn idle_monitor_account(
         let (account, password) = account_info;
 
         // Connect to IMAP
-        let session = match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password).await {
+        let session = match mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password, account.use_tls).await {
             Ok(s) => s,
             Err(e) => {
                 log::warn!("IDLE connect failed for account {}: {}", account_id, e);
                 consecutive_errors += 1;
+                
+                // BUG-12 fix: Detect network-related errors
+                let error_msg = e.to_string().to_lowercase();
+                let is_network_error = error_msg.contains("timeout") 
+                    || error_msg.contains("connection") 
+                    || error_msg.contains("network")
+                    || error_msg.contains("unreachable");
+                
+                if is_network_error {
+                    log::warn!("IDLE network error detected for account {}, may be network switch or Doze mode", account_id);
+                }
+                
                 if consecutive_errors >= MAX_IDLE_ERRORS {
                     log::error!("IDLE monitor for account {} exceeded max errors, falling back to polling", account_id);
                     break;
                 }
-                // Wait before retry
+                
+                // BUG-11 fix: Exponential backoff
+                let backoff_secs = (BASE_BACKOFF_SECS * 2u64.pow(consecutive_errors.saturating_sub(1))).min(MAX_BACKOFF_SECS);
+                log::info!("IDLE retry {} for account {} in {}s", consecutive_errors, account_id, backoff_secs);
+                
                 tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(30)) => {}
+                    _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
                     _ = cancel_token.cancelled() => break,
                 }
                 continue;
             }
         };
+
+        // Reset backoff on successful connection
+        consecutive_errors = 0;
 
         // Enter IDLE loop
         log::debug!("Account {} entering IDLE for INBOX", account_id);
@@ -657,8 +680,6 @@ async fn idle_monitor_account(
 
         match result {
             Ok((session, event)) => {
-                consecutive_errors = 0; // Reset on success
-
                 match event {
                     mail::imap::IdleEvent::NewMail => {
                         log::info!("IDLE: New mail detected for account {}", account_id);
@@ -675,21 +696,38 @@ async fn idle_monitor_account(
                 }
             }
             Err(e) => {
+                let error_msg = e.to_string().to_lowercase();
                 log::warn!("IDLE error for account {}: {}", account_id, e);
+                
+                // BUG-12 fix: Detect network-related IDLE errors
+                let is_network_error = error_msg.contains("timeout") 
+                    || error_msg.contains("connection") 
+                    || error_msg.contains("network")
+                    || error_msg.contains("broken pipe")
+                    || error_msg.contains("connection reset");
+                
+                if is_network_error {
+                    log::warn!("IDLE network error detected for account {}, likely network switch or Doze mode", account_id);
+                }
+                
                 consecutive_errors += 1;
                 if consecutive_errors >= MAX_IDLE_ERRORS {
                     log::error!("IDLE monitor for account {} exceeded max errors, falling back to polling", account_id);
                     break;
                 }
-                // Wait before retry
+                
+                // BUG-11 fix: Exponential backoff
+                let backoff_secs = (BASE_BACKOFF_SECS * 2u64.pow(consecutive_errors.saturating_sub(1))).min(MAX_BACKOFF_SECS);
+                log::info!("IDLE retry {} for account {} in {}s", consecutive_errors, account_id, backoff_secs);
+                
                 tokio::select! {
-                    _ = tokio::time::sleep(Duration::from_secs(10)) => {}
+                    _ = tokio::time::sleep(Duration::from_secs(backoff_secs)) => {}
                     _ = cancel_token.cancelled() => break,
                 }
             }
         }
 
-        // Small delay before re-entering IDLE
+        // Small delay before re-entering IDLE (only on success)
         tokio::select! {
             _ = tokio::time::sleep(Duration::from_secs(2)) => {}
             _ = cancel_token.cancelled() => break,
@@ -709,7 +747,7 @@ async fn sync_inbox_for_account(pool: &DbPool, account_id: i64) -> Result<usize,
     let days = if account.sync_period_days > 0 { account.sync_period_days } else { 30 };
 
     // Connect to IMAP
-    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password)
+    let mut session = mail::imap::connect(&account.imap_host, account.imap_port, &account.email, &password, account.use_tls)
         .await
         .map_err(|e| format!("IMAP connect failed: {}", e))?;
 

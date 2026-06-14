@@ -1152,13 +1152,16 @@ pub fn list_folders(pool: &DbPool, account_id: i64) -> Result<Vec<MailFolder>> {
 }
 
 /// Get unread count per folder for an account
+/// Excludes special folders (sent, trash, spam) that should never show unread counts
 pub fn folder_unread_counts(pool: &DbPool, account_id: i64) -> Result<Vec<(i64, i64)>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare(
         "SELECT mf.folder_id, COUNT(*)
          FROM mail_messages m
          JOIN mail_message_folders mf ON m.id = mf.message_id
+         JOIN mail_folders f ON mf.folder_id = f.id
          WHERE m.account_id = ?1 AND m.is_read = 0 AND m.is_deleted = 0
+         AND f.role NOT IN ('sent', 'trash', 'spam', 'drafts')
          GROUP BY mf.folder_id"
     )?;
     let counts = stmt.query_map(params![account_id], |row| {

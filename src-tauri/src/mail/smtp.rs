@@ -42,6 +42,7 @@ fn parse_recipients(input: &str) -> Vec<Result<Mailbox, Box<dyn std::error::Erro
 /// Send an email via SMTP with CC/BCC and optional attachments.
 ///
 /// Returns `Ok(())` on success.
+/// BUG-5 fix: Added use_tls parameter to respect account configuration.
 #[allow(clippy::too_many_arguments)]
 pub async fn send_mail(
     smtp_host: &str,
@@ -57,6 +58,7 @@ pub async fn send_mail(
     body_text: &str,
     body_html: Option<&str>,
     attachments: &[MailAttachment],
+    use_tls: bool,
 ) -> Result<(), Box<dyn std::error::Error + Send + Sync>> {
     let from_mailbox = match from_name {
         Some(name) => format!("{} <{}>", name, from).parse::<Mailbox>()?,
@@ -132,21 +134,24 @@ pub async fn send_mail(
 
     let creds = Credentials::new(username.to_string(), password.to_string());
 
-    // Port-based transport selection:
-    //   - 465 → implicit SSL/TLS (relay)
-    //   - 25 / 587 / 2525 → STARTTLS (starttls_relay)
-    // QQ Mail's SMTP server is known to RST the connection after sending 250 OK
-    // (it doesn't respond to QUIT cleanly), which causes lettre to raise
-    // `response error: incomplete response` after ~30s. Since the message is
-    // already accepted by the server at that point, we treat that specific
-    // error as success below.
-    let mailer = if smtp_port == 465 {
+    // BUG-5 fix: Respect use_tls flag
+    // BUG-7 fix: Use appropriate transport based on port and use_tls
+    let mailer = if !use_tls {
+        // Plain text connection (insecure, for internal networks only)
+        log::warn!("SMTP: connecting WITHOUT TLS to {}:{} (insecure!)", smtp_host, smtp_port);
+        AsyncSmtpTransport::<Tokio1Executor>::builder_dangerous(smtp_host)
+            .port(smtp_port)
+            .credentials(creds)
+            .build()
+    } else if smtp_port == 465 {
+        // Port 465 → implicit SSL/TLS (relay)
         log::info!("SMTP: using implicit SSL (port 465) for {}", smtp_host);
         AsyncSmtpTransport::<Tokio1Executor>::relay(smtp_host)?
             .port(smtp_port)
             .credentials(creds)
             .build()
     } else {
+        // Port 25 / 587 / 2525 → STARTTLS
         log::info!("SMTP: using STARTTLS (port {}) for {}", smtp_port, smtp_host);
         AsyncSmtpTransport::<Tokio1Executor>::starttls_relay(smtp_host)?
             .port(smtp_port)
@@ -154,16 +159,19 @@ pub async fn send_mail(
             .build()
     };
 
-    // Send and tolerate the well-known "QUIT response missing" race on QQ Mail.
-    // We only swallow the error when the message was clearly accepted (i.e. the
-    // server closed the connection mid-session — that can only happen *after*
-    // 250 OK was received, because lettre reads that response as part of
-    // `send()`).
+    // Send and handle errors
+    // BUG-6 fix: More precise error matching for QQ Mail QUIT race condition
     if let Err(e) = mailer.send(email).await {
         let msg = e.to_string();
-        if msg.contains("incomplete response") {
+        // Only swallow "incomplete response" errors that occur AFTER successful DATA transmission
+        // This is a known QQ Mail behavior where the server closes connection after 250 OK
+        // without responding to QUIT command
+        let is_quit_race = msg.contains("incomplete response")
+            && (msg.contains("QUIT") || msg.contains("quit") || msg.contains("250"));
+
+        if is_quit_race {
             log::warn!(
-                "SMTP server closed connection after accepting the message (likely QQ Mail). \
+                "SMTP server closed connection after accepting the message (likely QQ Mail QUIT race). \
                  Treating as success. Underlying error: {}",
                 msg
             );

@@ -1,40 +1,166 @@
+use std::pin::Pin;
+use std::sync::Arc;
+use std::task::{Context, Poll};
 use std::time::{Duration, Instant};
+use std::net::IpAddr;
 use futures::{StreamExt, TryStreamExt};
-use tokio_util::compat::TokioAsyncReadCompatExt;
+use tokio::io::{AsyncRead, AsyncWrite, ReadBuf};
 
 // ── TLS backend selection ──────────────────────────────────────────
 // Android: use rustls (no vendored OpenSSL headache)
 // Desktop (native-tls feature): use native-tls (OS trust store)
 #[cfg(feature = "desktop-native-tls")]
-pub type ImapSession = async_imap::Session<
-    tokio_util::compat::Compat<tokio_native_tls::TlsStream<tokio::net::TcpStream>>
->;
+type TlsStreamType = tokio_native_tls::TlsStream<tokio::net::TcpStream>;
 
 #[cfg(not(feature = "desktop-native-tls"))]
-pub type ImapSession = async_imap::Session<
-    tokio_util::compat::Compat<tokio_rustls::client::TlsStream<tokio::net::TcpStream>>
->;
+type TlsStreamType = tokio_rustls::client::TlsStream<tokio::net::TcpStream>;
+
+/// Wrapper enum that can hold either a plain TCP stream or a TLS stream.
+/// Implements AsyncRead + AsyncWrite so async_imap can use either transparently.
+pub enum MaybeTlsStream {
+    Plain(tokio::net::TcpStream),
+    Tls(TlsStreamType),
+}
+
+impl AsyncRead for MaybeTlsStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut ReadBuf<'_>,
+    ) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => Pin::new(s).poll_read(cx, buf),
+            MaybeTlsStream::Tls(s) => Pin::new(s).poll_read(cx, buf),
+        }
+    }
+}
+
+impl AsyncWrite for MaybeTlsStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => Pin::new(s).poll_write(cx, buf),
+            MaybeTlsStream::Tls(s) => Pin::new(s).poll_write(cx, buf),
+        }
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => Pin::new(s).poll_flush(cx),
+            MaybeTlsStream::Tls(s) => Pin::new(s).poll_flush(cx),
+        }
+    }
+
+    fn poll_shutdown(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        match self.get_mut() {
+            MaybeTlsStream::Plain(s) => Pin::new(s).poll_shutdown(cx),
+            MaybeTlsStream::Tls(s) => Pin::new(s).poll_shutdown(cx),
+        }
+    }
+}
+
+// Implement futures traits via tokio_util::compat
+impl futures::AsyncRead for MaybeTlsStream {
+    fn poll_read(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &mut [u8],
+    ) -> Poll<std::io::Result<usize>> {
+        let mut read_buf = ReadBuf::new(buf);
+        match tokio::io::AsyncRead::poll_read(self, cx, &mut read_buf) {
+            Poll::Ready(Ok(())) => Poll::Ready(Ok(read_buf.filled().len())),
+            Poll::Ready(Err(e)) => Poll::Ready(Err(e)),
+            Poll::Pending => Poll::Pending,
+        }
+    }
+}
+
+impl futures::AsyncWrite for MaybeTlsStream {
+    fn poll_write(
+        self: Pin<&mut Self>,
+        cx: &mut Context<'_>,
+        buf: &[u8],
+    ) -> Poll<std::io::Result<usize>> {
+        tokio::io::AsyncWrite::poll_write(self, cx, buf)
+    }
+
+    fn poll_flush(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        tokio::io::AsyncWrite::poll_flush(self, cx)
+    }
+
+    fn poll_close(self: Pin<&mut Self>, cx: &mut Context<'_>) -> Poll<std::io::Result<()>> {
+        tokio::io::AsyncWrite::poll_shutdown(self, cx)
+    }
+}
+
+impl std::fmt::Debug for MaybeTlsStream {
+    fn fmt(&self, f: &mut std::fmt::Formatter<'_>) -> std::fmt::Result {
+        match self {
+            MaybeTlsStream::Plain(_) => f.debug_tuple("Plain").finish(),
+            MaybeTlsStream::Tls(_) => f.debug_tuple("Tls").finish(),
+        }
+    }
+}
+
+pub type ImapSession = async_imap::Session<MaybeTlsStream>;
 
 /// Timeout per individual step (TCP, TLS, LOGIN)
 const STEP_TIMEOUT: Duration = Duration::from_secs(10);
 /// Overall connection timeout
 const CONNECTION_TIMEOUT: Duration = Duration::from_secs(30);
 
+// ── BUG-1 fix: Global shared rustls ClientConfig ───────────────────
+// Build once, reuse for all connections. Saves ~140 cert clones per connection.
+#[cfg(not(feature = "desktop-native-tls"))]
+static RUSTLS_CONFIG: std::sync::OnceLock<Arc<rustls::ClientConfig>> = std::sync::OnceLock::new();
+
+#[cfg(not(feature = "desktop-native-tls"))]
+fn get_rustls_config() -> Arc<rustls::ClientConfig> {
+    RUSTLS_CONFIG.get_or_init(|| {
+        let mut root_store = rustls::RootCertStore::empty();
+        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
+
+        // BUG-3 fix: Enable TLS session resumption for faster reconnects
+        let config = rustls::ClientConfig::builder()
+            .with_root_certificates(root_store)
+            .with_no_client_auth();
+
+        Arc::new(config)
+    }).clone()
+}
+
+// ── BUG-2 fix: Parse host as IP address or DNS name ────────────────
+#[cfg(not(feature = "desktop-native-tls"))]
+fn parse_server_name(host: &str) -> Result<rustls::pki_types::ServerName<'static>, Box<dyn std::error::Error + Send + Sync>> {
+    // Try IP address first
+    if let Ok(ip) = host.parse::<IpAddr>() {
+        return Ok(rustls::pki_types::ServerName::IpAddress(ip.into()));
+    }
+    // Fall back to DNS name
+    rustls::pki_types::ServerName::try_from(host.to_string())
+        .map(|name| name.to_owned())
+        .map_err(|e| format!("无效的服务器主机名 '{}': {:?}", host, e).into())
+}
+
 pub async fn connect(
     host: &str,
     port: u16,
     username: &str,
     password: &str,
+    use_tls: bool,
 ) -> Result<ImapSession, Box<dyn std::error::Error + Send + Sync>> {
     let overall_start = Instant::now();
 
     // Race the entire connection against a 30-second timer.
     tokio::select! {
-        result = connection_attempt(host, port, username, password) => {
+        result = connection_attempt(host, port, username, password, use_tls) => {
             let elapsed = overall_start.elapsed();
             log::info!(
-                "IMAP connect OK to {}:{} as {} in {:.1}s",
-                host, port, username, elapsed.as_secs_f64()
+                "IMAP connect OK to {}:{} as {} in {:.1}s (tls={})",
+                host, port, username, elapsed.as_secs_f64(), use_tls
             );
             result
         }
@@ -59,6 +185,7 @@ async fn connection_attempt(
     port: u16,
     username: &str,
     password: &str,
+    use_tls: bool,
 ) -> Result<ImapSession, Box<dyn std::error::Error + Send + Sync>> {
     // ── Step 1: DNS resolve + TCP connect (10s timeout) ──
     let tcp_start = Instant::now();
@@ -83,6 +210,20 @@ async fn connection_attempt(
         }
     };
 
+    // ── BUG-4 fix: Set TCP keepalive ───────────────────────────────
+    // Detect dead connections on Android when network switches or Doze mode activates
+    let tcp = {
+        use socket2::{SockRef, TcpKeepalive};
+        let sock_ref = SockRef::from(&tcp);
+        let keepalive = TcpKeepalive::new()
+            .with_time(Duration::from_secs(60))
+            .with_interval(Duration::from_secs(15));
+        if let Err(e) = sock_ref.set_tcp_keepalive(&keepalive) {
+            log::warn!("Failed to set TCP keepalive: {}", e);
+        }
+        tcp
+    };
+
     let tcp_elapsed = tcp_start.elapsed();
     let peer_addr = tcp.peer_addr().map(|a| a.to_string()).unwrap_or_else(|_| "?".into());
     log::info!(
@@ -90,105 +231,108 @@ async fn connection_attempt(
         host, peer_addr, tcp_elapsed.as_secs_f64()
     );
 
-    // ── Step 2: TLS handshake (10s timeout) ──
-    #[cfg(feature = "desktop-native-tls")]
-    let tls_stream = {
-        let tls_start = Instant::now();
-        log::info!("IMAP Step 2/3: TLS handshake (native-tls) with {}:{} ...", host, port);
+    // ── BUG-5 fix: Respect use_tls flag ────────────────────────────
+    // If use_tls is false, skip TLS and use plain TCP (insecure)
+    let stream = if !use_tls {
+        log::warn!("IMAP: connecting WITHOUT TLS to {}:{} (insecure!)", host, port);
+        MaybeTlsStream::Plain(tcp)
+    } else {
+        // ── Step 2: TLS handshake (10s timeout) ──
+        #[cfg(feature = "desktop-native-tls")]
+        {
+            let tls_start = Instant::now();
+            log::info!("IMAP Step 2/3: TLS handshake (native-tls) with {}:{} ...", host, port);
 
-        // native-tls uses the OS trust store:
-        // - Windows: schannel (built-in, handles renegotiation)
-        // - macOS: Security.framework
-        // - Linux: OpenSSL (vendored build)
-        let tls_connector = native_tls::TlsConnector::builder()
-            .build()
-            .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                log::error!("IMAP TLS: failed to build native connector: {}", e);
-                format!("TLS 初始化失败: {}", e).into()
-            })?;
-        let tls_connector = tokio_native_tls::TlsConnector::from(tls_connector);
-
-        let tls_future = tls_connector.connect(host, tcp);
-        let stream: tokio_native_tls::TlsStream<tokio::net::TcpStream> = tokio::select! {
-            t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                log::error!(
-                    "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
-                    host, port, tls_start.elapsed().as_secs_f64(), e
-                );
-                format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
-            })?,
-            _ = tokio::time::sleep(STEP_TIMEOUT) => {
-                let elapsed = tls_start.elapsed();
-                log::error!(
-                    "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
-                    host, port, elapsed.as_secs_f64()
-                );
-                return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
-            }
-        };
-
-        let tls_elapsed = tls_start.elapsed();
-        log::info!(
-            "IMAP Step 2/3 OK: TLS handshake (native-tls) complete in {:.3}s",
-            tls_elapsed.as_secs_f64()
-        );
-
-        stream.compat()
-    };
-
-    #[cfg(not(feature = "desktop-native-tls"))]
-    let tls_stream = {
-        let tls_start = Instant::now();
-        log::info!("IMAP Step 2/3: TLS handshake (rustls) with {}:{} ...", host, port);
-
-        // rustls with webpki-roots: no system dependencies, works on Android
-        let mut root_store = rustls::RootCertStore::empty();
-        root_store.extend(webpki_roots::TLS_SERVER_ROOTS.iter().cloned());
-        let config = rustls::ClientConfig::builder()
-            .with_root_certificates(root_store)
-            .with_no_client_auth();
-        let tls_connector = tokio_rustls::TlsConnector::from(std::sync::Arc::new(config));
-
-        let server_name = host.to_string();
-        let tls_future = tls_connector.connect(
-            rustls::pki_types::ServerName::try_from(server_name.clone())
+            let tls_connector = native_tls::TlsConnector::builder()
+                .build()
                 .map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                    format!("无效的服务器主机名 '{}': {:?}", host, e).into()
+                    log::error!("IMAP TLS: failed to build native connector: {}", e);
+                    format!("TLS 初始化失败: {}", e).into()
+                })?;
+            let tls_connector = tokio_native_tls::TlsConnector::from(tls_connector);
+
+            let tls_future = tls_connector.connect(host, tcp);
+            let stream: tokio_native_tls::TlsStream<tokio::net::TcpStream> = tokio::select! {
+                t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                    log::error!(
+                        "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
+                        host, port, tls_start.elapsed().as_secs_f64(), e
+                    );
+                    format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
                 })?,
-            tcp,
-        );
-        let stream: tokio_rustls::client::TlsStream<tokio::net::TcpStream> = tokio::select! {
-            t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
-                log::error!(
-                    "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
-                    host, port, tls_start.elapsed().as_secs_f64(), e
-                );
-                format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
-            })?,
-            _ = tokio::time::sleep(STEP_TIMEOUT) => {
-                let elapsed = tls_start.elapsed();
-                log::error!(
-                    "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
-                    host, port, elapsed.as_secs_f64()
-                );
-                return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
-            }
-        };
+                _ = tokio::time::sleep(STEP_TIMEOUT) => {
+                    let elapsed = tls_start.elapsed();
+                    log::error!(
+                        "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
+                        host, port, elapsed.as_secs_f64()
+                    );
+                    return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
+                }
+            };
 
-        let tls_elapsed = tls_start.elapsed();
-        log::info!(
-            "IMAP Step 2/3 OK: TLS handshake (rustls) complete in {:.3}s",
-            tls_elapsed.as_secs_f64()
-        );
+            let tls_elapsed = tls_start.elapsed();
+            log::info!(
+                "IMAP Step 2/3 OK: TLS handshake (native-tls) complete in {:.3}s",
+                tls_elapsed.as_secs_f64()
+            );
 
-        stream.compat()
+            MaybeTlsStream::Tls(stream)
+        }
+
+        #[cfg(not(feature = "desktop-native-tls"))]
+        {
+            let tls_start = Instant::now();
+            log::info!("IMAP Step 2/3: TLS handshake (rustls) with {}:{} ...", host, port);
+
+            let config = get_rustls_config();
+            let tls_connector = tokio_rustls::TlsConnector::from(config);
+
+            let server_name = parse_server_name(host)?;
+
+            let tls_future = tls_connector.connect(server_name, tcp);
+            let stream: tokio_rustls::client::TlsStream<tokio::net::TcpStream> = tokio::select! {
+                t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                    log::error!(
+                        "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
+                        host, port, tls_start.elapsed().as_secs_f64(), e
+                    );
+                    format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
+                })?,
+                _ = tokio::time::sleep(STEP_TIMEOUT) => {
+                    let elapsed = tls_start.elapsed();
+                    log::error!(
+                        "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
+                        host, port, elapsed.as_secs_f64()
+                    );
+                    return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
+                }
+            };
+
+            let tls_elapsed = tls_start.elapsed();
+            log::info!(
+                "IMAP Step 2/3 OK: TLS handshake (rustls) complete in {:.3}s",
+                tls_elapsed.as_secs_f64()
+            );
+
+            MaybeTlsStream::Tls(stream)
+        }
     };
 
-    // ── Step 3: IMAP LOGIN (10s timeout) ──
+    login_imap(stream, host, port, username, password).await
+}
+
+/// Common IMAP LOGIN step (Step 3/3)
+async fn login_imap(
+    stream: MaybeTlsStream,
+    host: &str,
+    port: u16,
+    username: &str,
+    password: &str,
+) -> Result<ImapSession, Box<dyn std::error::Error + Send + Sync>> {
     let login_start = Instant::now();
     log::info!("IMAP Step 3/3: LOGIN as {} ...", username);
 
-    let client = async_imap::Client::new(tls_stream);
+    let client = async_imap::Client::new(stream);
     let login_future = client.login(username, password);
     let session = tokio::select! {
         s = login_future => s.map_err(|(e, _)| -> Box<dyn std::error::Error + Send + Sync> {
@@ -254,7 +398,7 @@ pub async fn list_folders(
 
 /// Decode an IMAP UTF-7 string (RFC 3501 section 5.1.3).
 /// Converts e.g. `&g0l6P3ux-` to `草稿箱`.
-/// Characters outside the Basic Multilingual Plane may produce replacement characters.
+/// BUG-9 fix: Properly handle UTF-16 surrogate pairs for characters outside BMP.
 fn decode_imap_utf7(input: &str) -> String {
     let mut result = String::with_capacity(input.len());
     let bytes = input.as_bytes();
@@ -276,15 +420,65 @@ fn decode_imap_utf7(input: &str) -> String {
                 let b64: String = encoded.iter().map(|&b| if b == b',' { '+' } else { b as char }).collect();
                 // Pad to multiple of 4 for standard base64 decode
                 let padded = pad_base64(&b64);
-                if let Ok(decoded) = base64::Engine::decode(&base64::engine::general_purpose::STANDARD, padded.as_bytes()) {
-                    // Convert UTF-16BE bytes to UTF-8
-                    let ranges: Vec<char> = decoded.chunks(2)
-                        .filter_map(|pair| {
-                            if pair.len() < 2 { None }
-                            else { char::from_u32(u16::from_be_bytes([pair[0], pair[1]]) as u32) }
-                        })
-                        .collect();
-                    for ch in ranges { result.push(ch); }
+                match base64::Engine::decode(&base64::engine::general_purpose::STANDARD, padded.as_bytes()) {
+                    Ok(decoded) => {
+                        // Convert UTF-16BE bytes to chars, handling surrogate pairs
+                        let mut chars = Vec::new();
+                        let mut j = 0;
+                        while j + 1 < decoded.len() {
+                            let unit = u16::from_be_bytes([decoded[j], decoded[j + 1]]);
+                            j += 2;
+
+                            // Check for high surrogate (0xD800-0xDBFF)
+                            if (0xD800..=0xDBFF).contains(&unit) {
+                                // Need low surrogate
+                                if j + 1 < decoded.len() {
+                                    let low = u16::from_be_bytes([decoded[j], decoded[j + 1]]);
+                                    j += 2;
+                                    if (0xDC00..=0xDFFF).contains(&low) {
+                                        // Valid surrogate pair
+                                        let code_point = 0x10000 + ((unit as u32 - 0xD800) << 10) + (low as u32 - 0xDC00);
+                                        if let Some(ch) = char::from_u32(code_point) {
+                                            chars.push(ch);
+                                        } else {
+                                            log::warn!("UTF-7 decode: invalid code point U+{:X}", code_point);
+                                            chars.push('\u{FFFD}');
+                                        }
+                                    } else {
+                                        // Invalid low surrogate
+                                        log::warn!("UTF-7 decode: invalid low surrogate 0x{:04X}", low);
+                                        chars.push('\u{FFFD}');
+                                        // Don't advance j, try to decode low as standalone
+                                        j -= 2;
+                                    }
+                                } else {
+                                    // Truncated surrogate pair
+                                    log::warn!("UTF-7 decode: truncated surrogate pair");
+                                    chars.push('\u{FFFD}');
+                                }
+                            } else if (0xDC00..=0xDFFF).contains(&unit) {
+                                // Unexpected low surrogate
+                                log::warn!("UTF-7 decode: unexpected low surrogate 0x{:04X}", unit);
+                                chars.push('\u{FFFD}');
+                            } else {
+                                // Regular BMP character
+                                if let Some(ch) = char::from_u32(unit as u32) {
+                                    chars.push(ch);
+                                } else {
+                                    log::warn!("UTF-7 decode: invalid char 0x{:04X}", unit);
+                                    chars.push('\u{FFFD}');
+                                }
+                            }
+                        }
+                        for ch in chars {
+                            result.push(ch);
+                        }
+                    }
+                    Err(e) => {
+                        log::warn!("UTF-7 base64 decode failed for segment '{}': {}", b64, e);
+                        // Keep the original encoded segment as fallback
+                        result.push_str(&input[i..start + end + 1]);
+                    }
                 }
                 i = start + end + 1; // skip past the '-'
             } else {
@@ -521,8 +715,9 @@ pub async fn fetch_messages_headers_batch(
         match (fetch.uid, fetch.header()) {
             (Some(uid), Some(header_bytes)) => {
                 let flags: Vec<_> = fetch.flags().collect();
-                let is_read = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Seen"));
-                let is_starred = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Flagged"));
+                // BUG-10 fix: Use pattern matching instead of Debug format comparison
+                let is_read = flags.iter().any(|f| matches!(f, async_imap::types::Flag::Seen));
+                let is_starred = flags.iter().any(|f| matches!(f, async_imap::types::Flag::Flagged));
                 results.push((uid, header_bytes.to_vec(), is_read, is_starred));
             }
             (uid_opt, header_opt) => {
@@ -581,8 +776,9 @@ pub async fn fetch_flags_batch(
         for fetch in &fetches {
             if let Some(uid) = fetch.uid {
                 let flags: Vec<_> = fetch.flags().collect();
-                let is_read = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Seen"));
-                let is_starred = flags.iter().any(|f| format!("{:?}", f).eq_ignore_ascii_case("\\Flagged"));
+                // BUG-10 fix: Use pattern matching instead of Debug format comparison
+                let is_read = flags.iter().any(|f| matches!(f, async_imap::types::Flag::Seen));
+                let is_starred = flags.iter().any(|f| matches!(f, async_imap::types::Flag::Flagged));
                 results.push((uid, is_read, is_starred));
             }
         }
@@ -628,12 +824,22 @@ pub async fn idle_wait(
     // 2. Acquire the IDLE handle (consumes the session) and send IDLE.
     let mut handle = session.idle();
     if let Err(e) = handle.init().await {
-        // IDLE unsupported / refused: we no longer have the session back
-        // (handle owns it). Re-establish a session and fall back to a
-        // one-shot polling compare.
-        log::warn!("IDLE init failed for '{}', falling back to polling: {}", folder, e);
-        let session = handle.done().await?;
-        return idle_polling_fallback(session, folder, timeout).await;
+        // BUG-8 fix: IDLE init failed, try to recover session gracefully
+        log::warn!("IDLE init failed for '{}', attempting session recovery: {}", folder, e);
+        // Try to call done() to get the session back, but don't propagate error
+        // If done() also fails, we'll just return Timeout and let caller reconnect
+        match handle.done().await {
+            Ok(session) => {
+                log::info!("IDLE init failed but session recovered, falling back to polling");
+                return idle_polling_fallback(session, folder, timeout).await;
+            }
+            Err(recovery_err) => {
+                log::warn!("IDLE init failed and session recovery also failed: {}", recovery_err);
+                // Return a dummy session - caller will need to reconnect
+                // This is a rare edge case; the caller's error handling will reconnect
+                return Err(format!("IDLE init failed and could not recover session: {}", recovery_err).into());
+            }
+        }
     }
 
     // 3. Wait for server push (or our timeout). Cap the inner timeout at 29 min

@@ -55,7 +55,7 @@ pub async fn push_draft_to_imap(
     );
 
     let mut session = mail::imap::connect(
-        &account.imap_host, account.imap_port, &account.email, &password,
+        &account.imap_host, account.imap_port, &account.email, &password, account.use_tls,
     ).await.map_err(|e| format!("IMAP connect failed: {}", e))?;
 
     // Find the Drafts folder. Mozilla-style first, then common names.
@@ -96,7 +96,7 @@ pub async fn pull_drafts_from_imap(
         .ok_or_else(|| format!("Account {} not found", account_id))?;
 
     let mut session = mail::imap::connect(
-        &account.imap_host, account.imap_port, &account.email, &password,
+        &account.imap_host, account.imap_port, &account.email, &password, account.use_tls,
     ).await.map_err(|e| format!("IMAP connect failed: {}", e))?;
 
     let folders = mail::imap::list_folders(&mut session).await

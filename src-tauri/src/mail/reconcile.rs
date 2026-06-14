@@ -29,8 +29,15 @@ pub fn compute_flag_diff(
 
         let uid = remote_uid as u32;
         if let Some(&(remote_read, remote_starred)) = remote_map.get(&uid) {
-            let read_change = if local_read != remote_read {
-                Some(remote_read)
+            // Only sync read flag from server → local when server marks as READ.
+            // Never overwrite local "read" status when server still says "unread"
+            // (user may have read locally but server hasn't been updated yet).
+            let read_change = if !local_read && remote_read {
+                // Local: unread, Remote: read → sync to read
+                Some(true)
+            } else if local_read && !remote_read {
+                // Local: read, Remote: unread → preserve local read status
+                None
             } else {
                 None
             };
@@ -78,6 +85,7 @@ pub async fn reconcile_account(
         account.imap_port,
         &account.email,
         password,
+        account.use_tls,
     )
     .await
     .map_err(|e| format!("Reconcile connect failed: {}", e))?;

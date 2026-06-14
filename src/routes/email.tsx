@@ -11,7 +11,7 @@ import "@/lib/i18n"
 import {
   Search, Star, Paperclip, Inbox, Send, Archive, Trash2, Plus, Settings,
   RefreshCw, X, Reply, Forward, Trash,
-  Mail, Users, FileText, Loader2, CheckCircle2, AlertCircle,
+  Mail, Users, FileText, Loader2, CheckCircle2, AlertCircle, CheckCheck,
   AlertTriangle, ChevronDown, Download, MessageSquare, Menu, PanelLeftClose, PanelLeft, Pencil,
   Upload,
 } from "lucide-react"
@@ -199,12 +199,17 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
     try {
       const cfg = await mailIpc.autodiscoverAccount(form.email)
       if (cfg.imap || cfg.smtp) {
+        // BUG-13 fix: Map socket_type to use_tls
+        // "ssl" and "starttls" → use_tls=true, "none" → use_tls=false
+        const socketType = cfg.imap?.socket_type || cfg.smtp?.socket_type || "ssl"
+        const useTls = socketType !== "none"
         setForm(f => ({
           ...f,
           imap_host: cfg.imap?.hostname || f.imap_host,
           imap_port: cfg.imap?.port || f.imap_port,
           smtp_host: cfg.smtp?.hostname || f.smtp_host,
           smtp_port: cfg.smtp?.port || f.smtp_port,
+          use_tls: useTls,
           provider: "imap",
         }))
         console.log("Auto-configured from", cfg.source)
@@ -1080,6 +1085,33 @@ function EmailPage() {
     initAccounts()
   }, [])
 
+  // Refresh emails when window regains focus (e.g., after clicking notification)
+  useEffect(() => {
+    const isTauri = typeof window !== "undefined" && "__TAURI_INTERNALS__" in window
+    if (!isTauri) return
+
+    const handleFocus = () => {
+      if (activeAccountId) {
+        // Refresh messages when window is focused
+        const inbox = dbFolders.find(f => f.role === "inbox")
+        const folderId: number | undefined = inbox?.id ?? undefined
+        mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE).then(result => {
+          setMessages(result.messages)
+          setTotalMessages(result.total)
+        }).catch(() => {})
+        // Refresh unread counts
+        mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
+          const map: Record<number, number> = {}
+          counts.forEach(([fid, c]) => { map[fid] = c })
+          setFolderUnreadCounts(map)
+        }).catch(() => {})
+      }
+    }
+
+    window.addEventListener("focus", handleFocus)
+    return () => window.removeEventListener("focus", handleFocus)
+  }, [activeAccountId, dbFolders, PAGE_SIZE, setMessages, setTotalMessages, setFolderUnreadCounts])
+
   // Auto-collapse sidebar on laptop / smaller screens.
   // (Bug #6) We now drive the shared sidebar store directly so the global
   // Sidebar component in @/components/Sidebar reacts the same way.
@@ -1319,6 +1351,28 @@ function EmailPage() {
     }
   }, [activeAccountId, activeFolder, dbFolders, setMessages, setSyncStatus, setFolderUnreadCounts])
 
+  // Mark all messages as read
+  const handleMarkAllRead = useCallback(async () => {
+    if (!activeAccountId) return
+    try {
+      const count = await mailIpc.markFolderRead(activeAccountId, null)
+      if (count > 0) {
+        // Update local state
+        setMessages(messages.map(m => ({ ...m, is_read: true })))
+        // Clear unread counts
+        setFolderUnreadCounts({})
+        setToast({ message: `已将 ${count} 封邮件标记为已读`, type: "success" })
+        setTimeout(() => setToast(null), 2000)
+      } else {
+        setToast({ message: "没有未读邮件", type: "info" })
+        setTimeout(() => setToast(null), 2000)
+      }
+    } catch (err) {
+      setToast({ message: `标记已读失败: ${err}`, type: "error" })
+      setTimeout(() => setToast(null), 3000)
+    }
+  }, [activeAccountId, messages, setMessages, setFolderUnreadCounts])
+
   // Search
   const handleSearch = useCallback(async () => {
     if (!activeAccountId || !searchQuery.trim()) { handleSync(); return }
@@ -1553,6 +1607,14 @@ function EmailPage() {
               Compose button keeps a label; in collapsed mode it shrinks to an icon
               to match the existing icon-button style. ── */}
           <div className="mt-auto pt-2 border-t border-surface-200 dark:border-surface-700 flex flex-col gap-0.5">
+            {/* Mark all as read */}
+            <button onClick={handleMarkAllRead}
+              title="将所有邮件标记为已读"
+              className={`${sidebarOpen ? "flex items-center gap-2 px-3 py-2 text-sm" : "flex items-center justify-center w-full p-2"} rounded-lg transition-colors text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800`}>
+              <CheckCheck size={sidebarOpen ? 15 : 18} />
+              {sidebarOpen && <span>全部已读</span>}
+            </button>
+
             {/* Sync */}
             <button onClick={handleSync} disabled={syncStatus.syncing}
               title="同步邮件"
