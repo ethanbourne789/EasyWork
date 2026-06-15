@@ -482,10 +482,8 @@ async fn sync_folder_with_cursor(
 
         for (uid, raw) in raw_msgs {
             if let Ok(parsed) = mail::parser::parse_raw_message(&raw) {
-                let thread_id = mail::thread::compute_thread_id(
-                    &parsed.message_id, &parsed.in_reply_to,
-                    &parsed.references, &parsed.subject,
-                );
+                // v1.2: thread_id disabled — all messages displayed as independent entries
+                let thread_id = String::new();
 
                 let msg = MailMessage {
                     id: None, account_id, remote_uid: uid as i64,
@@ -563,19 +561,7 @@ async fn reconcile_all_accounts(pool: &DbPool) {
             Err(e) => log::warn!("Reconcile failed for account {}: {}", account_id, e),
         }
 
-        // ---- Thread re-association: find mislinked threads and fix them ----
-        if let Ok(mislinks) = ops::find_mislinked_threads(pool, account_id) {
-            for (msg_id, _current_tid, msg_id_header, _subject) in &mislinks {
-                // Look up the parent thread_id (message referenced by msg_id_header)
-                if let Ok(Some(parent_tid)) = ops::get_thread_id_by_message_id(pool, account_id, msg_id_header) {
-                    log::info!("Re-associating message {} (msg_id={}) to thread {}", msg_id, msg_id_header, parent_tid);
-                    let _ = ops::update_message_thread_id(pool, *msg_id, &parent_tid);
-                }
-            }
-            if !mislinks.is_empty() {
-                log::info!("Re-associated {} threads for account {}", mislinks.len(), account_id);
-            }
-        }
+        // ---- v1.2: Thread re-association disabled (threading removed) ----
     }
 }
 

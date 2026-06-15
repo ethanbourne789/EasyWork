@@ -399,13 +399,14 @@ pub async fn get_message_headers(
     pool: State<'_, DbPool>,
     message_id: i64,
 ) -> Result<serde_json::Value, String> {
-    let (subject, from_name, from_email, to_list, msg_id) = ops::get_message_headers(&pool, message_id)
+    let (subject, from_name, from_email, to_list, cc_list, msg_id) = ops::get_message_headers(&pool, message_id)
         .map_err(|e| e.to_string())?;
     Ok(serde_json::json!({
         "subject": subject,
         "from_name": from_name,
         "from_email": from_email,
         "to_list": to_list,
+        "cc_list": cc_list,
         "message_id": msg_id,
     }))
 }
@@ -749,6 +750,20 @@ pub async fn list_message_attachments(
     }).collect())
 }
 
+/// Get CID-to-local-path mapping for inline images in a message.
+/// Returns a JSON object like { "cid1": "/path/to/img1.png", "cid2": "/path/to/img2.png" }
+#[tauri::command]
+pub async fn get_message_cid_map(
+    pool: State<'_, DbPool>,
+    message_id: i64,
+) -> Result<serde_json::Value, String> {
+    let images = ops::list_inline_images(&pool, message_id).map_err(|e| e.to_string())?;
+    let map: serde_json::Value = serde_json::to_value(
+        images.into_iter().map(|(cid, path)| (cid, path)).collect::<std::collections::HashMap<_, _>>()
+    ).map_err(|e| e.to_string())?;
+    Ok(map)
+}
+
 /// Manually download a lazy attachment (one that was not auto-downloaded during sync
 /// because its size exceeded MAX_AUTO_ATTACHMENT_SIZE).
 ///
@@ -954,6 +969,7 @@ pub async fn search_messages_by_email(
 
 #[tauri::command]
 pub async fn test_connection(
+    pool: State<'_, DbPool>,
     account: MailAccount,
 ) -> Result<String, String> {
     let trace_id = crate::logging::trace_id();
@@ -964,11 +980,32 @@ pub async fn test_connection(
     });
     log::info!("[{}] test_connection START {}", trace_id, params);
 
+    // When editing a saved account the frontend sends password = "".
+    // Fall back to the stored password from the DB so the test can succeed.
+    let password = if account.password.is_empty() {
+        if let Some(id) = account.id {
+            match ops::get_account_with_password(&pool, id) {
+                Ok(Some((_, stored_pw))) => {
+                    log::info!("[{}] test_connection: password empty, using stored password for account {}", trace_id, id);
+                    stored_pw
+                }
+                _ => {
+                    log::warn!("[{}] test_connection: password empty and no stored password found for account {:?}", trace_id, id);
+                    account.password.clone()
+                }
+            }
+        } else {
+            account.password.clone()
+        }
+    } else {
+        account.password.clone()
+    };
+
     let result = mail::imap::connect(
         &account.imap_host,
         account.imap_port,
         &account.email,
-        &account.password,
+        &password,
         account.use_tls,
     ).await;
 
@@ -1030,6 +1067,28 @@ pub async fn sync_account_impl_with_lock(
     });
     log::info!("[{}] sync_account START {}", trace_id, params);
 
+    // ─ Overall sync timeout: 120 seconds ─
+    // Prevents the entire sync from hanging indefinitely if IMAP operations stall
+    let sync_result = tokio::time::timeout(
+        std::time::Duration::from_secs(120),
+        sync_account_inner(pool, account_id, trace_id.clone()),
+    ).await;
+
+    match sync_result {
+        Ok(inner_result) => inner_result,
+        Err(_) => {
+            log::error!("[{}] sync_account TIMEOUT: operation exceeded 120 seconds", trace_id);
+            Err("同步超时：操作超过 120 秒未完成".to_string())
+        }
+    }
+}
+
+/// Inner sync logic — separated so we can apply an overall timeout
+async fn sync_account_inner(
+    pool: DbPool,
+    account_id: i64,
+    trace_id: String,
+) -> Result<SyncResult, String> {
     let (account, password) = ops::get_account_with_password(&pool, account_id)
         .map_err(|e| e.to_string())?
         .ok_or_else(|| format!("Account {} not found", account_id))?;
@@ -1169,7 +1228,8 @@ pub async fn sync_account_impl_with_lock(
                                 body_html: parsed.body_html,
                                 is_read: false,
                                 is_starred: false,
-                                has_attachment: !parsed.attachments.is_empty(),
+                                // v1.3: has_attachment only counts real attachments (not inline images)
+                                has_attachment: parsed.attachments.iter().any(|a| !a.is_inline),
                                 size: raw.len() as i64,
                                 folder_ids: vec![*folder_db_id],
                                 thread_id,
@@ -1199,13 +1259,13 @@ pub async fn sync_account_impl_with_lock(
                                                 // Insert with empty local_path (lazy marker)
                                                 let _ = ops::insert_attachment(
                                                     &pool, msg_id, &att.filename, &att.content_type,
-                                                    att.size as i64, "", "",
+                                                    att.size as i64, "", &att.content_id,
                                                 );
                                             } else {
                                                 let _ = std::fs::write(&local_path, &att.content);
                                                 let _ = ops::insert_attachment(
                                                     &pool, msg_id, &att.filename, &att.content_type,
-                                                    att.size as i64, &local_path.to_string_lossy(), "",
+                                                    att.size as i64, &local_path.to_string_lossy(), &att.content_id,
                                                 );
                                             }
                                         }

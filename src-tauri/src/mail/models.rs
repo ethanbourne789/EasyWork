@@ -85,6 +85,9 @@ pub struct MailMessageSummary {
     pub to_list: String,
     #[serde(default)]
     pub cc_list: String,
+    /// v1.2: 来源账户邮箱地址（用于多账户聚合视图显示）
+    #[serde(default)]
+    pub account_email: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

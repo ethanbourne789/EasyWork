@@ -61,6 +61,7 @@ export interface MessageHeaders {
   from_name: string
   from_email: string
   to_list: string
+  cc_list: string
   message_id: string
 }
 
@@ -247,6 +248,12 @@ export async function listMessageAttachments(
   messageId: number,
 ): Promise<AttachmentInfo[]> {
   return tauriInvoke<AttachmentInfo[]>("list_message_attachments", { messageId })
+}
+
+export async function getMessageCidMap(
+  messageId: number,
+): Promise<Record<string, string>> {
+  return tauriInvoke<Record<string, string>>("get_message_cid_map", { messageId })
 }
 
 export async function openFile(path: string): Promise<void> {

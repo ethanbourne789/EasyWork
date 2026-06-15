@@ -12,12 +12,10 @@ import {
   Search, Star, Paperclip, Inbox, Send, Archive, Trash2, Plus, Settings,
   RefreshCw, X, Reply, Forward, Trash,
   Mail, Users, FileText, Loader2, CheckCircle2, AlertCircle, CheckCheck,
-  AlertTriangle, ChevronDown, Download, MessageSquare, Menu, PanelLeftClose, PanelLeft, Pencil,
+  AlertTriangle, ChevronDown, Download, Menu, PanelLeftClose, PanelLeft, Pencil,
   Upload,
 } from "lucide-react"
 import { ShadowDomEmail } from "@/components/ShadowDomEmail"
-import { ThreadView } from "@/components/ThreadView"
-import { ThreadItem } from "@/components/ThreadItem"
 import { RichTextEditor } from "@/components/RichTextEditor"
 import { SearchFilters, type SearchFiltersState } from "@/components/SearchFilters"
 import { useComposeDraft } from "@/hooks/useComposeDraft"
@@ -27,6 +25,9 @@ import { ContactPickerPanel } from "@/components/ContactPickerPanel"
 import { ContactImportDialog } from "@/components/ContactImportDialog"
 import { parseAddressList, renderRecipientList, type MailRecipient, type RecipientKind } from "@/lib/parseAddressList"
 import { serializeVcf, type VcfContact } from "@/lib/vcf"
+import { ContactGroupSidebar } from "@/components/ContactGroupSidebar"
+import { ContactActionMenu } from "@/components/ContactActionMenu"
+import { RecipientList } from "@/components/RecipientList"
 
 // ==================== Provider Auto-Detect ====================
 
@@ -72,9 +73,16 @@ function formatMailDate(dateStr: string): string {
     let d: Date | null = null
 
     // Case 1: already-ISO (the new normal from the backend)
+    // Backend stores local time WITHOUT timezone info (e.g. "2026-06-15 11:22:08" in CST).
+    // We must NOT append "Z" — that would treat local time as UTC and shift by timezone offset.
     if (/^\d{4}-\d{2}-\d{2}[ T]\d{2}:\d{2}(:\d{2})?/.test(dateStr)) {
-      const iso = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T") + "Z"
-      d = new Date(iso)
+      // Parse as local time by constructing Date from components
+      const parts = dateStr.replace(" ", "T").split("T")
+      const datePart = parts[0]
+      const timePart = parts[1] || "00:00:00"
+      const [y, m, day] = datePart.split("-").map(Number)
+      const [h, min, sec] = timePart.split(":").map(Number)
+      d = new Date(y, m - 1, day, h || 0, min || 0, sec || 0)
     }
 
     // Case 2: strip a trailing `(ZoneName)` and try RFC 2822
@@ -529,43 +537,53 @@ function AccountSettingsModal({ onClose }: { onClose: () => void }) {
 
 function ContactsModal({ onClose }: { onClose: () => void }) {
   const { t } = useTranslation()
-  const { contacts, setContacts, activeAccountId } = useMailStore()
+  const { contacts, setContacts, activeAccountId, contactGroups, setContactGroups } = useMailStore()
   const [showAdd, setShowAdd] = useState(false)
   const [editingContact, setEditingContact] = useState<MailContact | null>(null)
-  const [form, setForm] = useState({ name: "", email: "", phone: "", group_name: "", notes: "" })
+  const [form, setForm] = useState({ name: "", email: "", phone: "", group_id: null as number | null, notes: "" })
   const [saving, setSaving] = useState(false)
-  // VCF 导入对话框开关
   const [showVcfImport, setShowVcfImport] = useState(false)
+  const [selectedGroupId, setSelectedGroupId] = useState<number | null>(null)
 
+  // Load contacts and groups on mount / account change
   useEffect(() => {
-    if (activeAccountId) { mailIpc.listContacts(activeAccountId).then(setContacts).catch(() => {}) }
-  }, [activeAccountId, setContacts])
+    if (activeAccountId) {
+      mailIpc.listContacts(activeAccountId).then(setContacts).catch(() => {})
+      mailIpc.listContactGroups(activeAccountId).then(setContactGroups).catch(() => {})
+    }
+  }, [activeAccountId, setContacts, setContactGroups])
+
+  const refreshAll = useCallback(() => {
+    if (!activeAccountId) return
+    mailIpc.listContacts(activeAccountId).then(setContacts).catch(() => {})
+    mailIpc.listContactGroups(activeAccountId).then(setContactGroups).catch(() => {})
+  }, [activeAccountId, setContacts, setContactGroups])
 
   const handleAdd = async () => {
     if (!activeAccountId) return; setSaving(true)
     try {
-      await mailIpc.addContact({ account_id: activeAccountId, name: form.name, display_name: form.name, email: form.email, phone: form.phone, group_id: null, group_name: form.group_name, notes: form.notes })
-      setContacts(await mailIpc.listContacts(activeAccountId))
-      setShowAdd(false); setForm({ name: "", email: "", phone: "", group_name: "", notes: "" })
+      await mailIpc.addContact({ account_id: activeAccountId, name: form.name, display_name: form.name, email: form.email, phone: form.phone, group_id: form.group_id, group_name: "", notes: form.notes })
+      await refreshAll()
+      setShowAdd(false); setForm({ name: "", email: "", phone: "", group_id: null, notes: "" })
     } catch {} finally { setSaving(false) }
   }
 
   const handleEdit = async () => {
     if (!editingContact?.id) return; setSaving(true)
     try {
-      await mailIpc.updateContact({ ...editingContact, ...form })
-      setContacts(await mailIpc.listContacts(activeAccountId!))
-      setEditingContact(null); setForm({ name: "", email: "", phone: "", group_name: "", notes: "" })
+      await mailIpc.updateContact({ ...editingContact, name: form.name, display_name: form.name, email: form.email, phone: form.phone, group_id: form.group_id, group_name: "", notes: form.notes })
+      await refreshAll()
+      setEditingContact(null); setForm({ name: "", email: "", phone: "", group_id: null, notes: "" })
     } catch {} finally { setSaving(false) }
   }
 
   const handleDelete = async (id: number) => {
-    try { await mailIpc.deleteContact(id); setContacts(contacts.filter(c => c.id !== id)) } catch {}
+    try { await mailIpc.deleteContact(id); await refreshAll() } catch {}
   }
 
   const openEdit = (c: MailContact) => {
     setEditingContact(c)
-    setForm({ name: c.name, email: c.email, phone: c.phone, group_name: c.group_name || "", notes: c.notes })
+    setForm({ name: c.name, email: c.email, phone: c.phone, group_id: c.group_id ?? null, notes: c.notes })
   }
 
   const defaultContacts: MailContact[] = [
@@ -576,9 +594,10 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
   const handleExportContacts = () => {
     const list = contacts.length > 0 ? contacts : defaultContacts
     const header = "姓名,邮箱,电话,分组,备注"
-    const rows = list.map(c =>
-      `"${c.name}","${c.email}","${c.phone}","${c.group_name}","${(c.notes || "").replace(/"/g, '""')}"`
-    )
+    const rows = list.map(c => {
+      const groupName = c.group_id ? (contactGroups.find(g => g.id === c.group_id)?.name || "") : (c.group_name || "")
+      return `"${c.name}","${c.email}","${c.phone}","${groupName}","${(c.notes || "").replace(/"/g, '""')}"`
+    })
     const csv = [header, ...rows].join("\n")
     const blob = new Blob(["\uFEFF" + csv], { type: "text/csv;charset=utf-8;" })
     const url = URL.createObjectURL(blob)
@@ -587,15 +606,12 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
     a.click(); URL.revokeObjectURL(url)
   }
 
-  /**
-   * VCF 导出：把 MailContact[] 转为 vCard 3.0 字符串，下载为 .vcf。
-   * 优先导出真实 contacts，无联系人时回退到 defaultContacts（保持与 CSV 一致）。
-   */
   const handleExportVcf = () => {
     const list = contacts.length > 0 ? contacts : defaultContacts
     const cards: VcfContact[] = list.map((c) => {
       const [family, ...rest] = (c.name || "").split(/\s+/)
       const given = rest.join(" ")
+      const groupName = c.group_id ? (contactGroups.find(g => g.id === c.group_id)?.name || "") : (c.group_name || "")
       return {
         fullName: c.name || c.email,
         structuredName: c.name
@@ -605,7 +621,7 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
         phones: c.phone ? [{ value: c.phone, types: [] }] : [],
         organization: undefined,
         note: c.notes || undefined,
-        categories: c.group_name ? [c.group_name] : [],
+        categories: groupName ? [groupName] : [],
         addresses: [],
         raw: {},
       }
@@ -620,14 +636,9 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
     URL.revokeObjectURL(url)
   }
 
-  /** VCF 导入完成后刷新列表。 */
   const handleVcfImportDone = async () => {
     if (!activeAccountId) return
-    try {
-      setContacts(await mailIpc.listContacts(activeAccountId))
-    } catch {
-      /* ignore */
-    }
+    try { await refreshAll() } catch { /* ignore */ }
   }
 
   const handleImportContacts = () => {
@@ -638,11 +649,8 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
       if (!file || !activeAccountId) return
       const text = await file.text()
       const lines = text.split(/\r?\n/).filter(l => l.trim())
-      // Skip header line
       const dataLines = lines.slice(lines[0].includes("姓名") || lines[0].includes("name") ? 1 : 0)
-      let imported = 0
       for (const line of dataLines) {
-        // Parse CSV line (simple: handle quoted fields)
         const fields = parseCsvLine(line)
         if (fields.length >= 2) {
           try {
@@ -656,11 +664,10 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
               group_name: fields[3]?.trim() || "",
               notes: fields[4]?.trim() || "",
             })
-            imported++
           } catch {}
         }
       }
-      setContacts(await mailIpc.listContacts(activeAccountId))
+      await refreshAll()
     }
     input.click()
   }
@@ -682,54 +689,98 @@ function ContactsModal({ onClose }: { onClose: () => void }) {
     return result
   }
 
+  // Compute group counts
+  const groupCounts = useMemo(() => {
+    const counts: Record<number, number> = {}
+    contacts.forEach(c => {
+      const gid = c.group_id ?? 0
+      counts[gid] = (counts[gid] || 0) + 1
+    })
+    return counts
+  }, [contacts])
+
+  // Filter contacts by selected group
+  const filteredContacts = useMemo(() => {
+    if (selectedGroupId === null) return contacts
+    if (selectedGroupId === 0) return contacts.filter(c => !c.group_id)
+    return contacts.filter(c => c.group_id === selectedGroupId)
+  }, [contacts, selectedGroupId])
+
+  const displayContacts = filteredContacts.length > 0 ? filteredContacts : defaultContacts
+
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/40 dark:bg-black/70" onClick={onClose}>
-      <div className="w-[480px] max-h-[80vh] overflow-auto bg-white dark:bg-surface-900 rounded-2xl shadow-2xl p-6 space-y-4" onClick={e => e.stopPropagation()}>
-        <div className="flex items-center justify-between">
-          <h2 className="text-lg font-bold text-surface-700 dark:text-surface-200">{t("contacts.title")}</h2>
-          <button onClick={onClose} className="text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"><X size={20} /></button>
-        </div>
-        <div className="flex items-center gap-2 flex-wrap">
-          <Button size="sm" onClick={() => { setShowAdd(true); setEditingContact(null); setForm({ name: "", email: "", phone: "", group_name: "", notes: "" }) }}>
-            <Plus size={14} />{t("contacts.newContact")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleExportContacts}>
-            <Download size={14} />{t("contacts.export")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleImportContacts}>
-            <Upload size={14} />{t("contacts.import")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={handleExportVcf}>
-            <Download size={14} />{t("contacts.exportVcf")}
-          </Button>
-          <Button size="sm" variant="outline" onClick={() => setShowVcfImport(true)} disabled={!activeAccountId}>
-            <Upload size={14} />{t("contacts.importVcf")}
-          </Button>
-        </div>
-        {(contacts.length > 0 ? contacts : defaultContacts).map(c => (
-          <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700 group hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer" onClick={() => openEdit(c)}>
-            <div className="flex items-center gap-3">
-              <div className="w-8 h-8 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center text-xs font-semibold">{c.name.charAt(0)}</div>
-              <div><p className="text-sm font-medium">{c.name}</p><p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">{c.email}</p></div>
-            </div>
-            <button onClick={(e) => { e.stopPropagation(); c.id && handleDelete(c.id) }} className="opacity-0 group-hover:opacity-100 text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-red-500 dark:hover:text-red-400 dark:text-red-400"><Trash2 size={14} /></button>
+      <div className="w-[640px] max-h-[80vh] overflow-hidden bg-white dark:bg-surface-900 rounded-2xl shadow-2xl flex" onClick={e => e.stopPropagation()}>
+        {/* Left: Group sidebar */}
+        <ContactGroupSidebar
+          selectedGroupId={selectedGroupId}
+          onSelectGroup={setSelectedGroupId}
+          groupCounts={groupCounts}
+          totalCount={contacts.length}
+          onGroupsChanged={refreshAll}
+        />
+        {/* Right: Contact list */}
+        <div className="flex-1 flex flex-col overflow-hidden">
+          <div className="flex items-center justify-between p-4 pb-2">
+            <h2 className="text-lg font-bold text-surface-700 dark:text-surface-200">{t("contacts.title")}</h2>
+            <button onClick={onClose} className="text-surface-400 dark:text-surface-500 hover:text-surface-600 dark:hover:text-surface-300"><X size={20} /></button>
           </div>
-        ))}
-        {(showAdd || editingContact) && (
-          <div className="space-y-2 border border-primary-200 dark:border-primary-800 rounded-xl p-4">
-            <input type="text" placeholder={t("contacts.name")} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm" />
-            <input type="email" placeholder={t("contacts.email")} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm" />
-            <input type="text" placeholder={t("contacts.phone")} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm" />
-            <input type="text" placeholder={t("contacts.group")} value={form.group_name} onChange={e => setForm(f => ({ ...f, group_name: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm" />
-            <textarea placeholder={t("contacts.notes")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="w-full h-16 px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm resize-none" />
-            <div className="flex gap-2">
-              <Button size="sm" onClick={editingContact ? handleEdit : handleAdd} disabled={saving}>{t("account.save")}</Button>
-              <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setEditingContact(null); setForm({ name: "", email: "", phone: "", group_name: "", notes: "" }) }}>{t("mail.cancel")}</Button>
-            </div>
+          <div className="px-4 pb-2 flex items-center gap-2 flex-wrap">
+            <Button size="sm" onClick={() => { setShowAdd(true); setEditingContact(null); setForm({ name: "", email: "", phone: "", group_id: selectedGroupId && selectedGroupId > 0 ? selectedGroupId : null, notes: "" }) }}>
+              <Plus size={14} />{t("contacts.newContact")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleExportContacts}>
+              <Download size={14} />{t("contacts.export")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleImportContacts}>
+              <Upload size={14} />{t("contacts.import")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={handleExportVcf}>
+              <Download size={14} />{t("contacts.exportVcf")}
+            </Button>
+            <Button size="sm" variant="outline" onClick={() => setShowVcfImport(true)} disabled={!activeAccountId}>
+              <Upload size={14} />{t("contacts.importVcf")}
+            </Button>
           </div>
-        )}
+          <div className="flex-1 overflow-y-auto px-4 pb-4 space-y-1">
+            {displayContacts.map(c => (
+              <div key={c.id} className="flex items-center justify-between p-3 rounded-xl border border-surface-200 dark:border-surface-700 group hover:bg-surface-50 dark:hover:bg-surface-800/50 cursor-pointer" onClick={() => openEdit(c)}>
+                <div className="flex items-center gap-3">
+                  <div className="w-8 h-8 rounded-full bg-surface-200 dark:bg-surface-700 flex items-center justify-center text-xs font-semibold">{c.name.charAt(0)}</div>
+                  <div>
+                    <p className="text-sm font-medium">{c.name}</p>
+                    <p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">{c.email}</p>
+                  </div>
+                </div>
+                <button onClick={(e) => { e.stopPropagation(); c.id && handleDelete(c.id) }} className="opacity-0 group-hover:opacity-100 text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-red-500 dark:hover:text-red-400 dark:text-red-400"><Trash2 size={14} /></button>
+              </div>
+            ))}
+          </div>
+          {(showAdd || editingContact) && (
+            <div className="border-t border-surface-200 dark:border-surface-700 p-4 space-y-2 bg-surface-50 dark:bg-surface-800/50">
+              <input type="text" placeholder={t("contacts.name")} value={form.name} onChange={e => setForm(f => ({ ...f, name: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-900" />
+              <input type="email" placeholder={t("contacts.email")} value={form.email} onChange={e => setForm(f => ({ ...f, email: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-900" />
+              <input type="text" placeholder={t("contacts.phone")} value={form.phone} onChange={e => setForm(f => ({ ...f, phone: e.target.value }))} className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-900" />
+              <select
+                value={form.group_id ?? ""}
+                onChange={e => setForm(f => ({ ...f, group_id: e.target.value ? Number(e.target.value) : null }))}
+                className="w-full h-9 px-3 border border-surface-300 dark:border-surface-600 rounded-lg text-sm bg-white dark:bg-surface-900"
+              >
+                <option value="">未分组</option>
+                {contactGroups.map(g => (
+                  <option key={g.id} value={g.id}>{g.name}</option>
+                ))}
+              </select>
+              <textarea placeholder={t("contacts.notes")} value={form.notes} onChange={e => setForm(f => ({ ...f, notes: e.target.value }))} className="w-full h-16 px-3 py-2 border border-surface-300 dark:border-surface-600 rounded-lg text-sm resize-none bg-white dark:bg-surface-900" />
+              <div className="flex gap-2">
+                <Button size="sm" onClick={editingContact ? handleEdit : handleAdd} disabled={saving}>{t("account.save")}</Button>
+                <Button size="sm" variant="ghost" onClick={() => { setShowAdd(false); setEditingContact(null); setForm({ name: "", email: "", phone: "", group_id: null, notes: "" }) }}>{t("mail.cancel")}</Button>
+              </div>
+            </div>
+          )}
+        </div>
       </div>
-      {/* VCF 导入对话框（z-index 高于 Modal 自身） */}
+      {/* VCF 导入对话框 */}
       <ContactImportDialog
         accountId={activeAccountId}
         open={showVcfImport}
@@ -1085,6 +1136,22 @@ function getFolderSortOrder(f: { role: string; name: string }): number {
   return 100
 }
 
+// Account color palette for multi-account identification
+const ACCOUNT_COLORS = [
+  { bg: "bg-blue-100 dark:bg-blue-900/40", text: "text-blue-700 dark:text-blue-300", border: "border-blue-200 dark:border-blue-800" },
+  { bg: "bg-emerald-100 dark:bg-emerald-900/40", text: "text-emerald-700 dark:text-emerald-300", border: "border-emerald-200 dark:border-emerald-800" },
+  { bg: "bg-amber-100 dark:bg-amber-900/40", text: "text-amber-700 dark:text-amber-300", border: "border-amber-200 dark:border-amber-800" },
+  { bg: "bg-purple-100 dark:bg-purple-900/40", text: "text-purple-700 dark:text-purple-300", border: "border-purple-200 dark:border-purple-800" },
+  { bg: "bg-rose-100 dark:bg-rose-900/40", text: "text-rose-700 dark:text-rose-300", border: "border-rose-200 dark:border-rose-800" },
+  { bg: "bg-cyan-100 dark:bg-cyan-900/40", text: "text-cyan-700 dark:text-cyan-300", border: "border-cyan-200 dark:border-cyan-800" },
+]
+
+function getAccountColor(email: string) {
+  let hash = 0
+  for (let i = 0; i < email.length; i++) { hash = ((hash << 5) - hash) + email.charCodeAt(i); hash |= 0 }
+  return ACCOUNT_COLORS[Math.abs(hash) % ACCOUNT_COLORS.length]
+}
+
 // ==================== Main Email Page ====================
 
 function EmailPage() {
@@ -1097,13 +1164,20 @@ function EmailPage() {
     syncStatus, setSyncStatus, setMessageBody,
     searchQuery, setSearchQuery, folderUnreadCounts, setFolderUnreadCounts,
     decrementFolderUnread,
+    contactFilterEmail, contactFilterName, setContactFilter,
   } = useMailStore()
+
+  // Contact action menu state
+  const [contactMenu, setContactMenu] = useState<{ name: string; email: string; x: number; y: number } | null>(null)
+  const [messageHeaders, setMessageHeaders] = useState<{ to_list: string; cc_list: string } | null>(null)
 
   const [dbFolders, setDbFolders] = useState<mailIpc.MailFolder[]>([])
   const [attachments, setAttachments] = useState<mailIpc.AttachmentInfo[]>([])
   const [downloadingAtts, setDownloadingAtts] = useState<Set<number>>(new Set())
   const [cidMap, setCidMap] = useState<Record<string, string>>({})
   const [remoteImagesEnabled, setRemoteImagesEnabled] = useState(true)
+  const [previewAtt, setPreviewAtt] = useState<{ att: mailIpc.AttachmentInfo; dataUrl: string; type: "image" | "text" | "pdf" } | null>(null)
+  const [previewLoading, setPreviewLoading] = useState(false)
 
   // Load remote images setting
   useEffect(() => {
@@ -1116,8 +1190,6 @@ function EmailPage() {
   const [totalMessages, setTotalMessages] = useState(0)
   const PAGE_SIZE = 30
   const totalPages = Math.max(1, Math.ceil(totalMessages / PAGE_SIZE))
-  const [messageBodies, setMessageBodies] = useState<Record<number, { body_text: string; body_html: string } | null>>({})
-  const [threadViewId, setThreadViewId] = useState<string | null>(null)
   const [starredFilter, setStarredFilter] = useState(false)
   const searchInputRef = useRef<HTMLInputElement>(null)
   const { hasDraft, clearDraft } = useComposeDraft()
@@ -1163,26 +1235,19 @@ function EmailPage() {
     if (!isTauri) return
 
     const handleFocus = () => {
-      if (activeAccountId) {
-        // Refresh messages when window is focused
-        const inbox = dbFolders.find(f => f.role === "inbox")
-        const folderId: number | undefined = inbox?.id ?? undefined
-        mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE).then(result => {
+      if (accounts.length > 0) {
+        // Refresh messages from all accounts when window is focused
+        const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
+        mailIpc.fetchMessagesMulti(accountIds, activeFolder, 1, PAGE_SIZE).then(result => {
           setMessages(result.messages)
           setTotalMessages(result.total)
-        }).catch(() => {})
-        // Refresh unread counts
-        mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
-          const map: Record<number, number> = {}
-          counts.forEach(([fid, c]) => { map[fid] = c })
-          setFolderUnreadCounts(map)
         }).catch(() => {})
       }
     }
 
     window.addEventListener("focus", handleFocus)
     return () => window.removeEventListener("focus", handleFocus)
-  }, [activeAccountId, dbFolders, PAGE_SIZE, setMessages, setTotalMessages, setFolderUnreadCounts])
+  }, [accounts, activeFolder, PAGE_SIZE, setMessages, setTotalMessages, setFolderUnreadCounts])
 
   // Auto-collapse sidebar on laptop / smaller screens.
   // (Bug #6) We now drive the shared sidebar store directly so the global
@@ -1212,73 +1277,50 @@ function EmailPage() {
     }
   }, [activeAccountId, setFolderUnreadCounts])
 
-  // ---- Auto-sync on account change (initial load & account switching) ----
+  // ---- Auto-sync on accounts change (initial load & account changes) ----
   // Uses per-account tracking so each account gets its first sync exactly once.
   const syncedAccountIds = useRef<Set<number>>(new Set())
 
   useEffect(() => {
-    if (!activeAccountId) return
+    if (accounts.length === 0) return
 
-    const isFirstSynced = syncedAccountIds.current.has(activeAccountId)
-    if (!isFirstSynced) {
-      syncedAccountIds.current = new Set(syncedAccountIds.current).add(activeAccountId)
-    }
+    // Track which accounts need syncing
+    const accountsToSync = accounts.filter(acc => acc.id && !syncedAccountIds.current.has(acc.id))
+    accountsToSync.forEach(acc => acc.id && syncedAccountIds.current.add(acc.id))
 
     const doAutoSync = async () => {
-      if (!isFirstSynced) {
-        setSyncStatus({ syncing: true, lastResult: null, lastError: null })
-      }
+      setSyncStatus({ syncing: true, lastResult: null, lastError: null })
 
       // Wait a brief moment for any prior effects to settle
       await new Promise(r => setTimeout(r, 500))
 
-      // Load folders from DB
-      const folders = await mailIpc.listFolders(activeAccountId).catch(() => [] as mailIpc.MailFolder[])
-      setDbFolders(folders)
+      // Sync all accounts that haven't been synced yet
+      for (const acc of accountsToSync) {
+        if (!acc.id) continue
+        try {
+          const result = await mailIpc.syncAccount(acc.id)
+          if (result.messages_new > 0) {
+            setToast({ message: `${acc.email}: ${result.messages_new} 封新邮件`, type: "success" })
+          }
+        } catch {
+          console.warn(`Sync failed for account ${acc.email}`)
+        }
+      }
 
-      // Refresh unread counts
-      mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
-        const map: Record<number, number> = {}
-        counts.forEach(([fid, c]) => { map[fid] = c })
-        setFolderUnreadCounts(map)
-      }).catch(() => {})
-
-      const inbox = folders.find(f => f.role === "inbox")
-      const folderId: number | undefined = inbox?.id ?? undefined
-
-      // Load existing messages from DB immediately
+      // Load messages from all accounts using multi-account query
+      const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
       try {
-        const result = await mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE)
+        const result = await mailIpc.fetchMessagesMulti(accountIds, activeFolder, 1, PAGE_SIZE)
         setMessages(result.messages)
         setTotalMessages(result.total)
         setPage(1)
       } catch {}
 
-      // Trigger incremental sync in background
-      try {
-        const result = await mailIpc.syncAccount(activeAccountId)
-        if (result.messages_new > 0) {
-          setToast({ message: `${result.messages_new} 封新邮件`, type: "success" })
-        }
-        // Reload messages after sync
-        const refreshed = await mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE)
-        setMessages(refreshed.messages)
-        setTotalMessages(refreshed.total)
-        setPage(1)
-        // Refresh unread counts again after sync
-        mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
-          const map: Record<number, number> = {}
-          counts.forEach(([fid, c]) => { map[fid] = c })
-          setFolderUnreadCounts(map)
-        }).catch(() => {})
-        setSyncStatus({ syncing: false, lastSyncAt: new Date().toLocaleTimeString(), lastResult: "同步完成" })
-      } catch {
-        setSyncStatus({ syncing: false, lastError: "同步失败", lastResult: null })
-      }
+      setSyncStatus({ syncing: false, lastSyncAt: new Date().toLocaleTimeString(), lastResult: "同步完成" })
     }
 
     doAutoSync()
-  }, [activeAccountId])
+  }, [accounts])
 
   // Sorted folders — deduplicate by role (some IMAP servers return both EN and CN names)
   const sortedFolders = useMemo(() => {
@@ -1317,26 +1359,30 @@ function EmailPage() {
   // Select message
   const handleSelectMessage = useCallback(async (id: number | null) => {
     selectMessage(id)
-    if (id === null) { setAttachments([]); setCidMap({}); return }
+    if (id === null) { setAttachments([]); setCidMap({}); setPreviewAtt(null); setMessageHeaders(null); return }
     try {
       const body = await mailIpc.getMessageBody(id)
       setMessageBody(body)
-      setMessageBodies(prev => ({ ...prev, [id]: body }))
+      // Fetch headers for to_list / cc_list display
+      const headers = await mailIpc.getMessageHeaders(id).catch(() => null)
+      setMessageHeaders(headers ? { to_list: headers.to_list, cc_list: headers.cc_list || "[]" } : null)
       const atts = await mailIpc.listMessageAttachments(id).catch(() => [] as mailIpc.AttachmentInfo[])
       setAttachments(atts)
-      // Build CID map for inline images
-      const cidEntries = await Promise.all(
-        atts.filter(a => a.content_id).map(async (a) => {
-          try {
-            const b64 = await mailIpc.readFileAsBase64(a.local_path)
-            const dataUrl = `data:${a.content_type};base64,${b64}`
-            return [a.content_id.replace(/[<>]/g, ""), dataUrl] as [string, string]
-          } catch { return null }
-        })
-      )
-      setCidMap(Object.fromEntries(cidEntries.filter(Boolean) as [string, string][]))
+      // Build CID map for inline images using dedicated API
+      const cidPaths = await mailIpc.getMessageCidMap(id).catch(() => ({}))
+      // Convert file paths to data URLs for Shadow DOM rendering
+      const cidDataUrls: Record<string, string> = {}
+      for (const [cid, path] of Object.entries(cidPaths)) {
+        try {
+          const b64 = await mailIpc.readFileAsBase64(path)
+          const ext = path.split(".").pop()?.toLowerCase() || ""
+          const mime = ext === "png" ? "image/png" : ext === "gif" ? "image/gif" : ext === "jpg" || ext === "jpeg" ? "image/jpeg" : "application/octet-stream"
+          cidDataUrls[cid] = `data:${mime};base64,${b64}`
+        } catch {}
+      }
+      setCidMap(cidDataUrls)
       setShowMobileList(false)
-    } catch { setMessageBody({ body_text: "(无法加载)", body_html: "" }); setAttachments([]); setCidMap({}) }
+    } catch { setMessageBody({ body_text: "(无法加载)", body_html: "" }); setAttachments([]); setCidMap({}); setMessageHeaders(null) }
   }, [selectMessage, setMessageBody])
 
   // Download a lazy attachment (local_path is empty) or open an already-downloaded one
@@ -1367,73 +1413,114 @@ function EmailPage() {
     }
   }, [selectedMessageId, setToast])
 
-  // Sync & Refresh (merged)
-  const handleSync = useCallback(async () => {
-    if (!activeAccountId) return
-    setSyncStatus({ syncing: true })
-    try {
-      const result = await mailIpc.syncAccount(activeAccountId)
-      // Build a descriptive toast that surfaces skipped folders and partial
-      // failures (parse / insert) so the user knows when "0 新邮件" is real
-      // vs. when the sync actually had problems they should look at.
-      const parts: string[] = []
-      parts.push(`${result.folders_count} 个文件夹`)
-      if (result.folders_skipped && result.folders_skipped > 0) {
-        parts.push(`${result.folders_skipped} 个跳过`)
-      }
-      parts.push(`${result.messages_new} 封新邮件`)
-      const failures: string[] = []
-      if (result.messages_failed_parse && result.messages_failed_parse > 0) {
-        failures.push(`解析失败 ${result.messages_failed_parse}`)
-      }
-      if (result.messages_failed_insert && result.messages_failed_insert > 0) {
-        failures.push(`入库失败 ${result.messages_failed_insert}`)
-      }
-      const toastMsg = failures.length > 0
-        ? `${parts.join(", ")}（${failures.join("、")}）`
-        : parts.join(", ")
-      const toastType: "success" | "info" = failures.length > 0 ? "info" : "success"
-      setToast({ message: toastMsg, type: toastType })
+  // Preview attachment inline (image / text / pdf)
+  const handlePreviewAttachment = useCallback(async (att: mailIpc.AttachmentInfo) => {
+    const ct = (att.content_type || "").toLowerCase()
+    let type: "image" | "text" | "pdf" | null = null
+    if (ct.startsWith("image/")) type = "image"
+    else if (ct === "application/pdf") type = "pdf"
+    else if (ct.startsWith("text/")) type = "text"
 
-      let folderId: number | undefined
-      const folder = dbFolders.find(f => f.role === activeFolder || f.remote_id === activeFolder)
-      folderId = folder?.id ?? dbFolders.find(f => f.role === "inbox")?.id ?? undefined
-      const allMessages = await mailIpc.fetchMessages(activeAccountId, folderId, 1, PAGE_SIZE)
+    if (!type) {
+      // No preview support, open with system default
+      if (att.local_path) { mailIpc.openFile(att.local_path).catch(() => {}) }
+      else { await handleDownloadAttachment(att) }
+      return
+    }
+
+    setPreviewLoading(true)
+    try {
+      let path = att.local_path
+      if (!path) {
+        path = await mailIpc.downloadAttachment(att.id, selectedMessageId!)
+        setAttachments(prev => prev.map(a => a.id === att.id ? { ...a, local_path: path } : a))
+      }
+      const b64 = await mailIpc.readFileAsBase64(path)
+      let dataUrl: string
+      if (type === "image") dataUrl = `data:${att.content_type};base64,${b64}`
+      else if (type === "pdf") dataUrl = `data:application/pdf;base64,${b64}`
+      else dataUrl = `data:${att.content_type || "text/plain"};base64,${b64}`
+      setPreviewAtt({ att, dataUrl, type })
+    } catch (err) {
+      setToast({ message: `预览失败: ${err}`, type: "error" })
+    } finally {
+      setPreviewLoading(false)
+    }
+  }, [selectedMessageId, setToast, handleDownloadAttachment])
+
+  // Sync & Refresh (merged) - 同步所有账户
+  const handleSync = useCallback(async () => {
+    if (accounts.length === 0) return
+    setSyncStatus({ syncing: true })
+    let timedOut = false
+    try {
+      // Sync all accounts with per-account timeout protection
+      let totalNew = 0
+      const PER_ACCOUNT_TIMEOUT_MS = 45000 // 45s per account
+
+      for (const acc of accounts) {
+        if (!acc.id) continue
+        try {
+          const result = await Promise.race([
+            mailIpc.syncAccount(acc.id),
+            new Promise<never>((_, reject) =>
+              setTimeout(() => reject(new Error(`账户 ${acc.email} 同步超时`)), PER_ACCOUNT_TIMEOUT_MS)
+            ),
+          ])
+          totalNew += result.messages_new
+        } catch (err: unknown) {
+          const msg = err instanceof Error ? err.message : String(err)
+          const isBusy = typeof msg === "string" && msg.includes("已在同步中")
+          if (msg.includes("超时")) {
+            timedOut = true
+          }
+          if (!isBusy) {
+            console.warn(`Sync failed for account ${acc.email}: ${msg}`)
+          }
+        }
+      }
+
+      if (totalNew > 0) {
+        setToast({ message: `${totalNew} 封新邮件`, type: "success" })
+      }
+      if (timedOut) {
+        setToast({ message: "部分账户同步超时，请稍后重试", type: "error" })
+      }
+
+      // Load messages from all accounts
+      const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
+      const allMessages = await mailIpc.fetchMessagesMulti(accountIds, activeFolder, 1, PAGE_SIZE)
       setMessages(allMessages.messages)
       setTotalMessages(allMessages.total)
       setPage(1)
-      // Refresh unread counts after sync
-      mailIpc.folderUnreadCounts(activeAccountId).then(counts => {
-        const map: Record<number, number> = {}
-        counts.forEach(([fid, c]) => { map[fid] = c })
-        setFolderUnreadCounts(map)
-      }).catch(() => {})
+
       setSyncStatus({ syncing: false, lastSyncAt: new Date().toLocaleTimeString() })
     } catch (err: unknown) {
       const msg = err instanceof Error ? err.message : String(err)
-      // Common case: another sync path (auto-fetch / smart-poll) is already
-      // running for this account. The backend rejects with a friendly
-      // "账户 X 已在同步中" message. Treat that as a non-fatal info toast.
-      const isBusy = typeof msg === "string" && msg.includes("已在同步中")
       setToast({
-        message: isBusy ? `该账户正在同步中：${msg}` : `同步失败: ${msg}`,
-        type: isBusy ? "info" : "error",
+        message: `同步失败: ${msg}`,
+        type: "error",
       })
       setSyncStatus({ syncing: false })
     }
-  }, [activeAccountId, activeFolder, dbFolders, setMessages, setSyncStatus, setFolderUnreadCounts])
+  }, [accounts, activeFolder, PAGE_SIZE, setMessages, setSyncStatus, setFolderUnreadCounts])
 
-  // Mark all messages as read
+  // Mark all messages as read - 标记所有账户的邮件为已读
   const handleMarkAllRead = useCallback(async () => {
-    if (!activeAccountId) return
+    if (accounts.length === 0) return
     try {
-      const count = await mailIpc.markFolderRead(activeAccountId, null)
-      if (count > 0) {
+      let total = 0
+      for (const acc of accounts) {
+        if (!acc.id) continue
+        const count = await mailIpc.markFolderRead(acc.id, null)
+        total += count
+      }
+      if (total > 0) {
         // Update local state
         setMessages(messages.map(m => ({ ...m, is_read: true })))
         // Clear unread counts
         setFolderUnreadCounts({})
-        setToast({ message: `已将 ${count} 封邮件标记为已读`, type: "success" })
+        setToast({ message: `已将 ${total} 封邮件标记为已读`, type: "success" })
         setTimeout(() => setToast(null), 2000)
       } else {
         setToast({ message: "没有未读邮件", type: "info" })
@@ -1443,24 +1530,27 @@ function EmailPage() {
       setToast({ message: `标记已读失败: ${err}`, type: "error" })
       setTimeout(() => setToast(null), 3000)
     }
-  }, [activeAccountId, messages, setMessages, setFolderUnreadCounts])
+  }, [accounts, messages, setMessages, setFolderUnreadCounts])
 
-  // Search
+  // Search - 跨所有账户搜索
   const handleSearch = useCallback(async () => {
-    if (!activeAccountId || !searchQuery.trim()) { handleSync(); return }
-    setLoadingMessages(true)
-    try { setMessages(await mailIpc.searchMessages(activeAccountId, searchQuery) as any) }
-    catch { setToast({ message: "搜索失败", type: "error" }) }
-    finally { setLoadingMessages(false) }
-  }, [activeAccountId, searchQuery, setMessages, setLoadingMessages, handleSync])
-
-  // Pagination
-  const handleGoToPage = useCallback(async (targetPage: number) => {
-    if (!activeAccountId || targetPage < 1 || targetPage > totalPages) return
-    const folderId: number | undefined = activeFolderId ?? undefined
+    if (!searchQuery.trim()) { handleSync(); return }
     setLoadingMessages(true)
     try {
-      const result = await mailIpc.fetchMessages(activeAccountId, folderId, targetPage, PAGE_SIZE)
+      const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
+      setMessages(await mailIpc.searchMessagesMulti(accountIds, searchQuery) as any)
+    }
+    catch { setToast({ message: "搜索失败", type: "error" }) }
+    finally { setLoadingMessages(false) }
+  }, [accounts, searchQuery, setMessages, setLoadingMessages, handleSync])
+
+  // Pagination - 跨所有账户分页
+  const handleGoToPage = useCallback(async (targetPage: number) => {
+    if (accounts.length === 0 || targetPage < 1 || targetPage > totalPages) return
+    setLoadingMessages(true)
+    try {
+      const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
+      const result = await mailIpc.fetchMessagesMulti(accountIds, activeFolder, targetPage, PAGE_SIZE)
       setMessages(result.messages)
       setTotalMessages(result.total)
       setPage(targetPage)
@@ -1469,7 +1559,7 @@ function EmailPage() {
     } finally {
       setLoadingMessages(false)
     }
-  }, [activeAccountId, activeFolderId, totalPages, setMessages, setLoadingMessages])
+  }, [accounts, activeFolder, totalPages, setMessages, setLoadingMessages])
 
   // Delete / Archive
   const handleDelete = useCallback(async (msgId: number) => {
@@ -1493,9 +1583,57 @@ function EmailPage() {
     openCompose({ to: "", subject: `Fwd: ${msg.subject}`, body: `\n\n--- 转发邮件 ---\n${t("mail.from")}: ${msg.from_name} <${msg.from_email}>\n日期: ${msg.date}\n主题: ${msg.subject}\n`, isForward: true })
   }, [messages, openCompose, t])
 
+  // Contact action handlers
+  const handleContactActionAdd = useCallback(async (name: string, email: string) => {
+    if (!activeAccountId) return
+    try {
+      const existing = await mailIpc.findContactByEmail(email, activeAccountId)
+      if (existing) {
+        setToast({ message: "该联系人已在通讯录中", type: "info" })
+        return
+      }
+      await mailIpc.addContact({
+        account_id: activeAccountId,
+        name: name || email.split("@")[0],
+        display_name: name || email.split("@")[0],
+        email,
+        phone: "",
+        group_id: null,
+        group_name: "",
+        notes: "",
+      })
+      setToast({ message: `已添加 ${name || email} 到通讯录`, type: "success" })
+    } catch {
+      setToast({ message: "添加联系人失败", type: "error" })
+    }
+  }, [activeAccountId])
+
+  const handleContactActionViewMessages = useCallback(async (email: string, name: string) => {
+    try {
+      const result = await mailIpc.searchMessagesByEmail(email, undefined, 50)
+      setMessages(result.messages)
+      setTotalMessages(result.total)
+      setContactFilter(email, name)
+      selectMessage(null)
+      setMessageBody(null)
+      setMessageHeaders(null)
+    } catch {
+      setToast({ message: "搜索往来邮件失败", type: "error" })
+    }
+  }, [setMessages, setTotalMessages, setContactFilter, selectMessage, setMessageBody])
+
+  const handleContactActionReply = useCallback((email: string, name: string, subject: string) => {
+    openCompose({
+      to: email,
+      subject: `Re: ${subject.replace(/^(Re|回复|答复|Fwd|转发)[:：]\s*/i, "")}`,
+      body: `\n\n---\n${name} <${email}> 写道:\n`,
+      isReply: true,
+    })
+  }, [openCompose])
+
   // Folder click
   const handleFolderClick = useCallback((role: string, folderId: number | null) => {
-    setActiveFolder(role, folderId); setStarredFilter(false); setThreadViewId(null)
+    setActiveFolder(role, folderId); setStarredFilter(false)
     setPage(1)
     if (folderId) {
       setLoadingMessages(true)
@@ -1521,18 +1659,6 @@ function EmailPage() {
     onRefresh: () => handleSync(),
     onSearch: () => searchInputRef.current?.focus(),
   })
-
-  // Thread groups
-  const threadGroups = useMemo(() => {
-    if (starredFilter || searchQuery) return {}
-    const groups: Record<string, { messages: typeof messages; latestSubject: string }> = {}
-    for (const msg of messages) {
-      const tid = (msg as any).thread_id || `msg_${msg.id}`
-      if (!groups[tid]) groups[tid] = { messages: [], latestSubject: msg.subject }
-      groups[tid].messages.push(msg)
-    }
-    return groups
-  }, [messages, starredFilter, searchQuery])
 
   // Display messages with filters (newest first)
   const displayMessages = useMemo(() => {
@@ -1621,30 +1747,25 @@ function EmailPage() {
           {sidebarOpen ? (
             <div className="pt-2 mt-2 border-t border-surface-200 dark:border-surface-700">
               {/* Starred filter */}
-              <button onClick={() => { setStarredFilter(!starredFilter); setThreadViewId(null) }}
+              <button onClick={() => setStarredFilter(!starredFilter)}
                 className={`flex items-center gap-2 w-full px-3 py-2 rounded-lg text-sm transition-colors ${
                   starredFilter ? "bg-amber-50 dark:bg-amber-900/30 text-amber-700 dark:text-amber-300 font-medium" : "text-surface-600 dark:text-surface-300 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800"
                 }`}>
                 <Star size={15} className={starredFilter ? "text-amber-400 dark:text-amber-300 fill-amber-400 dark:fill-amber-300" : ""} />{t("mail.starred")}
               </button>
 
-              {/* Account indicator — 取代原 Toolbar 顶部的 account selector
-                  (下拉选择形式，更紧凑)。 */}
+              {/* Account indicator — 多账户聚合视图，显示所有账户 */}
               {accounts.length > 0 && (
                 <div className="px-3 py-2">
                   <p className="text-[10px] font-semibold text-surface-400 dark:text-surface-500 dark:text-surface-400 uppercase mb-1">{t("mail.account")}</p>
-                  {accounts.length > 1 ? (
-                    <select value={activeAccountId ?? ""}
-                      onChange={e => useMailStore.getState().setActiveAccountId(Number(e.target.value) || null)}
-                      className="w-full h-7 px-2 text-xs border border-surface-200 dark:border-surface-700 rounded bg-surface-50 dark:bg-surface-800/50">
-                      {accounts.map(acc => <option key={acc.id} value={acc.id ?? ""}>{acc.email}</option>)}
-                    </select>
-                  ) : (
-                    <div className="flex items-center gap-2 w-full px-1 py-1 text-xs truncate text-surface-600 dark:text-surface-300">
-                      <div className="w-5 h-5 rounded bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-[10px] font-bold text-primary-700 dark:text-primary-300 shrink-0">{accounts[0].email.charAt(0).toUpperCase()}</div>
-                      <span className="truncate">{accounts[0].email}</span>
-                    </div>
-                  )}
+                  <div className="space-y-1">
+                    {accounts.map(acc => (
+                      <div key={acc.id} className="flex items-center gap-2 w-full px-1 py-1 text-xs truncate text-surface-600 dark:text-surface-300">
+                        <div className="w-5 h-5 rounded bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-[10px] font-bold text-primary-700 dark:text-primary-300 shrink-0">{acc.email.charAt(0).toUpperCase()}</div>
+                        <span className="truncate">{acc.email}</span>
+                      </div>
+                    ))}
+                  </div>
                 </div>
               )}
 
@@ -1657,7 +1778,7 @@ function EmailPage() {
           ) : (
             <div className="pt-2 mt-2 border-t border-surface-200 dark:border-surface-700 flex flex-col items-center gap-0.5">
               {/* Starred filter */}
-              <button onClick={() => { setStarredFilter(!starredFilter); setThreadViewId(null) }}
+              <button onClick={() => setStarredFilter(!starredFilter)}
                 title={t("mail.starred")}
                 className={`flex items-center justify-center w-full p-2 rounded-lg transition-colors ${
                   starredFilter ? "text-amber-500 dark:text-amber-400" : "text-surface-500 dark:text-surface-400 hover:bg-surface-100 dark:hover:bg-surface-700 dark:bg-surface-800 hover:text-surface-700 dark:hover:text-surface-200 dark:text-surface-200"
@@ -1721,14 +1842,8 @@ function EmailPage() {
           </div>
         </div>
 
-        {/* Thread view or message list + detail */}
-        {threadViewId ? (
-          <div className="flex-1 min-w-0">
-            <ThreadView threadId={threadViewId} messages={messages} onBack={() => setThreadViewId(null)}
-              onSelectMessage={id => handleSelectMessage(id)} selectedMessageId={selectedMessageId} messageBodies={messageBodies} />
-          </div>
-        ) : (
-          <div className="flex-1 flex min-w-0">
+        {/* Message list + detail */}
+        <div className="flex-1 flex min-w-0">
             {/* Message list - hidden on mobile when viewing detail */}
             <div className={`${!showMobileList ? "hidden lg:flex" : "flex"} flex-col lg:w-[360px] w-full shrink-0 border-r border-surface-200 dark:border-surface-700 bg-white dark:bg-surface-900 overflow-auto`}>
               <div className="p-2 shrink-0">
@@ -1745,6 +1860,27 @@ function EmailPage() {
               </div>
 
               <div className="flex-1 divide-y divide-surface-100 dark:divide-surface-800">
+                {contactFilterEmail && (
+                  <div className="flex items-center gap-2 px-4 py-2 bg-primary-50 dark:bg-primary-900/20 border-b border-primary-200 dark:border-primary-800">
+                    <Mail size={14} className="text-primary-500 dark:text-primary-400" />
+                    <span className="text-sm text-primary-700 dark:text-primary-300">
+                      与 {contactFilterName || contactFilterEmail} 的往来邮件 ({messages.length} 封)
+                    </span>
+                    <button
+                      onClick={() => {
+                        setContactFilter(null, null)
+                        const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
+                        mailIpc.fetchMessagesMulti(accountIds, activeFolder, 1, PAGE_SIZE).then(result => {
+                          setMessages(result.messages)
+                          setTotalMessages(result.total)
+                        }).catch(() => {})
+                      }}
+                      className="ml-auto text-xs text-primary-500 hover:text-primary-700 dark:hover:text-primary-300"
+                    >
+                      清除筛选
+                    </button>
+                  </div>
+                )}
                 {displayMessages.length === 0 && (
                   <div className="px-4 py-16 text-center">
                     <Inbox size={40} className="mx-auto text-surface-300 dark:text-surface-500 dark:text-surface-400 mb-3" />
@@ -1758,23 +1894,7 @@ function EmailPage() {
                   </div>
                 )}
 
-                {/* Thread grouping */}
-                {!starredFilter && !searchQuery && Object.keys(threadGroups).length > 0 ? (
-                  Object.values(threadGroups).map(group => {
-                    const latest = group.messages[0]
-                    const replyCount = group.messages.length - 1
-                    return (
-                      <ThreadItem key={latest.id} message={latest} replyCount={replyCount}
-                        isSelected={selectedMessageId === latest.id}
-                        onClick={() => {
-                          if (replyCount > 0 && (latest as any).thread_id) { setThreadViewId((latest as any).thread_id) }
-                          else { handleSelectMessage(latest.id); if (!latest.is_read) { markRead(latest.id, true); if (activeFolderId) decrementFolderUnread(activeFolderId); mailIpc.markMessageRead(latest.id, true).catch(() => {}) } }
-                        }}
-                        onStar={() => { toggleStar(latest.id); mailIpc.toggleMessageStar(latest.id).catch(() => {}) }}
-                      />
-                    )
-                  })
-                ) : displayMessages.map(msg => (
+                {displayMessages.map(msg => (
                   <div key={msg.id}
                     onClick={() => { handleSelectMessage(msg.id); if (!msg.is_read) { markRead(msg.id, true); if (activeFolderId) decrementFolderUnread(activeFolderId); mailIpc.markMessageRead(msg.id, true).catch(() => {}) } }}
                     className={`flex items-start gap-2 lg:gap-3 px-3 lg:px-4 py-2.5 lg:py-3 cursor-pointer transition-colors hover:bg-surface-50 dark:hover:bg-surface-800/50 ${selectedMessageId === msg.id ? "bg-primary-50/50 dark:bg-primary-900/20" : ""} ${!msg.is_read ? "bg-blue-50/30 dark:bg-blue-900/20" : ""}`}>
@@ -1855,9 +1975,6 @@ function EmailPage() {
                       <Button variant="ghost" size="sm" onClick={() => selectedMessageId && handleReply(selectedMessageId)}><Reply size={14} />{t("mail.reply")}</Button>
                       <Button variant="ghost" size="sm" onClick={() => selectedMessageId && handleForward(selectedMessageId)}><Forward size={14} />{t("mail.forward")}</Button>
                       <Button variant="ghost" size="sm" onClick={() => selectedMessageId && handleArchive(selectedMessageId)}><Archive size={14} />{t("mail.archiveAction")}</Button>
-                      {(selectedMessage as any).thread_id && (selectedMessage as any).thread_id !== `msg_${selectedMessage.id}` && (
-                        <Button variant="ghost" size="sm" onClick={() => setThreadViewId((selectedMessage as any).thread_id || `msg_${selectedMessage.id}`)}><MessageSquare size={14} />{t("mail.thread")}</Button>
-                      )}
                     </div>
                     <Button variant="ghost" size="sm" className="text-red-500 dark:text-red-400" onClick={() => selectedMessageId && handleDelete(selectedMessageId)}><Trash size={14} />{t("mail.delete")}</Button>
                   </div>
@@ -1865,37 +1982,95 @@ function EmailPage() {
                   <div className="flex items-center justify-between pb-3 border-b border-surface-200 dark:border-surface-700 mb-3">
                     <div className="flex items-center gap-2">
                       <div className="w-8 h-8 lg:w-10 lg:h-10 rounded-full bg-primary-100 dark:bg-primary-900/40 flex items-center justify-center text-primary-700 dark:text-primary-300 font-bold text-sm lg:text-base">{(selectedMessage.from_name || selectedMessage.from_email).charAt(0)}</div>
-                      <div><p className="font-medium text-sm">{selectedMessage.from_name || selectedMessage.from_email}</p><p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">{selectedMessage.from_email}</p></div>
+                      <div>
+                        <button
+                          onClick={(e) => setContactMenu({ name: selectedMessage.from_name, email: selectedMessage.from_email, x: e.clientX, y: e.clientY })}
+                          className="font-medium text-sm text-surface-700 dark:text-surface-200 hover:text-primary-600 dark:hover:text-primary-400 hover:underline transition-colors cursor-pointer"
+                        >
+                          {selectedMessage.from_name || selectedMessage.from_email}
+                        </button>
+                        <p className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">{selectedMessage.from_email}</p>
+                        {selectedMessage.account_email && (() => {
+                          const c = getAccountColor(selectedMessage.account_email)
+                          return <span className={`inline-flex items-center gap-1 mt-1 px-1.5 py-0.5 rounded text-[10px] font-medium ${c.bg} ${c.text}`}>
+                            <Mail size={10} />收件账户：{selectedMessage.account_email}
+                          </span>
+                        })()}
+                        <RecipientList
+                          to_list={messageHeaders?.to_list || "[]"}
+                          cc_list={messageHeaders?.cc_list || "[]"}
+                          onContactClick={(name, email, e) => setContactMenu({ name, email, x: e.clientX, y: e.clientY })}
+                        />
+                      </div>
                     </div>
                     <span className="text-xs text-surface-400 dark:text-surface-500 dark:text-surface-400">{selectedMessage.date.replace("T", " ")}</span>
                   </div>
                   {attachments.length > 0 && (
-                    <div className="mb-3 p-2 lg:p-3 bg-surface-50 dark:bg-surface-800/50 rounded-lg">
-                      <p className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5"><Paperclip size={12} className="inline mr-1" />{attachments.length} {t("mail.attachments")}</p>
-                      <div className="space-y-1">
+                    <div className="mb-3">
+                      <p className="text-xs font-medium text-surface-500 dark:text-surface-400 mb-1.5 flex items-center gap-1"><Paperclip size={12} />{attachments.length} {t("mail.attachments")}</p>
+                      <div className="flex flex-wrap gap-1.5">
                         {attachments.map(att => {
-                          const isLazy = !att.local_path
                           const isDownloading = downloadingAtts.has(att.id)
+                          const ct = (att.content_type || "").toLowerCase()
+                          const isPreviewable = ct.startsWith("image/") || ct === "application/pdf" || ct.startsWith("text/")
                           return (
-                            <div key={att.id} className="flex items-center justify-between text-xs p-2 bg-white dark:bg-surface-900 rounded border border-surface-200 dark:border-surface-700">
-                              <span className="truncate flex-1">{att.filename}</span>
-                              <span className="text-surface-400 dark:text-surface-500 dark:text-surface-400 mx-2">{formatFileSize(att.size)}</span>
-                              {isLazy ? (
-                                isDownloading ? (
-                                  <Loader2 size={14} className="text-primary-500 dark:text-primary-400 animate-spin" />
-                                ) : (
-                                  <Download size={14} className="text-amber-500 dark:text-amber-400 hover:text-amber-600 dark:hover:text-amber-300 cursor-pointer"
-                                    onClick={(e) => { e.stopPropagation(); handleDownloadAttachment(att) }}
-                                  />
-                                )
-                              ) : (
-                                <Download size={14} className="text-surface-400 dark:text-surface-500 dark:text-surface-400 hover:text-primary-500 dark:text-primary-400 cursor-pointer"
-                                  onClick={(e) => { e.stopPropagation(); mailIpc.openFile(att.local_path).catch(() => {}) }}
-                                />
-                              )}
-                            </div>
+                            <button
+                              key={att.id}
+                              onClick={(e) => {
+                                e.stopPropagation()
+                                if (isDownloading) return
+                                if (isPreviewable) { handlePreviewAttachment(att) }
+                                else if (att.local_path) { mailIpc.openFile(att.local_path).catch(() => {}) }
+                                else { handleDownloadAttachment(att) }
+                              }}
+                              className={`inline-flex items-center gap-1.5 px-2 py-1 rounded-md text-xs border transition-colors cursor-pointer max-w-[240px] ${
+                                isPreviewable
+                                  ? "bg-primary-50/60 dark:bg-primary-900/20 border-primary-200 dark:border-primary-800 hover:bg-primary-100 dark:hover:bg-primary-900/30 text-primary-700 dark:text-primary-300"
+                                  : "bg-surface-50 dark:bg-surface-800/50 border-surface-200 dark:border-surface-700 hover:bg-surface-100 dark:hover:bg-surface-700 text-surface-700 dark:text-surface-300"
+                              }`}
+                              title={att.filename}
+                            >
+                              <FileText size={12} className="shrink-0" />
+                              <span className="truncate">{att.filename}</span>
+                              <span className="text-surface-400 dark:text-surface-500 dark:text-surface-400 shrink-0 text-[10px]">{formatFileSize(att.size)}</span>
+                              {isDownloading && <Loader2 size={12} className="text-primary-500 dark:text-primary-400 animate-spin shrink-0" />}
+                            </button>
                           )
                         })}
+                      </div>
+                    </div>
+                  )}
+                  {previewAtt && (
+                    <div className="mb-3 border border-surface-200 dark:border-surface-700 rounded-lg overflow-hidden">
+                      <div className="flex items-center justify-between px-3 py-2 bg-surface-50 dark:bg-surface-800/50 border-b border-surface-200 dark:border-surface-700">
+                        <div className="flex items-center gap-2 text-xs">
+                          <FileText size={14} />
+                          <span className="font-medium truncate">{previewAtt.att.filename}</span>
+                          <span className="text-surface-400 dark:text-surface-500">{formatFileSize(previewAtt.att.size)}</span>
+                        </div>
+                        <div className="flex items-center gap-1">
+                          {previewAtt.att.local_path && (
+                            <Button variant="ghost" size="sm" onClick={() => mailIpc.openFile(previewAtt.att.local_path).catch(() => {})}>
+                              <Download size={12} />打开
+                            </Button>
+                          )}
+                          <Button variant="ghost" size="sm" onClick={() => setPreviewAtt(null)}>
+                            <X size={14} />
+                          </Button>
+                        </div>
+                      </div>
+                      <div className="bg-white dark:bg-surface-900 max-h-[500px] overflow-auto">
+                        {previewLoading ? (
+                          <div className="flex items-center justify-center py-12">
+                            <Loader2 size={24} className="text-primary-500 dark:text-primary-400 animate-spin" />
+                          </div>
+                        ) : previewAtt.type === "image" ? (
+                          <img src={previewAtt.dataUrl} alt={previewAtt.att.filename} className="max-w-full h-auto" />
+                        ) : previewAtt.type === "pdf" ? (
+                          <iframe src={previewAtt.dataUrl} className="w-full h-[500px]" title={previewAtt.att.filename} />
+                        ) : previewAtt.type === "text" ? (
+                          <pre className="p-4 text-xs overflow-auto whitespace-pre-wrap font-mono">{atob(previewAtt.dataUrl.split(",")[1])}</pre>
+                        ) : null}
                       </div>
                     </div>
                   )}
@@ -1914,7 +2089,6 @@ function EmailPage() {
               )}
             </div>
           </div>
-        )}
       </div>
 
       {/* Toast */}
@@ -1925,6 +2099,19 @@ function EmailPage() {
       {showDraftRecovery && <DraftRecoveryDialog onRecover={handleDraftRecover} onDiscard={handleDraftDiscard} />}
       {showSettings && <AccountSettingsModal onClose={() => setShowSettings(false)} />}
       {showContacts && <ContactsModal onClose={() => setShowContacts(false)} />}
+
+      {/* Contact action menu */}
+      {contactMenu && (
+        <ContactActionMenu
+          name={contactMenu.name}
+          email={contactMenu.email}
+          position={{ x: contactMenu.x, y: contactMenu.y }}
+          onClose={() => setContactMenu(null)}
+          onAddToContacts={() => handleContactActionAdd(contactMenu.name, contactMenu.email)}
+          onViewMessages={() => handleContactActionViewMessages(contactMenu.email, contactMenu.name)}
+          onReply={() => handleContactActionReply(contactMenu.email, contactMenu.name, selectedMessage?.subject || "")}
+        />
+      )}
 
     </div>
   )

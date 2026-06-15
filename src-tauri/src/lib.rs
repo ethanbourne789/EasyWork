@@ -367,6 +367,7 @@ pub fn run() {
             commands::mail::sync_account,
             // Attachments
             commands::mail::list_message_attachments,
+            commands::mail::get_message_cid_map,
             commands::mail::open_file,
             commands::mail::read_file_as_base64,
             // Contacts

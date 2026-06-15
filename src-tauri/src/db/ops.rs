@@ -497,8 +497,9 @@ pub fn list_messages_multi(
     let sql = format!(
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
                 m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
-                m.to_list, m.cc_list
+                m.to_list, m.cc_list, a.email AS account_email
          FROM mail_messages m
+         JOIN mail_accounts a ON m.account_id = a.id
          {where_clause}
          ORDER BY m.date_sort DESC LIMIT ?{lim} OFFSET ?{off}",
         where_clause = where_clause,
@@ -528,6 +529,7 @@ pub fn list_messages_multi(
             is_deleted: row.get(12)?,
             to_list: row.get(13).unwrap_or_default(),
             cc_list: row.get(14).unwrap_or_default(),
+            account_email: row.get(15).unwrap_or_default(),
         })
     };
     let messages: Vec<MailMessageSummary> = stmt
@@ -612,8 +614,9 @@ pub fn search_messages_multi(
     let sql = format!(
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
                 m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
-                m.to_list, m.cc_list
+                m.to_list, m.cc_list, a.email AS account_email
          FROM mail_messages m
+         JOIN mail_accounts a ON m.account_id = a.id
          JOIN mail_fts ON m.rowid = mail_fts.rowid
          WHERE mail_fts MATCH ?1
            AND m.is_deleted = 0
@@ -639,6 +642,7 @@ pub fn search_messages_multi(
             is_deleted: row.get(12)?,
             to_list: row.get(13).unwrap_or_default(),
             cc_list: row.get(14).unwrap_or_default(),
+            account_email: row.get(15).unwrap_or_default(),
         })
     };
     let messages: Vec<MailMessageSummary> = stmt
@@ -856,17 +860,20 @@ pub fn list_messages(
         // already had the filter; the folder branch was inconsistent).
         "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
                 m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
-                m.to_list, m.cc_list
+                m.to_list, m.cc_list, a.email AS account_email
          FROM mail_messages m
+         JOIN mail_accounts a ON m.account_id = a.id
          JOIN mail_message_folders mf ON m.id = mf.message_id
          WHERE m.account_id = ?1 AND mf.folder_id = ?2 AND m.is_deleted = 0
          ORDER BY m.date_sort DESC LIMIT ?3 OFFSET ?4"
     } else {
-        "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                is_read, is_starred, has_attachment, size, thread_id, is_deleted,
-                to_list, cc_list
-         FROM mail_messages WHERE account_id = ?1 AND is_deleted = 0
-         ORDER BY date_sort DESC LIMIT ?2 OFFSET ?3"
+        "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                m.to_list, m.cc_list, a.email AS account_email
+         FROM mail_messages m
+         JOIN mail_accounts a ON m.account_id = a.id
+         WHERE m.account_id = ?1 AND m.is_deleted = 0
+         ORDER BY m.date_sort DESC LIMIT ?2 OFFSET ?3"
     };
 
     // Bug fix: total must mirror the same filter as `query` — otherwise the
@@ -952,6 +959,7 @@ fn map_summary(row: &rusqlite::Row) -> Result<MailMessageSummary> {
         is_deleted: row.get::<_, i32>(12).unwrap_or(0) != 0,
         to_list: row.get(13).unwrap_or_default(),
         cc_list: row.get(14).unwrap_or_default(),
+        account_email: row.get(15).unwrap_or_default(),
     })
 }
 
@@ -964,12 +972,12 @@ pub fn get_message_body(pool: &DbPool, message_id: i64) -> Result<(String, Strin
     )
 }
 
-pub fn get_message_headers(pool: &DbPool, message_id: i64) -> Result<(String, String, String, String, String)> {
+pub fn get_message_headers(pool: &DbPool, message_id: i64) -> Result<(String, String, String, String, String, String)> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     conn.query_row(
-        "SELECT subject, from_name, from_email, to_list, message_id_header FROM mail_messages WHERE id = ?1",
+        "SELECT subject, from_name, from_email, to_list, cc_list, message_id_header FROM mail_messages WHERE id = ?1",
         params![message_id],
-        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?)),
+        |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5)?)),
     )
 }
 
@@ -1272,12 +1280,24 @@ pub fn update_attachment_path(pool: &DbPool, attachment_id: i64, local_path: &st
 pub fn list_attachments(pool: &DbPool, message_id: i64) -> Result<Vec<(i64, String, String, i64, String, String)>> {
     let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
     let mut stmt = conn.prepare(
-        "SELECT id, filename, content_type, size, local_path, content_id FROM mail_attachments WHERE message_id = ?1"
+        "SELECT id, filename, content_type, size, local_path, content_id FROM mail_attachments WHERE message_id = ?1 AND (content_id IS NULL OR content_id = '')"
     )?;
     let attachments = stmt.query_map(params![message_id], |row| {
         Ok((row.get(0)?, row.get(1)?, row.get(2)?, row.get(3)?, row.get(4)?, row.get(5).unwrap_or_default()))
     })?.filter_map(|r| r.ok()).collect();
     Ok(attachments)
+}
+
+/// Get inline images (attachments with content_id) for cidMap resolution
+pub fn list_inline_images(pool: &DbPool, message_id: i64) -> Result<Vec<(String, String)>> {
+    let conn = pool.get().map_err(|e| rusqlite::Error::ToSqlConversionFailure(Box::new(e)))?;
+    let mut stmt = conn.prepare(
+        "SELECT content_id, local_path FROM mail_attachments WHERE message_id = ?1 AND content_id IS NOT NULL AND content_id != '' AND local_path != ''"
+    )?;
+    let images = stmt.query_map(params![message_id], |row| {
+        Ok((row.get(0)?, row.get(1)?))
+    })?.filter_map(|r| r.ok()).collect();
+    Ok(images)
 }
 
 // ---- App Config ----
@@ -1481,13 +1501,14 @@ pub fn search_messages_by_email(
     // 用 `from_email` 精确 + `to_list`/`cc_list` LIKE 双向匹配
     // 二次过滤在 Rust 端（LIKE 太宽，recipients list 是 JSON 数组字符串）
     let mut sql = String::from(
-        "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                is_read, is_starred, has_attachment, size, thread_id, is_deleted,
-                to_list, cc_list
-         FROM mail_messages
-         WHERE is_deleted = 0
-           AND (from_email = ?1 COLLATE NOCASE
-                OR to_list LIKE ?2 OR cc_list LIKE ?2)"
+        "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                m.to_list, m.cc_list, a.email AS account_email
+         FROM mail_messages m
+         JOIN mail_accounts a ON m.account_id = a.id
+         WHERE m.is_deleted = 0
+           AND (m.from_email = ?1 COLLATE NOCASE
+                OR m.to_list LIKE ?2 OR m.cc_list LIKE ?2)"
     );
     if let Some(ids) = account_ids {
         if !ids.is_empty() {
@@ -1535,6 +1556,7 @@ pub fn search_messages_by_email(
             is_deleted: row.get(12)?,
             to_list: row.get(13).unwrap_or_default(),
             cc_list: row.get(14).unwrap_or_default(),
+            account_email: row.get(15).unwrap_or_default(),
         })
     })?.filter_map(|r| r.ok()).collect();
     drop(stmt);
@@ -1635,12 +1657,13 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
             // Bug #5 fix: ORDER BY date_sort DESC for consistent chronological
             // ordering across FTS5 and LIKE paths.
             let sql = format!(
-                "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                        is_read, is_starred, has_attachment, size, thread_id, is_deleted,
-                        to_list, cc_list
-                 FROM mail_messages
-                 WHERE id IN ({}) AND account_id = ?{} AND is_deleted = 0
-                 ORDER BY date_sort DESC LIMIT 100",
+                "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
+                        m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                        m.to_list, m.cc_list, a.email AS account_email
+                 FROM mail_messages m
+                 JOIN mail_accounts a ON m.account_id = a.id
+                 WHERE m.id IN ({}) AND m.account_id = ?{} AND m.is_deleted = 0
+                 ORDER BY m.date_sort DESC LIMIT 100",
                 placeholders.join(","), ids.len() + 1
             );
 
@@ -1668,13 +1691,14 @@ pub fn search_messages(pool: &DbPool, account_id: i64, query: &str) -> Result<Ve
     // `normalize_date` and gives a correct chronological order.
     let search = format!("%{}%", query);
     let mut stmt = conn.prepare(
-        "SELECT id, account_id, remote_uid, subject, from_name, from_email, date,
-                is_read, is_starred, has_attachment, size, thread_id, is_deleted,
-                to_list, cc_list
-         FROM mail_messages
-         WHERE account_id = ?1 AND is_deleted = 0
-           AND (subject LIKE ?2 OR from_name LIKE ?2 OR from_email LIKE ?2 OR body_text LIKE ?2)
-         ORDER BY date_sort DESC LIMIT 100"
+        "SELECT m.id, m.account_id, m.remote_uid, m.subject, m.from_name, m.from_email, m.date,
+                m.is_read, m.is_starred, m.has_attachment, m.size, m.thread_id, m.is_deleted,
+                m.to_list, m.cc_list, a.email AS account_email
+         FROM mail_messages m
+         JOIN mail_accounts a ON m.account_id = a.id
+         WHERE m.account_id = ?1 AND m.is_deleted = 0
+           AND (m.subject LIKE ?2 OR m.from_name LIKE ?2 OR m.from_email LIKE ?2 OR m.body_text LIKE ?2)
+         ORDER BY m.date_sort DESC LIMIT 100"
     )?;
     let messages: Vec<MailMessageSummary> = stmt.query_map(params![account_id, search], map_summary)?
         .filter_map(|r| r.ok()).collect();

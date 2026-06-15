@@ -31,6 +31,8 @@ export interface MailMessageSummary {
   size: number
   thread_id?: string
   is_deleted?: boolean
+  /** v1.2: 来源账户邮箱（多账户聚合视图用） */
+  account_email?: string
 }
 
 export interface FetchMessagesResult {
@@ -142,6 +144,11 @@ interface MailState {
   updateContactGroup: (group: MailContactGroup) => void
   removeContactGroup: (id: number) => void
 
+  // Contact mail filter (viewing messages with a specific contact)
+  contactFilterEmail: string | null
+  contactFilterName: string | null
+  setContactFilter: (email: string | null, name: string | null) => void
+
   // Folders
   folderUnreadCounts: Record<number, number>
   setFolderUnreadCounts: (counts: Record<number, number>) => void
@@ -180,6 +187,8 @@ export const useMailStore = create<MailState>((set) => ({
       messages: [],
       folderUnreadCounts: {},
       contacts: [],
+      contactFilterEmail: null,
+      contactFilterName: null,
     }
   }),
   updateAccount: (updated) => set((s) => ({
@@ -256,6 +265,10 @@ export const useMailStore = create<MailState>((set) => ({
   removeContactGroup: (id) => set((s) => ({
     contactGroups: s.contactGroups.filter((g) => g.id !== id),
   })),
+
+  contactFilterEmail: null,
+  contactFilterName: null,
+  setContactFilter: (email, name) => set({ contactFilterEmail: email, contactFilterName: name }),
 
   folderUnreadCounts: {},
   setFolderUnreadCounts: (counts) => set({ folderUnreadCounts: counts }),

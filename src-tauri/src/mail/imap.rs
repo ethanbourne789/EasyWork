@@ -155,25 +155,37 @@ pub async fn connect(
     let overall_start = Instant::now();
 
     // Race the entire connection against a 30-second timer.
-    tokio::select! {
-        result = connection_attempt(host, port, username, password, use_tls) => {
-            let elapsed = overall_start.elapsed();
-            log::info!(
-                "IMAP connect OK to {}:{} as {} in {:.1}s (tls={})",
-                host, port, username, elapsed.as_secs_f64(), use_tls
-            );
-            result
-        }
+    let result = tokio::select! {
+        result = connection_attempt(host, port, username, password, use_tls) => result,
         _ = tokio::time::sleep(CONNECTION_TIMEOUT) => {
             let elapsed = overall_start.elapsed();
             log::warn!(
                 "IMAP connection timed out after {:.1}s: {}:{}",
                 elapsed.as_secs_f64(), host, port
             );
-            Err(format!(
+            return Err(format!(
                 "IMAP 连接超时 ({}:{}): 连接过程超过 {} 秒",
                 host, port, CONNECTION_TIMEOUT.as_secs()
-            ).into())
+            ).into());
+        }
+    };
+
+    match result {
+        Ok(session) => {
+            let elapsed = overall_start.elapsed();
+            log::info!(
+                "IMAP connect OK to {}:{} as {} in {:.1}s (tls={})",
+                host, port, username, elapsed.as_secs_f64(), use_tls
+            );
+            Ok(session)
+        }
+        Err(e) => {
+            let elapsed = overall_start.elapsed();
+            log::warn!(
+                "IMAP connection failed after {:.1}s: {}:{} - {}",
+                elapsed.as_secs_f64(), host, port, e
+            );
+            Err(e)
         }
     }
 }
@@ -289,22 +301,29 @@ async fn connection_attempt(
 
             let server_name = parse_server_name(host)?;
 
+            // 方案一：增强超时处理，添加更详细的日志
             let tls_future = tls_connector.connect(server_name, tcp);
-            let stream: tokio_rustls::client::TlsStream<tokio::net::TcpStream> = tokio::select! {
-                t = tls_future => t.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+
+            // 使用 tokio::time::timeout 替代 tokio::select!，更可靠的超时机制
+            let stream = match tokio::time::timeout(STEP_TIMEOUT, tls_future).await {
+                Ok(result) => result.map_err(|e| -> Box<dyn std::error::Error + Send + Sync> {
+                    let elapsed = tls_start.elapsed();
                     log::error!(
-                        "IMAP TLS handshake FAILED with {}:{} after {:.1}s: {}",
-                        host, port, tls_start.elapsed().as_secs_f64(), e
+                        "IMAP TLS handshake FAILED with {}:{} after {:.3}s: {}",
+                        host, port, elapsed.as_secs_f64(), e
                     );
                     format!("TLS 握手失败 ({}:{}): {}", host, port, e).into()
                 })?,
-                _ = tokio::time::sleep(STEP_TIMEOUT) => {
+                Err(_) => {
                     let elapsed = tls_start.elapsed();
                     log::error!(
-                        "IMAP TLS handshake TIMEOUT with {}:{} after {:.1}s",
+                        "IMAP TLS handshake TIMEOUT with {}:{} after {:.3}s (rustls 握手超时)",
                         host, port, elapsed.as_secs_f64()
                     );
-                    return Err(format!("TLS 握手超时 ({}:{}): {} 秒内未完成", host, port, STEP_TIMEOUT.as_secs()).into());
+                    return Err(format!(
+                        "TLS 握手超时 ({}:{}): {} 秒内未完成，可能是 rustls 与服务器不兼容",
+                        host, port, STEP_TIMEOUT.as_secs()
+                    ).into());
                 }
             };
 

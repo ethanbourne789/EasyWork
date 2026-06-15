@@ -23,6 +23,10 @@ pub struct ParsedAttachment {
     pub content_type: String,
     pub size: usize,
     pub content: Vec<u8>,
+    /// Content-ID for inline images (e.g. "cid:abc123")
+    pub content_id: String,
+    /// True if this part is inline (embedded in HTML body), not a real attachment
+    pub is_inline: bool,
 }
 
 fn find_header<'a>(
@@ -308,6 +312,18 @@ fn extract_body(parsed: &ParsedMail) -> (String, String, Vec<ParsedAttachment>) 
                 html = parsed.get_body().unwrap_or_default();
             }
             _ => {
+                // Check if this is an inline image (Content-ID present, no Content-Disposition: attachment)
+                let content_id = find_header(&parsed.headers, "content-id")
+                    .map(|h| h.get_value().trim_matches(|c: char| c == '<' || c == '>').to_string())
+                    .unwrap_or_default();
+
+                let content_disposition = find_header(&parsed.headers, "content-disposition")
+                    .map(|h| h.get_value().to_lowercase())
+                    .unwrap_or_default();
+
+                let is_inline = !content_id.is_empty()
+                    || content_disposition.contains("inline");
+
                 let filename = get_content_disposition_filename(parsed)
                     .or_else(|| parsed.ctype.params.get("name").cloned())
                     .unwrap_or_else(|| "attachment".to_string());
@@ -323,6 +339,8 @@ fn extract_body(parsed: &ParsedMail) -> (String, String, Vec<ParsedAttachment>) 
                     content_type: ct,
                     size: parsed.get_body_raw().map(|b| b.len()).unwrap_or(0),
                     content: parsed.get_body_raw().unwrap_or_default(),
+                    content_id,
+                    is_inline,
                 });
             }
         }

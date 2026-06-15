@@ -1,9 +1,10 @@
 //! IMAP/SMTP auto-discovery via Mozilla autoconfig XML.
 //!
 //! Tries (in order) on user-input email `user@domain`:
-//!  1. `https://autoconfig.{domain}/mail/config-v1.1.xml` (RFC 6186 style, Mozilla)
-//!  2. `https://{domain}/.well-known/autoconfig/mail/config-v1.1.xml` (well-known)
-//!  3. `https://autoconfig.{domain}/.well-known/autoconfig/mail/config-v1.1.xml` (combined)
+//!  1. Hardcoded provider configs (for domains without autoconfig XML)
+//!  2. `https://autoconfig.{domain}/mail/config-v1.1.xml` (RFC 6186 style, Mozilla)
+//!  3. `https://{domain}/.well-known/autoconfig/mail/config-v1.1.xml` (well-known)
+//!  4. `https://autoconfig.{domain}/.well-known/autoconfig/mail/config-v1.1.xml` (combined)
 //!
 //! If a config is found, returns IMAP/SMTP host+port+security.
 
@@ -30,6 +31,28 @@ pub struct AutoconfigResult {
     pub error: Option<String>,
 }
 
+/// Hardcoded provider configs for domains that don't publish autoconfig XML.
+/// Format: domain -> (imap, smtp)
+fn hardcoded_provider(domain: &str) -> Option<(ServerConfig, ServerConfig)> {
+    match domain {
+        "jasolar.com" => Some((
+            ServerConfig {
+                protocol: "imap".into(),
+                hostname: "imaphz.qiye.163.com".into(),
+                port: 993,
+                socket_type: "ssl".into(),
+            },
+            ServerConfig {
+                protocol: "smtp".into(),
+                hostname: "smtphz.qiye.163.com".into(),
+                port: 465,
+                socket_type: "ssl".into(),
+            },
+        )),
+        _ => None,
+    }
+}
+
 #[tauri::command]
 pub async fn autodiscover_account(email: String) -> Result<AutoconfigResult, String> {
     let trace_id = crate::logging::trace_id();
@@ -47,25 +70,33 @@ pub async fn autodiscover_account(email: String) -> Result<AutoconfigResult, Str
     let mut source = String::new();
     let mut last_error: Option<String> = None;
 
-    // Mozilla autoconfig URLs to try, in order.
-    let urls = [
-        format!("https://autoconfig.{}/mail/config-v1.1.xml", domain),
-        format!("https://{}/.well-known/autoconfig/mail/config-v1.1.xml", domain),
-        format!("https://autoconfig.{}/.well-known/autoconfig/mail/config-v1.1.xml", domain),
-    ];
+    // Step 1: Check hardcoded provider configs (fast, no network)
+    if let Some((imap, smtp)) = hardcoded_provider(&domain) {
+        log::info!("[{}] Using hardcoded config for {}", trace_id, domain);
+        imap_cfg = Some(imap);
+        smtp_cfg = Some(smtp);
+        source = "hardcoded".to_string();
+    } else {
+        // Step 2: Try Mozilla autoconfig URLs
+        let urls = [
+            format!("https://autoconfig.{}/mail/config-v1.1.xml", domain),
+            format!("https://{}/.well-known/autoconfig/mail/config-v1.1.xml", domain),
+            format!("https://autoconfig.{}/.well-known/autoconfig/mail/config-v1.1.xml", domain),
+        ];
 
-    for url in urls.iter() {
-        match fetch_autoconfig(url, &domain).await {
-            Ok(Some((imap, smtp))) => {
-                imap_cfg = imap;
-                smtp_cfg = smtp;
-                source = url.clone();
-                break;
-            }
-            Ok(None) => {} // not found, try next
-            Err(e) => {
-                log::debug!("[{}] autodiscover URL {} failed: {}", trace_id, url, e);
-                last_error = Some(e);
+        for url in urls.iter() {
+            match fetch_autoconfig(url, &domain).await {
+                Ok(Some((imap, smtp))) => {
+                    imap_cfg = imap;
+                    smtp_cfg = smtp;
+                    source = url.clone();
+                    break;
+                }
+                Ok(None) => {} // not found, try next
+                Err(e) => {
+                    log::debug!("[{}] autodiscover URL {} failed: {}", trace_id, url, e);
+                    last_error = Some(e);
+                }
             }
         }
     }

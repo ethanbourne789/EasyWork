@@ -111,6 +111,23 @@
     "import": "导入CSV",
     "importVcf": "导入VCF",
     "exportVcf": "导出VCF",
+    "actions": {
+      "addToContacts": "添加到通讯录",
+      "viewMessages": "查看往来邮件",
+      "replyTo": "回复"
+    },
+    "group": {
+      "all": "全部",
+      "ungrouped": "未分组",
+      "newGroup": "新建分组",
+      "groupName": "分组名称",
+      "editGroup": "编辑分组",
+      "deleteGroup": "删除分组"
+    },
+    "filter": {
+      "contactMessages": "与 {{name}} 的往来邮件 ({{total}} 封)",
+      "clearFilter": "清除筛选"
+    },
     "importDialog": {
       "vcfTitle": "从 VCF 导入联系人",
       "clickToSelect": "点击选择 .vcf 文件",

@@ -111,6 +111,23 @@
     "import": "Import CSV",
     "importVcf": "Import VCF",
     "exportVcf": "Export VCF",
+    "actions": {
+      "addToContacts": "Add to Contacts",
+      "viewMessages": "View Messages",
+      "replyTo": "Reply"
+    },
+    "group": {
+      "all": "All",
+      "ungrouped": "Ungrouped",
+      "newGroup": "New Group",
+      "groupName": "Group Name",
+      "editGroup": "Edit Group",
+      "deleteGroup": "Delete Group"
+    },
+    "filter": {
+      "contactMessages": "Messages with {{name}} ({{total}})",
+      "clearFilter": "Clear Filter"
+    },
     "importDialog": {
       "vcfTitle": "Import contacts from VCF",
       "clickToSelect": "Click to select a .vcf file",
