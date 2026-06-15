@@ -387,11 +387,14 @@ function AlertDialog({
 
 function QuotesTab({
   watchlist, onAdd, onRemove, onAddAlert,
+  watchlistError, onRetry,
 }: {
   watchlist: StockWatchItem[]
   onAdd: (item: Omit<StockWatchItem, "id" | "createdAt" | "updatedAt">) => Promise<void>
   onRemove: (symbol: string, marketType: string) => Promise<void>
   onAddAlert: (symbol: string, marketType: string) => void
+  watchlistError: string | null
+  onRetry: () => void
 }) {
   const [showAdd, setShowAdd] = useState(false)
   const [addSymbol, setAddSymbol] = useState("")
@@ -600,7 +603,12 @@ function QuotesTab({
         </DialogContent>
       </Dialog>
 
-      {watchlist.length === 0 ? (
+      {watchlistError ? (
+        <div className="text-center py-8">
+          <p className="text-sm text-red-600 mb-2">加载自选股失败：{watchlistError}</p>
+          <Button size="sm" onClick={onRetry}>重试</Button>
+        </div>
+      ) : watchlist.length === 0 ? (
         <div className="text-center py-8 text-surface-400 text-sm">暂无自选股，点击「添加自选」开始。</div>
       ) : viewMode === "tile" ? (
         <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 xl:grid-cols-4 gap-3">
@@ -1151,13 +1159,19 @@ function AlertsTab({ refreshKey, onAdded }: { refreshKey: number; onAdded?: () =
 function StocksPage() {
   const [activeTab, setActiveTab] = useState<"quotes" | "positions" | "alerts">("quotes")
   const [watchlist, setWatchlist] = useState<StockWatchItem[]>([])
+  const [watchlistError, setWatchlistError] = useState<string | null>(null)
   const [alertDialogState, setAlertDialogState] = useState<{ open: boolean; symbol?: string; marketType?: string }>({ open: false })
   const [alertRefreshKey, setAlertRefreshKey] = useState(0)
 
   const loadWatchlist = useCallback(async () => {
+    setWatchlistError(null)
     try {
       setWatchlist(await stockIpc.stockWatchlistList())
-    } catch (e) { console.warn("加载自选股失败", e) }
+    } catch (e: any) {
+      const msg = e?.toString() || "加载自选股失败"
+      console.warn("加载自选股失败", e)
+      setWatchlistError(msg)
+    }
   }, [])
 
   useEffect(() => { loadWatchlist() }, [loadWatchlist])
@@ -1217,6 +1231,8 @@ function StocksPage() {
           onAdd={handleAdd}
           onRemove={handleRemove}
           onAddAlert={handleAddAlert}
+          watchlistError={watchlistError}
+          onRetry={loadWatchlist}
         />
       )}
       {activeTab === "positions" && <PositionsTab />}

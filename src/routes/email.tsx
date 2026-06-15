@@ -1213,14 +1213,19 @@ function EmailPage() {
   // Load accounts on mount — critical: activeAccountId starts as null and no other
   // component loads accounts automatically. Without this, the auto-sync useEffect
   // never fires and the inbox stays empty until the user opens Settings.
+  // v1.3: Load cached messages immediately, then sync in background.
   useEffect(() => {
     const initAccounts = async () => {
       try {
         const ba = await mailIpc.listAccounts()
         if (ba.length > 0) {
-          // setAccounts will set activeAccountId to first account (since it's null),
-          // which triggers the auto-sync useEffect via [activeAccountId] dependency.
           useMailStore.getState().setAccounts(ba)
+          // Immediately load cached messages from SQLite (no IMAP wait)
+          const accountIds = ba.map(a => a.id).filter((id): id is number => id != null)
+          mailIpc.fetchMessagesMulti(accountIds, activeFolder, 1, PAGE_SIZE).then(result => {
+            setMessages(result.messages)
+            setTotalMessages(result.total)
+          }).catch(() => {})
         }
       } catch {
         // silently ignore — user can add accounts via Settings
@@ -1279,7 +1284,9 @@ function EmailPage() {
 
   // ---- Auto-sync on accounts change (initial load & account changes) ----
   // Uses per-account tracking so each account gets its first sync exactly once.
+  // v1.3: Skip initial sync if we already loaded from cache (initAccounts did it).
   const syncedAccountIds = useRef<Set<number>>(new Set())
+  const initialLoadDone = useRef(false)
 
   useEffect(() => {
     if (accounts.length === 0) return
@@ -1289,10 +1296,19 @@ function EmailPage() {
     accountsToSync.forEach(acc => acc.id && syncedAccountIds.current.add(acc.id))
 
     const doAutoSync = async () => {
-      setSyncStatus({ syncing: true, lastResult: null, lastError: null })
+      // v1.3: On initial mount, we already loaded cached messages.
+      // Just sync in background without blocking the UI.
+      const isInitialMount = !initialLoadDone.current
+      if (isInitialMount) {
+        initialLoadDone.current = true
+        // Show subtle sync indicator
+        setSyncStatus({ syncing: true, lastResult: null, lastError: null })
+      } else {
+        setSyncStatus({ syncing: true, lastResult: null, lastError: null })
+      }
 
       // Wait a brief moment for any prior effects to settle
-      await new Promise(r => setTimeout(r, 500))
+      await new Promise(r => setTimeout(r, isInitialMount ? 100 : 500))
 
       // Sync all accounts that haven't been synced yet
       for (const acc of accountsToSync) {
@@ -1307,7 +1323,7 @@ function EmailPage() {
         }
       }
 
-      // Load messages from all accounts using multi-account query
+      // Refresh messages from all accounts using multi-account query
       const accountIds = accounts.map(a => a.id).filter((id): id is number => id != null)
       try {
         const result = await mailIpc.fetchMessagesMulti(accountIds, activeFolder, 1, PAGE_SIZE)
