@@ -1,0 +1,9 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'email_signatures_dao.dart';
+
+// ignore_for_file: type=lint
+mixin _$EmailSignaturesDaoMixin on DatabaseAccessor<AppDatabase> {
+  $EmailAccountsTable get emailAccounts => attachedDatabase.emailAccounts;
+  $EmailSignaturesTable get emailSignatures => attachedDatabase.emailSignatures;
+}

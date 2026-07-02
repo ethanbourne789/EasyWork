@@ -1,0 +1,11 @@
+// GENERATED CODE - DO NOT MODIFY BY HAND
+
+part of 'email_attachments_dao.dart';
+
+// ignore_for_file: type=lint
+mixin _$EmailAttachmentsDaoMixin on DatabaseAccessor<AppDatabase> {
+  $EmailAccountsTable get emailAccounts => attachedDatabase.emailAccounts;
+  $EmailsTable get emails => attachedDatabase.emails;
+  $EmailAttachmentsTable get emailAttachments =>
+      attachedDatabase.emailAttachments;
+}
