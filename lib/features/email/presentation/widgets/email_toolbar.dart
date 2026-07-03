@@ -12,6 +12,7 @@ class EmailToolbar extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final unifiedAsync = ref.watch(unifiedMailboxListProvider);
     final selectedFolder = ref.watch(selectedFolderProvider);
     final accountsAsync = ref.watch(emailAccountListProvider);
@@ -49,7 +50,7 @@ class EmailToolbar extends ConsumerWidget {
               ),
               _ToolbarIcon(
                 icon: Icons.edit,
-                label: '写邮件',
+                label: loc.email_compose,
                 onTap: () {
                   Navigator.push<void>(
                     context,
@@ -69,7 +70,7 @@ class EmailToolbar extends ConsumerWidget {
               ),
               _ToolbarIcon(
                 icon: Icons.contacts,
-                label: '通讯录',
+                label: loc.contact_list,
                 onTap: () {},
               ),
               if (accountsAsync.valueOrNull != null &&

@@ -12,12 +12,11 @@ class EmailListView extends ConsumerWidget {
   @override
   Widget build(BuildContext context, WidgetRef ref) {
     final selectedFolder = ref.watch(selectedFolderProvider);
-    final emailsAsync = ref.watch(localEmailListProvider(accountId));
+    final emailsAsync = ref.watch(unifiedEmailListProvider(selectedFolder));
 
     return emailsAsync.when(
       data: (emails) {
-        final filtered = emails.where((e) => e.folder == selectedFolder).toList();
-        if (filtered.isEmpty) {
+        if (emails.isEmpty) {
           return Center(
             child: Column(
               mainAxisAlignment: MainAxisAlignment.center,
@@ -31,12 +30,12 @@ class EmailListView extends ConsumerWidget {
         }
         return RefreshIndicator(
           onRefresh: () async {
-            ref.invalidate(localEmailListProvider(accountId));
+            ref.invalidate(unifiedEmailListProvider(selectedFolder));
           },
           child: ListView.builder(
-            itemCount: filtered.length,
+            itemCount: emails.length,
             itemBuilder: (context, index) {
-              final email = filtered[index];
+              final email = emails[index];
               final subject = email.subject ?? '(无主题)';
               final from = email.fromName ?? email.fromAddress;
               final date = email.receivedAt;

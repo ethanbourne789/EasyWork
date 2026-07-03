@@ -128,9 +128,17 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
       List<({int accountId, String folder})> conditions) async {
     if (conditions.isEmpty) return [];
     final query = select(emails);
-    for (final c in conditions) {
+    if (conditions.length == 1) {
+      final c = conditions.first;
       query.where((t) =>
           t.accountId.equals(c.accountId) & t.folder.equals(c.folder));
+    } else {
+      query.where((t) {
+        final expr = conditions
+            .map((c) => t.accountId.equals(c.accountId) & t.folder.equals(c.folder))
+            .reduce((a, b) => a | b);
+        return expr;
+      });
     }
     query.orderBy([(t) => OrderingTerm.desc(t.receivedAt)]);
     return query.get();
