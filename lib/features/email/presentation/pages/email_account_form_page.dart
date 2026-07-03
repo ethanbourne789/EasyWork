@@ -279,14 +279,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.account != null ? '编辑账户' : '添加账户'),
-        actions: [
-          TextButton(
-            onPressed: _isSaving ? null : _save,
-            child: _isSaving
-                ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                : const Text('保存'),
-          ),
-        ],
+
       ),
       body: Form(
         key: _formKey,
@@ -429,13 +422,6 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
               ],
             ),
             const SizedBox(height: 24),
-            OutlinedButton.icon(
-              onPressed: _isTesting ? null : _testConnection,
-              icon: _isTesting
-                  ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
-                  : const Icon(Icons.wifi_find),
-              label: const Text('测试连接'),
-            ),
             if (_testResult != null) ...[
               const SizedBox(height: 12),
               Container(
@@ -458,6 +444,30 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
                 ),
               ),
             ],
+            const SizedBox(height: 24),
+            Row(
+              children: [
+                Expanded(
+                  child: OutlinedButton.icon(
+                    onPressed: _isTesting ? null : _testConnection,
+                    icon: _isTesting
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.wifi_find),
+                    label: const Text('测试连接'),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: ElevatedButton.icon(
+                    onPressed: _isSaving ? null : _save,
+                    icon: _isSaving
+                        ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
+                        : const Icon(Icons.save),
+                    label: const Text('保存'),
+                  ),
+                ),
+              ],
+            ),
           ],
         ),
       ),
