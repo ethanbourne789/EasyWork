@@ -13,6 +13,7 @@ import 'tables/contacts_table.dart';
 import 'tables/contact_groups_table.dart';
 import 'tables/contact_group_members_table.dart';
 import 'tables/email_signatures_table.dart';
+import 'tables/mailbox_folders_table.dart';
 import 'tables/email_to_task_table.dart';
 import 'tables/tasks_table.dart';
 import 'tables/task_comments_table.dart';
@@ -41,6 +42,7 @@ part 'app_database.g.dart';
     ContactGroups,
     ContactGroupMembers,
     EmailSignatures,
+    MailboxFolders,
     EmailToTask,
     Tasks,
     TaskComments,
@@ -64,7 +66,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 4;
+  int get schemaVersion => 5;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -98,6 +100,10 @@ class AppDatabase extends _$AppDatabase {
         await m.addColumn(emailAccounts, emailAccounts.password);
         await m.addColumn(emailAccounts, emailAccounts.syncPeriod);
         await m.addColumn(emailAccounts, emailAccounts.syncInterval);
+        break;
+      case 5:
+        await m.createTable(mailboxFolders);
+        await m.addColumn(emailAccounts, emailAccounts.accentColor);
         break;
     }
   }

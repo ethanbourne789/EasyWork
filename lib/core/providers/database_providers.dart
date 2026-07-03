@@ -8,6 +8,7 @@ import '../database/tables/contacts_dao.dart';
 import '../database/tables/contact_groups_dao.dart';
 import '../database/tables/contact_group_members_dao.dart';
 import '../database/tables/email_signatures_dao.dart';
+import '../database/tables/mailbox_folders_dao.dart';
 import '../database/tables/tasks_dao.dart';
 import '../database/tables/task_comments_dao.dart';
 import '../database/tables/notes_dao.dart';
@@ -62,6 +63,11 @@ final contactGroupsDaoProvider = FutureProvider<ContactGroupsDao>((ref) async {
 final contactGroupMembersDaoProvider = FutureProvider<ContactGroupMembersDao>((ref) async {
   final db = await ref.watch(appDatabaseProvider.future);
   return ContactGroupMembersDao(db);
+});
+
+final mailboxFoldersDaoProvider = FutureProvider<MailboxFoldersDao>((ref) async {
+  final db = await ref.watch(appDatabaseProvider.future);
+  return MailboxFoldersDao(db);
 });
 
 final emailSignaturesDaoProvider = FutureProvider<EmailSignaturesDao>((ref) async {
