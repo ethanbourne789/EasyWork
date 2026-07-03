@@ -9,6 +9,7 @@ import '../data/email_repository.dart';
 import '../data/email_repository_impl.dart';
 import '../domain/email_account_entity.dart';
 import '../data/mime_message_mapper.dart';
+import '../data/mailbox_merger.dart';
 
 final mailDataSourcesProvider =
     StateNotifierProvider<MailDataSourcesNotifier, Map<int, MailDataSource>>(
@@ -50,11 +51,31 @@ final localEmailDetailProvider =
   return MimeMessageMapper.fromOriginalMessageJson(email.originalMessageJson);
 });
 
-final mailboxListProvider =
-    FutureProvider.family<List<Mailbox>, int>((ref, accountId) async {
-  ref.watch(mailDataSourcesProvider);
-  final repo = ref.watch(emailRepositoryProvider);
-  return repo.listMailboxes(accountId);
+/// Unified mailbox list merged across all accounts, read from DB cache.
+final unifiedMailboxListProvider = FutureProvider<List<UnifiedFolder>>((ref) async {
+  final dao = await ref.watch(mailboxFoldersDaoProvider.future);
+  final allMailboxes = await dao.getAll();
+  return MailboxMerger.merge(allMailboxes);
+});
+
+/// Selected unified folder key (e.g. "inbox", "项目A").
+final selectedFolderProvider = StateProvider<String>((ref) => 'inbox');
+
+/// Emails for the selected unified folder, from all relevant accounts, sorted by time desc.
+final unifiedEmailListProvider = FutureProvider.family<List<Email>, String>((ref, folderKey) async {
+  final mailboxDao = await ref.watch(mailboxFoldersDaoProvider.future);
+  final emailsDao = await ref.watch(emailsDaoProvider.future);
+
+  final allMailboxes = await mailboxDao.getAll();
+  final merged = MailboxMerger.merge(allMailboxes);
+  final folder = merged.where((f) => f.key == folderKey).firstOrNull;
+  if (folder == null) return [];
+
+  final conditions = folder.accounts
+      .map((a) => (accountId: a.accountId, folder: a.mailboxPath))
+      .toList();
+
+  return emailsDao.getEmailsByAccountIdsAndFolders(conditions);
 });
 
 final unreadCountProvider = FutureProvider.family<int, int>((ref, accountId) async {
@@ -81,5 +102,3 @@ final totalUnreadProvider = Provider<AsyncValue<int>>((ref) {
 });
 
 final selectedEmailIdProvider = StateProvider<int?>((ref) => null);
-
-final selectedFolderProvider = StateProvider<String>((ref) => 'INBOX');

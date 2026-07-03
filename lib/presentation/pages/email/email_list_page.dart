@@ -134,7 +134,7 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
           ref.invalidate(localEmailListProvider(accounts.first.id!));
         }
       case 'inbox':
-        ref.read(selectedFolderProvider.notifier).state = 'INBOX';
+        ref.read(selectedFolderProvider.notifier).state = 'inbox';
     }
   }
 
@@ -239,7 +239,7 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
   @override
   Widget build(BuildContext context) {
     final selectedFolder = ref.watch(selectedFolderProvider);
-    final mailboxesAsync = ref.watch(mailboxListProvider(widget.accountId));
+    final mailboxesAsync = ref.watch(unifiedMailboxListProvider);
     final emailsAsync = ref.watch(localEmailListProvider(widget.accountId));
 
     return Column(
@@ -252,17 +252,17 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
               child: ListView(
                 scrollDirection: Axis.horizontal,
                 padding: const EdgeInsets.symmetric(horizontal: 8, vertical: 4),
-                children: mailboxes.map((mailbox) {
-                  final isSelected = mailbox.path == selectedFolder;
-                  final label = _translateFolderName(mailbox.name, mailbox.path);
-                  return Padding(
-                    padding: const EdgeInsets.symmetric(horizontal: 4),
-                    child: FilterChip(
-                      label: Text(label, style: const TextStyle(fontSize: 12)),
-                      selected: isSelected,
-                      onSelected: (_) {
-                        ref.read(selectedFolderProvider.notifier).state = mailbox.path;
-                      },
+            children: mailboxes.map((mailbox) {
+              final isSelected = mailbox.key == selectedFolder;
+              final label = mailbox.displayName;
+              return Padding(
+                padding: const EdgeInsets.symmetric(horizontal: 4),
+                child: FilterChip(
+                  label: Text(label, style: const TextStyle(fontSize: 12)),
+                  selected: isSelected,
+                  onSelected: (_) {
+                    ref.read(selectedFolderProvider.notifier).state = mailbox.key;
+                  },
                       selectedColor: Theme.of(context).colorScheme.primaryContainer,
                       visualDensity: VisualDensity.compact,
                     ),
