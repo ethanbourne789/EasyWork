@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/validators.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../../../core/security/credential_store.dart';
 import '../../domain/email_account_entity.dart';
 import '../../providers/email_providers.dart';
@@ -235,7 +236,9 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
       }
 
       ref.invalidate(emailAccountListProvider);
-      if (mounted) Navigator.pop(context);
+      if (mounted) {
+        Navigator.of(context).popUntil((route) => route.isFirst);
+      }
     } catch (e) {
       if (mounted) {
         ScaffoldMessenger.of(context).showSnackBar(
@@ -281,6 +284,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = EasyWorkLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: Text(widget.account != null ? '编辑账户' : '添加账户'),
@@ -468,7 +472,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
                     icon: _isSaving
                         ? const SizedBox(width: 16, height: 16, child: CircularProgressIndicator(strokeWidth: 2))
                         : const Icon(Icons.save),
-                    label: const Text('保存'),
+                    label: Text(loc.common_save),
                   ),
                 ),
               ],

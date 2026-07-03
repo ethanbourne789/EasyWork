@@ -5,6 +5,7 @@ import '../../../features/email/providers/email_providers.dart';
 import '../../../features/email/data/email_sync_service.dart';
 import '../../../features/email/domain/email_account_entity.dart';
 import '../../../features/email/presentation/pages/email_accounts_page.dart';
+import '../../../features/email/presentation/pages/email_account_form_page.dart';
 import '../../../features/email/presentation/pages/email_detail_page.dart';
 import '../../../features/email/presentation/pages/compose_page.dart';
 import '../../../features/email/presentation/widgets/email_list_view.dart';
@@ -160,7 +161,7 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
           Text('请先在设置中添加邮箱账户', style: TextStyle(color: Colors.grey[500])),
           const SizedBox(height: 16),
           ElevatedButton.icon(
-            onPressed: () => Navigator.push<Widget>(context, MaterialPageRoute<Widget>(builder: (_) => const EmailAccountsPage())),
+            onPressed: () => Navigator.push<Widget>(context, MaterialPageRoute<Widget>(builder: (_) => const EmailAccountFormPage())).then((_) => ref.invalidate(emailAccountListProvider)),
             icon: const Icon(Icons.add),
             label: const Text('添加账户'),
           ),
