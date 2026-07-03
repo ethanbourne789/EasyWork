@@ -142,6 +142,7 @@ class EmailRepositoryImpl implements EmailRepository {
   @override
   Future<void> deleteAccount(int id) async {
     await _dataSources.removeAccount(id);
+    await _emailsDao.deleteEmailsByAccount(id);
     await _accountsDao.deleteAccount(id);
     await _credentialStore.deletePassword(id);
   }

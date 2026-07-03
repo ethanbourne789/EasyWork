@@ -3,6 +3,7 @@ import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import '../../data/mime_message_mapper.dart';
+import '../../data/email_html_processor.dart';
 import '../../providers/email_providers.dart';
 import '../../../../core/providers/database_providers.dart';
 import '../../../../core/database/app_database.dart';
@@ -154,8 +155,16 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
             child: Container(
               constraints: const BoxConstraints(minHeight: 200),
               child: HtmlWidget(
-                _stripTableBorders(htmlBody),
+                msg != null
+                    ? EmailHtmlProcessor.processHtml(_stripTableBorders(htmlBody), msg)
+                    : _stripTableBorders(htmlBody),
                 textStyle: const TextStyle(fontSize: 15, height: 1.5),
+                customStylesBuilder: (element) {
+                  if (element.localName == 'table') {
+                    return {'max-width': '100%', 'overflow': 'hidden'};
+                  }
+                  return null;
+                },
               ),
             ),
           )

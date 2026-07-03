@@ -16,9 +16,18 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   Future<Email?> getEmailById(int id) =>
       (select(emails)..where((t) => t.id.equals(id))).getSingleOrNull();
 
-  Future<Email?> findByMessageId(String messageId) =>
-      (select(emails)..where((t) => t.messageId.equals(messageId)))
+  Future<Email?> findByMessageId(String messageId, {int? accountId}) {
+    if (accountId != null) {
+      return (select(emails)
+            ..where((t) => t.messageId.equals(messageId) & t.accountId.equals(accountId)))
           .getSingleOrNull();
+    }
+    return (select(emails)..where((t) => t.messageId.equals(messageId)))
+        .getSingleOrNull();
+  }
+
+  Future<int> deleteEmailsByAccount(int accountId) =>
+      (delete(emails)..where((t) => t.accountId.equals(accountId))).go();
 
   Future<int> insertEmail(EmailsCompanion email) => into(emails).insert(email);
 

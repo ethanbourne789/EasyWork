@@ -8,6 +8,7 @@ import '../pages/compose_page.dart';
 import '../widgets/attachment_list_widget.dart';
 import '../widgets/email_to_task_dialog.dart';
 import '../../providers/email_providers.dart';
+import '../../data/email_html_processor.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/database_providers.dart';
 
@@ -188,7 +189,7 @@ class _EmailDetailPageState extends ConsumerState<EmailDetailPage> {
                 Text(subject, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
                 const SizedBox(height: 16),
                 if (htmlBody != null && htmlBody.isNotEmpty)
-                  _HtmlEmailBody(html: htmlBody)
+                  _HtmlEmailBody(html: htmlBody, message: msg)
                 else if (plainBody != null && plainBody.isNotEmpty)
                   SelectableText(plainBody, style: const TextStyle(fontSize: 15, height: 1.5))
                 else
@@ -369,17 +370,27 @@ class _EmailDetailPageState extends ConsumerState<EmailDetailPage> {
 
 class _HtmlEmailBody extends StatelessWidget {
   final String html;
-  const _HtmlEmailBody({required this.html});
+  final MimeMessage? message;
+  const _HtmlEmailBody({required this.html, this.message});
 
   @override
   Widget build(BuildContext context) {
+    final processedHtml = message != null
+        ? EmailHtmlProcessor.processHtml(html, message!)
+        : html;
     return SizedBox(
       width: double.infinity,
       child: Container(
         constraints: const BoxConstraints(minHeight: 200),
         child: HtmlWidget(
-          html,
+          processedHtml,
           textStyle: const TextStyle(fontSize: 15, height: 1.5),
+          customStylesBuilder: (element) {
+            if (element.localName == 'table') {
+              return {'max-width': '100%', 'overflow': 'hidden'};
+            }
+            return null;
+          },
         ),
       ),
     );

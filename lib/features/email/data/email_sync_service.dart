@@ -72,7 +72,7 @@ class EmailSyncService {
           continue;
         }
 
-        final existing = await _emailsDao.findByMessageId(messageId);
+        final existing = await _emailsDao.findByMessageId(messageId, accountId: accountId);
         if (existing != null) {
           skipped++;
           continue;
@@ -131,7 +131,7 @@ class EmailSyncService {
           continue;
         }
 
-        final existing = await _emailsDao.findByMessageId(messageId);
+        final existing = await _emailsDao.findByMessageId(messageId, accountId: accountId);
         if (existing != null) {
           skipped++;
           continue;
@@ -193,7 +193,7 @@ class EmailSyncService {
           continue;
         }
 
-        final existing = await _emailsDao.findByMessageId(messageId);
+        final existing = await _emailsDao.findByMessageId(messageId, accountId: accountId);
         if (existing != null) {
           skipped++;
           continue;
