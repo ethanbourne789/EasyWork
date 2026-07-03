@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../l10n/app_localizations.dart';
 import '../../../features/email/providers/email_providers.dart';
+import '../../../features/email/data/email_sync_service.dart';
 import '../../../features/email/domain/email_account_entity.dart';
 import '../../../features/email/presentation/pages/email_accounts_page.dart';
 import '../../../features/email/presentation/pages/email_detail_page.dart';
@@ -125,7 +126,7 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
     );
   }
 
-  void _handleNarrowMenuAction(BuildContext context, String value) {
+  Future<void> _handleNarrowMenuAction(BuildContext context, String value) async {
     switch (value) {
       case 'compose':
         Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const ComposePage()));
@@ -133,8 +134,14 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
         Navigator.push<void>(context, MaterialPageRoute<void>(builder: (_) => const EmailAccountsPage()));
       case 'refresh':
         final accounts = ref.read(emailAccountListProvider).valueOrNull;
-        if (accounts != null && accounts.isNotEmpty) {
+        final syncService = ref.read(emailSyncServiceProvider);
+        if (accounts != null && syncService != null) {
+          for (final account in accounts) {
+            await syncService.incrementalSync(account.id!);
+          }
           ref.invalidate(localEmailListProvider(accounts.first.id!));
+          ref.invalidate(unifiedMailboxListProvider);
+          ref.invalidate(unifiedEmailListProvider(ref.read(selectedFolderProvider)));
         }
       case 'inbox':
         ref.read(selectedFolderProvider.notifier).state = 'inbox';
@@ -297,7 +304,13 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
               }
               return RefreshIndicator(
                 onRefresh: () async {
+                  final syncService = ref.read(emailSyncServiceProvider);
+                  if (syncService != null) {
+                    await syncService.incrementalSync(widget.accountId);
+                  }
                   ref.invalidate(localEmailListProvider(widget.accountId));
+                  ref.invalidate(unifiedMailboxListProvider);
+                  ref.invalidate(unifiedEmailListProvider(ref.read(selectedFolderProvider)));
                 },
                 child: ListView.builder(
                   itemCount: filtered.length,

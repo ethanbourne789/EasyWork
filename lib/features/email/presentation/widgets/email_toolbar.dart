@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../data/mailbox_merger.dart';
+import '../../data/email_sync_service.dart';
 import '../../providers/email_providers.dart';
 import '../pages/compose_page.dart';
 import '../pages/email_accounts_page.dart';
@@ -45,8 +46,16 @@ class EmailToolbar extends ConsumerWidget {
               _ToolbarIcon(
                 icon: Icons.refresh,
                 label: '刷新',
-                onTap: () {
+                onTap: () async {
+                  final accounts = ref.read(emailAccountListProvider).valueOrNull;
+                  final syncService = ref.read(emailSyncServiceProvider);
+                  if (accounts != null && syncService != null) {
+                    for (final account in accounts) {
+                      await syncService.incrementalSync(account.id!);
+                    }
+                  }
                   ref.invalidate(unifiedMailboxListProvider);
+                  ref.invalidate(unifiedEmailListProvider(ref.read(selectedFolderProvider)));
                 },
               ),
               _ToolbarIcon(
