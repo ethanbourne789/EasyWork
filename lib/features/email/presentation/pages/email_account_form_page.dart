@@ -33,6 +33,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
   bool _isTesting = false;
   bool _isSaving = false;
   String? _testResult;
+  ds.ConnectionTestResult? _lastTestResult;
   String _syncPeriod = '1m';
   late FocusNode _emailFocusNode;
 
@@ -186,6 +187,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
       );
 
       if (mounted) {
+        _lastTestResult = result;
         setState(() {
           _testResult = result.success
               ? '连接成功！发现 ${result.imapFolders} 个文件夹'
@@ -207,6 +209,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
     setState(() => _isSaving = true);
     try {
       final repo = ref.read(emailRepositoryProvider);
+      if (repo == null) return;
       final account = EmailAccountEntity(
         id: widget.account?.id,
         displayName: _displayNameController.text.trim(),
@@ -220,6 +223,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         smtpUseSsl: _smtpUseSsl,
         syncPeriod: _syncPeriod,
         syncInterval: int.tryParse(_syncIntervalController.text) ?? 5,
+        supportsIdle: _lastTestResult?.supportsIdle ?? false,
       );
 
       if (widget.account != null) {
@@ -227,6 +231,9 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         if (account.password != null && account.password!.isNotEmpty) {
           await CredentialStore().savePassword(account.id!, account.password!);
         }
+        final dataSources = ref.read(mailDataSourcesProvider.notifier);
+        dataSources.removeAccount(account.id!);
+        await _connectAndSync(account.id!, account);
       } else {
         final accountId = await repo.createAccount(account);
         if (account.password != null && account.password!.isNotEmpty) {
@@ -269,11 +276,14 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
       );
 
       final repo = ref.read(emailRepositoryProvider);
+      if (repo == null) return;
       await repo.syncMailboxes(accountId);
 
       final syncService = ref.read(emailSyncServiceProvider);
       if (syncService != null) {
         await syncService.firstSync(accountId, count: 50);
+        await syncService.refetchEmptyBodyMessages(accountId);
+        await syncService.connectAndSync(accountId);
       }
 
       ref.invalidate(unifiedMailboxListProvider);

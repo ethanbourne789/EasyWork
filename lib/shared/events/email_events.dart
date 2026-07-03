@@ -67,10 +67,10 @@ class EmailFlagsChangedEvent extends AppEvent {
 
 class EmailVanishedEvent extends AppEvent {
   final int accountId;
-  final List<String> messageIds;
+  final List<int> uids;
 
   EmailVanishedEvent({
     required this.accountId,
-    required this.messageIds,
+    required this.uids,
   }) : super(moduleName: 'email');
 }

@@ -62,22 +62,21 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
           if (accounts.isEmpty) {
             return _buildEmptyState(context);
           }
-          final accountId = accounts.first.id!;
           return Row(
             children: [
               Expanded(
                 flex: 1,
-                child: EmailListView(accountId: accountId),
+                child: EmailListView(accountId: accounts.first.id!),
               ),
               VerticalDivider(width: 1),
               Expanded(
                 flex: 3,
-                child: EmailDetailView(accountId: accountId),
+                child: EmailDetailView(accountId: -1),
               ),
               VerticalDivider(width: 1),
               SizedBox(
                 width: 56,
-                child: EmailToolbar(accountId: accountId),
+                child: EmailToolbar(accountId: -1),
               ),
             ],
           );
@@ -255,6 +254,17 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
     final accounts = ref.watch(emailAccountListProvider).valueOrNull ?? [];
     final accountColorMap = {for (final a in accounts) a.id!: Color(a.accentColor)};
 
+    final allMailboxes = mailboxesAsync.valueOrNull ?? [];
+    final unifiedFolder = allMailboxes.where((f) => f.key == selectedFolder).firstOrNull;
+    final selectedPaths = <String>{};
+    if (unifiedFolder != null) {
+      for (final a in unifiedFolder.accounts) {
+        if (a.accountId == widget.accountId) {
+          selectedPaths.add(a.mailboxPath);
+        }
+      }
+    }
+
     return Column(
       children: [
         mailboxesAsync.when(
@@ -290,7 +300,10 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
         Expanded(
           child: emailsAsync.when(
             data: (emails) {
-              final filtered = emails.where((e) => e.folder == selectedFolder).toList();
+              final filtered = emails.where((e) {
+                if (selectedPaths.isEmpty) return e.folder == selectedFolder;
+                return selectedPaths.contains(e.folder);
+              }).toList();
               if (filtered.isEmpty) {
                 return Center(
                   child: Column(

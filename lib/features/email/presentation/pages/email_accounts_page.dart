@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../domain/email_account_entity.dart';
 import '../../providers/email_providers.dart';
 import 'email_account_form_page.dart';
@@ -9,11 +10,12 @@ class EmailAccountsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final accountsAsync = ref.watch(emailAccountListProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('邮箱账户'),
+        title: Text(loc.email_accounts),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -64,7 +66,7 @@ class EmailAccountsPage extends ConsumerWidget {
                   children: [
                     IconButton(
                       icon: const Icon(Icons.edit, size: 20),
-                      tooltip: '编辑',
+                      tooltip: loc.common_edit,
                       onPressed: () => Navigator.push<Widget>(
                         context,
                         MaterialPageRoute<Widget>(
@@ -74,7 +76,7 @@ class EmailAccountsPage extends ConsumerWidget {
                     ),
                     IconButton(
                       icon: const Icon(Icons.delete, size: 20),
-                      tooltip: '删除',
+                      tooltip: loc.common_delete,
                       onPressed: () => _confirmDelete(context, ref, account),
                     ),
                   ],
@@ -118,7 +120,9 @@ class EmailAccountsPage extends ConsumerWidget {
 
     if (confirmed == true && account.id != null) {
       final repo = ref.read(emailRepositoryProvider);
-      await repo.deleteAccount(account.id!);
+      if (repo != null) {
+        await repo.deleteAccount(account.id!);
+      }
       ref.invalidate(emailAccountListProvider);
       if (context.mounted) {
         ScaffoldMessenger.of(context).showSnackBar(

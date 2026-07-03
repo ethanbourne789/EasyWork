@@ -16,14 +16,27 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   Future<Email?> getEmailById(int id) =>
       (select(emails)..where((t) => t.id.equals(id))).getSingleOrNull();
 
-  Future<Email?> findByMessageId(String messageId, {int? accountId}) {
+  Future<Email?> findByMessageId(String messageId, {int? accountId}) async {
+    final query = select(emails)..where((t) => t.messageId.equals(messageId));
     if (accountId != null) {
-      return (select(emails)
-            ..where((t) => t.messageId.equals(messageId) & t.accountId.equals(accountId)))
-          .getSingleOrNull();
+      query.where((t) => t.accountId.equals(accountId));
     }
-    return (select(emails)..where((t) => t.messageId.equals(messageId)))
-        .getSingleOrNull();
+    final results = await query.get();
+    if (results.isEmpty) return null;
+    if (results.length == 1) return results.first;
+    // Multiple duplicates: keep the one with bodyHtml, or the first
+    final withBody = results.where((e) => e.bodyHtml != null && e.bodyHtml!.isNotEmpty);
+    return withBody.isNotEmpty ? withBody.first : results.first;
+  }
+
+  Future<List<Email>> getEmailsByAccountWithEmptyBody(int accountId, {int limit = 50}) async {
+    return (select(emails)
+          ..where((t) =>
+              t.accountId.equals(accountId) &
+              (t.bodyHtml.isNull() | t.bodyHtml.equals('')))
+          ..orderBy([(t) => OrderingTerm.desc(t.receivedAt)])
+          ..limit(limit))
+        .get();
   }
 
   Future<int> deleteEmailsByAccount(int accountId) =>
@@ -31,16 +44,17 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
 
   Future<int> deleteDuplicateEmails(int accountId) async {
     final allEmails = await getEmailsByAccount(accountId);
-    final seen = <String, Email>{};
+    final seen = <String, int>{};
     final idsToDelete = <int>{};
     for (final email in allEmails) {
-      final existing = seen[email.messageId];
-      if (existing == null) {
-        seen[email.messageId] = email;
+      final existingId = seen[email.messageId];
+      if (existingId == null) {
+        seen[email.messageId] = email.id!;
       } else {
-        if (email.bodyHtml != null && existing.bodyHtml == null) {
-          idsToDelete.add(existing.id!);
-          seen[email.messageId] = email;
+        final existingBody = allEmails.firstWhere((e) => e.id == existingId).bodyHtml;
+        if (email.bodyHtml != null && existingBody == null) {
+          idsToDelete.add(existingId);
+          seen[email.messageId] = email.id!;
         } else {
           idsToDelete.add(email.id!);
         }
@@ -57,6 +71,37 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
 
   Future<int> insertEmail(EmailsCompanion email) => into(emails).insert(email);
 
+  Future<int> upsertEmail(EmailsCompanion email) async {
+    // Try insert first — if the unique constraint (messageId, accountId) fires,
+    // fall through to the update path. This eliminates the race window between
+    // select and insert that caused duplicate rows.
+    try {
+      return await into(emails).insert(email);
+    } catch (_) {
+      // Unique constraint (messageId, accountId) likely violated — update instead.
+    }
+
+    final existing = await (select(emails)
+          ..where((t) =>
+              t.messageId.equals(email.messageId.value) &
+              t.accountId.equals(email.accountId.value)))
+        .get();
+    if (existing.isEmpty) return 0;
+
+    final target = existing.firstWhere(
+      (e) => e.bodyHtml != null && e.bodyHtml!.isNotEmpty,
+      orElse: () => existing.first,
+    );
+    await (update(emails)..where((t) => t.id.equals(target.id))).write(email);
+    // Delete other duplicates
+    for (final e in existing) {
+      if (e.id != target.id) {
+        await deleteEmail(e.id);
+      }
+    }
+    return target.id;
+  }
+
   Future<bool> updateEmail(EmailsCompanion email) =>
       update(emails).replace(email);
 
@@ -67,7 +112,24 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
       (select(emails)..where((t) => t.accountId.equals(accountId))).watch();
 
   // Search methods
-  Future<List<Email>> searchEmails(String query) => searchEmailsLike(query);
+  Future<List<Email>> searchEmails(String query) async {
+    // Use FTS5 for full-text search, falling back to LIKE on failure.
+    try {
+      final ftsResults = await customSelect(
+        'SELECT rowid FROM emails_fts WHERE emails_fts MATCH ? ORDER BY rank LIMIT 50',
+        variables: [Variable.withString(query)],
+        readsFrom: {emails},
+      ).get();
+      if (ftsResults.isEmpty) return [];
+      final ids = ftsResults.map((r) => r.data['rowid'] as int).toList();
+      return (select(emails)
+            ..where((t) => t.id.isIn(ids))
+            ..orderBy([(t) => OrderingTerm.desc(t.receivedAt)]))
+          .get();
+    } catch (_) {
+      return searchEmailsLike(query);
+    }
+  }
 
   Future<List<Email>> searchEmailsLike(String query) async {
     final q = '%$query%';
@@ -107,6 +169,15 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
       readsFrom: {emails},
     ).getSingle();
     return result.data['count'] as int? ?? 0;
+  }
+
+  Future<int?> getMaxUidByAccount(int accountId) async {
+    final result = await customSelect(
+      'SELECT MAX(uid) as max_uid FROM emails WHERE account_id = ? AND uid IS NOT NULL',
+      variables: [Variable.withInt(accountId)],
+      readsFrom: {emails},
+    ).getSingle();
+    return result.data['max_uid'] as int?;
   }
 
   Future<int> getTotalUnreadCount() async {
@@ -166,11 +237,11 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
     if (conditions.length == 1) {
       final c = conditions.first;
       query.where((t) =>
-          t.accountId.equals(c.accountId) & t.folder.equals(c.folder));
+          t.accountId.equals(c.accountId) & t.folder.lower().equals(c.folder.toLowerCase()));
     } else {
       query.where((t) {
         final expr = conditions
-            .map((c) => t.accountId.equals(c.accountId) & t.folder.equals(c.folder))
+            .map((c) => t.accountId.equals(c.accountId) & t.folder.lower().equals(c.folder.toLowerCase()))
             .reduce((a, b) => a | b);
         return expr;
       });

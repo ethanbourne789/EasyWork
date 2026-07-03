@@ -1,16 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../providers/email_providers.dart';
+import '../../data/email_sync_service.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/date_util.dart';
 
-class EmailListView extends ConsumerWidget {
+class EmailListView extends ConsumerStatefulWidget {
   final int accountId;
 
   const EmailListView({super.key, required this.accountId});
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
+  ConsumerState<EmailListView> createState() => _EmailListViewState();
+}
+
+class _EmailListViewState extends ConsumerState<EmailListView> {
+  final _scrollController = ScrollController();
+  bool _isLoadingMore = false;
+
+  @override
+  void initState() {
+    super.initState();
+    _scrollController.addListener(_onScroll);
+  }
+
+  @override
+  void dispose() {
+    _scrollController.removeListener(_onScroll);
+    _scrollController.dispose();
+    super.dispose();
+  }
+
+  void _onScroll() {
+    if (_scrollController.position.pixels >=
+        _scrollController.position.maxScrollExtent - 200 &&
+        !_isLoadingMore) {
+      _loadMore();
+    }
+  }
+
+  Future<void> _loadMore() async {
+    setState(() => _isLoadingMore = true);
+    final syncService = ref.read(emailSyncServiceProvider);
+    if (syncService != null) {
+      final accounts = ref.read(emailAccountListProvider).valueOrNull ?? [];
+      for (final account in accounts) {
+        if (account.id != null) {
+          await syncService.fetchOlderMessages(account.id!);
+        }
+      }
+      final selectedFolder = ref.read(selectedFolderProvider);
+      ref.invalidate(unifiedEmailListProvider(selectedFolder));
+    }
+    if (mounted) setState(() => _isLoadingMore = false);
+  }
+
+  @override
+  Widget build(BuildContext context) {
     final selectedFolder = ref.watch(selectedFolderProvider);
     final emailsAsync = ref.watch(unifiedEmailListProvider(selectedFolder));
 
@@ -30,11 +76,27 @@ class EmailListView extends ConsumerWidget {
         }
         return RefreshIndicator(
           onRefresh: () async {
+            final syncService = ref.read(emailSyncServiceProvider);
+            if (syncService != null) {
+              final accounts = ref.read(emailAccountListProvider).valueOrNull ?? [];
+              for (final account in accounts) {
+                if (account.id != null) {
+                  await syncService.incrementalSync(account.id!);
+                }
+              }
+            }
             ref.invalidate(unifiedEmailListProvider(selectedFolder));
           },
           child: ListView.builder(
-            itemCount: emails.length,
+            controller: _scrollController,
+            itemCount: emails.length + (_isLoadingMore ? 1 : 0),
             itemBuilder: (context, index) {
+              if (index == emails.length) {
+                return const Padding(
+                  padding: EdgeInsets.all(16),
+                  child: Center(child: SizedBox(width: 20, height: 20, child: CircularProgressIndicator(strokeWidth: 2))),
+                );
+              }
               final email = emails[index];
               final subject = email.subject ?? '(无主题)';
               final from = email.fromName ?? email.fromAddress;
@@ -44,7 +106,7 @@ class EmailListView extends ConsumerWidget {
 
               return ListTile(
                 selected: isSelected,
-                selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withOpacity(0.3),
+                selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
                 leading: CircleAvatar(
                   child: Text(from.isNotEmpty ? from[0].toUpperCase() : '?'),
                 ),

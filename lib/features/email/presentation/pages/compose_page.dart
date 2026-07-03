@@ -29,6 +29,8 @@ class ComposePage extends ConsumerStatefulWidget {
 
 class _ComposePageState extends ConsumerState<ComposePage> {
   final _toController = TextEditingController();
+  final _ccController = TextEditingController();
+  final _bccController = TextEditingController();
   final _subjectController = TextEditingController();
   final _bodyController = TextEditingController();
   bool _isSending = false;
@@ -70,6 +72,8 @@ class _ComposePageState extends ConsumerState<ComposePage> {
   @override
   void dispose() {
     _toController.dispose();
+    _ccController.dispose();
+    _bccController.dispose();
     _subjectController.dispose();
     _bodyController.dispose();
     super.dispose();
@@ -126,12 +130,21 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     required List<String> to,
     required String subject,
     required String textBody,
+    List<String> cc = const [],
+    List<String> bcc = const [],
   }) {
     final builder = MessageBuilder()
       ..from = [MailAddress(null, from)]
       ..to = to.map((addr) => MailAddress(null, addr)).toList()
       ..subject = subject
       ..addTextPlain(textBody);
+
+    if (cc.isNotEmpty) {
+      builder.cc = cc.map((addr) => MailAddress(null, addr)).toList();
+    }
+    if (bcc.isNotEmpty) {
+      builder.bcc = bcc.map((addr) => MailAddress(null, addr)).toList();
+    }
 
     for (final item in _attachments) {
       final mediaType = _guessMediaType(item.fileName);
@@ -155,6 +168,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       originalMessage,
       MailAddress(null, from),
       replyAll: replyAll,
+      quoteOriginalText: true,
     );
     builder.addTextPlain(replyBody);
 
@@ -178,6 +192,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     final builder = MessageBuilder.prepareForwardMessage(
       originalMessage,
       from: MailAddress(null, from),
+      forwardAttachments: true,
     );
     builder.addTextPlain(forwardBody);
 
@@ -211,9 +226,13 @@ class _ComposePageState extends ConsumerState<ComposePage> {
     setState(() => _isSending = true);
     try {
       final repo = ref.read(emailRepositoryProvider);
+      if (repo == null) return;
       final toList = _toController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
       MimeMessage message;
+
+      final ccList = _ccController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      final bccList = _bccController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
 
       if (widget.replyToMessage != null) {
         message = _buildReplyWithAttachments(
@@ -233,6 +252,8 @@ class _ComposePageState extends ConsumerState<ComposePage> {
           to: toList,
           subject: _subjectController.text,
           textBody: _bodyController.text,
+          cc: ccList,
+          bcc: bccList,
         );
       }
 
@@ -263,6 +284,11 @@ class _ComposePageState extends ConsumerState<ComposePage> {
       appBar: AppBar(
         title: Text(_getAppBarTitle()),
         actions: [
+          IconButton(
+            icon: const Icon(Icons.save_outlined),
+            onPressed: _isSending ? null : _saveDraft,
+            tooltip: '保存草稿',
+          ),
           IconButton(
             icon: const Icon(Icons.attach_file),
             onPressed: _pickAttachments,
@@ -314,6 +340,24 @@ class _ComposePageState extends ConsumerState<ComposePage> {
             keyboardType: TextInputType.emailAddress,
           ),
           TextField(
+            controller: _ccController,
+            decoration: const InputDecoration(
+              labelText: '抄送 (CC)',
+              border: UnderlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            keyboardType: TextInputType.emailAddress,
+          ),
+          TextField(
+            controller: _bccController,
+            decoration: const InputDecoration(
+              labelText: '密送 (BCC)',
+              border: UnderlineInputBorder(),
+              contentPadding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+            ),
+            keyboardType: TextInputType.emailAddress,
+          ),
+          TextField(
             controller: _subjectController,
             decoration: const InputDecoration(
               labelText: '主题',
@@ -357,6 +401,55 @@ class _ComposePageState extends ConsumerState<ComposePage> {
         ],
       ),
     );
+  }
+
+  Future<void> _saveDraft() async {
+    if (_selectedAccount == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('请先选择发件账户')),
+        );
+      }
+      return;
+    }
+
+    try {
+      final toList = _toController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty).toList();
+      final builder = MessageBuilder()
+        ..from = [MailAddress(_selectedAccount!.displayName, _selectedAccount!.email)]
+        ..to = toList.map((addr) => MailAddress(null, addr)).toList()
+        ..subject = _subjectController.text;
+
+      if (_ccController.text.isNotEmpty) {
+        builder.cc = _ccController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)
+            .map((addr) => MailAddress(null, addr)).toList();
+      }
+      if (_bccController.text.isNotEmpty) {
+        builder.bcc = _bccController.text.split(',').map((s) => s.trim()).where((s) => s.isNotEmpty)
+            .map((addr) => MailAddress(null, addr)).toList();
+      }
+
+      if (_bodyController.text.isNotEmpty) {
+        builder.addTextPlain(_bodyController.text);
+      }
+
+      final message = builder.buildMimeMessage();
+      final ds = ref.read(mailDataSourcesProvider)[_selectedAccount!.id!];
+      if (ds != null) {
+        await ds.saveDraft(message);
+        if (mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('草稿已保存'), backgroundColor: Colors.green),
+          );
+        }
+      }
+    } catch (e) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('保存草稿失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   String _getAppBarTitle() {

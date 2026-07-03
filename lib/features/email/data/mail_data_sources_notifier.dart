@@ -49,8 +49,13 @@ class MailDataSourcesNotifier extends StateNotifier<Map<int, MailDataSource>> {
 
   @override
   void dispose() {
-    for (final ds in state.values) {
-      ds.close();
+    // Snapshot data sources before clearing state so close() can run.
+    // StateNotifier.dispose() is synchronous — we cannot await, but we
+    // must fire the close futures so IMAP/SMTP connections are torn down.
+    final dataSources = state.values.toList();
+    state = {};
+    for (final ds in dataSources) {
+      ds.close(); // ignore: unawaited_futures — dispose is sync
     }
     super.dispose();
   }

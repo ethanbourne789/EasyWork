@@ -23,8 +23,8 @@ class EmailToTaskService {
   }) : _eventBus = eventBus;
 
   /// Convert an email to a task description
-  /// Returns a result containing the task info (actual task creation is pending task module)
   Future<EmailToTaskResult> convertEmailToTask({
+    required int emailId,
     required MimeMessage email,
     required String title,
     String? description,
@@ -49,7 +49,7 @@ class EmailToTaskService {
     final taskId = DateTime.now().millisecondsSinceEpoch;
 
     _eventBus.publish(EmailConvertedToTaskEvent(
-      emailId: 0,
+      emailId: emailId,
       taskId: taskId,
       subject: subject,
     ));

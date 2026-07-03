@@ -16,19 +16,17 @@ class EmailHtmlProcessor {
   static String _rewriteCidImages(String html, MimeMessage message) {
     if (!html.contains('cid:')) return html;
 
-    final parts = message.parts;
-    if (parts == null || parts.isEmpty) return html;
-
     final cidMap = <String, String>{};
-    for (final part in parts) {
-      final contentId = part.decodeContentId();
+    for (final part in message.allPartsFlat) {
+      final contentId = part.decodeHeaderValue('content-id');
       if (contentId != null && contentId.isNotEmpty) {
+        final cleanCid = contentId.replaceAll('<', '').replaceAll('>', '');
         try {
-          final bytes = part.decodeContent();
+          final bytes = part.decodeContentBinary();
           if (bytes != null && bytes.isNotEmpty) {
-            final contentType = part.contentType?.mimeType ?? 'image/png';
+            final mimeType = part.mediaType.text;
             final base64Data = base64Encode(bytes);
-            cidMap[contentId] = 'data:$contentType;base64,$base64Data';
+            cidMap[cleanCid] = 'data:$mimeType;base64,$base64Data';
           }
         } catch (_) {}
       }

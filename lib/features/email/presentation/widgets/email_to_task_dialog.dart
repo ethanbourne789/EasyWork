@@ -2,19 +2,22 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:enough_mail/enough_mail.dart';
 import '../../../../core/utils/validators.dart';
+import '../../data/email_to_task_service.dart';
+import '../../../../core/providers/event_providers.dart';
 
 class EmailToTaskDialog extends ConsumerStatefulWidget {
   final MimeMessage email;
+  final int emailId;
 
-  const EmailToTaskDialog({super.key, required this.email});
+  const EmailToTaskDialog({super.key, required this.email, required this.emailId});
 
   @override
   ConsumerState<EmailToTaskDialog> createState() => _EmailToTaskDialogState();
 
-  static Future<bool> show(BuildContext context, MimeMessage email) async {
+  static Future<bool> show(BuildContext context, MimeMessage email, {int? emailId}) async {
     final result = await showDialog<bool>(
       context: context,
-      builder: (_) => EmailToTaskDialog(email: email),
+      builder: (_) => EmailToTaskDialog(email: email, emailId: emailId ?? 0),
     );
     return result ?? false;
   }
@@ -65,7 +68,7 @@ class _EmailToTaskDialogState extends ConsumerState<EmailToTaskDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              value: _priority,
+              initialValue: _priority,
               decoration: const InputDecoration(labelText: '优先级'),
               items: const [
                 DropdownMenuItem(value: 'high', child: Text('高')),
@@ -98,13 +101,24 @@ class _EmailToTaskDialogState extends ConsumerState<EmailToTaskDialog> {
           child: const Text('取消'),
         ),
         TextButton(
-          onPressed: () {
+          onPressed: () async {
             if (_formKey.currentState!.validate()) {
-              Navigator.pop(context, true);
-              // TODO: Actually create task via EmailToTaskService
-              ScaffoldMessenger.of(context).showSnackBar(
-                const SnackBar(content: Text('任务已创建')),
+              final eventBus = ref.read(eventBusProvider);
+              final service = EmailToTaskService(eventBus: eventBus);
+              await service.convertEmailToTask(
+                emailId: widget.emailId,
+                email: widget.email,
+                title: _titleController.text,
+                description: _descriptionController.text,
+                priority: _priority,
+                dueDate: _dueDate,
               );
+              if (context.mounted) {
+                Navigator.pop(context, true);
+                ScaffoldMessenger.of(context).showSnackBar(
+                  const SnackBar(content: Text('任务已创建')),
+                );
+              }
             }
           },
           child: const Text('创建'),

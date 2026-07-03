@@ -17,6 +17,7 @@ class AttachmentListWidget extends StatefulWidget {
 class _AttachmentListWidgetState extends State<AttachmentListWidget> {
   List<_AttachmentInfo> _attachments = [];
   final Map<String, String> _savedPaths = {};
+  final Set<String> _downloading = {};
   bool _loading = true;
 
   @override
@@ -32,10 +33,13 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
       final fileName = part.decodeFileName();
       if (fileName != null && fileName.isNotEmpty) {
         final contentType = part.mediaType.text;
+        final data = part.decodeContentBinary();
+        final size = data?.length ?? 0;
         attachments.add(_AttachmentInfo(
           fileName: fileName,
           contentType: contentType,
           part: part,
+          cachedSize: size,
         ));
       }
       final childParts = part.parts;
@@ -60,6 +64,8 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
   }
 
   Future<void> _saveAttachment(_AttachmentInfo info) async {
+    if (_downloading.contains(info.fileName)) return;
+    setState(() => _downloading.add(info.fileName));
     try {
       final appDir = await getApplicationDocumentsDirectory();
       final attachDir = Directory(p.join(appDir.path, 'attachments'));
@@ -69,18 +75,24 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
 
       final file = File(p.join(attachDir.path, info.fileName));
       final data = info.part.decodeContentBinary();
-      if (data != null) {
+      if (data != null && mounted) {
         await file.writeAsBytes(data);
-        setState(() => _savedPaths[info.fileName] = file.path);
+        setState(() {
+          _savedPaths[info.fileName] = file.path;
+          _downloading.remove(info.fileName);
+        });
 
         if (mounted) {
           ScaffoldMessenger.of(context).showSnackBar(
             SnackBar(content: Text('已保存: ${info.fileName}')),
           );
         }
+      } else if (mounted) {
+        setState(() => _downloading.remove(info.fileName));
       }
     } catch (e) {
       if (mounted) {
+        setState(() => _downloading.remove(info.fileName));
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
         );
@@ -199,28 +211,40 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
                 style: const TextStyle(fontSize: 13),
               ),
               subtitle: Text(
-                _formatSize(info.part.decodeContentBinary()?.length ?? 0),
+                _formatSize(info.cachedSize),
                 style: TextStyle(fontSize: 11, color: Colors.grey[500]),
               ),
               trailing: Row(
                 mainAxisSize: MainAxisSize.min,
                 children: [
-                  IconButton(
-                    icon: Icon(
-                      isSaved ? Icons.open_in_new : Icons.download,
-                      size: 20,
+                  if (_downloading.contains(info.fileName))
+                    const SizedBox(
+                      width: 32,
+                      height: 32,
+                      child: Padding(
+                        padding: EdgeInsets.all(6),
+                        child: CircularProgressIndicator(strokeWidth: 2),
+                      ),
+                    )
+                  else
+                    IconButton(
+                      icon: Icon(
+                        isSaved ? Icons.open_in_new : Icons.download,
+                        size: 20,
+                      ),
+                      tooltip: isSaved ? '打开' : '下载',
+                      onPressed: () => isSaved
+                          ? _openAttachment(info)
+                          : _saveAttachment(info),
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     ),
-                    tooltip: isSaved ? '打开' : '下载',
-                    onPressed: () => isSaved
-                        ? _openAttachment(info)
-                        : _saveAttachment(info),
-                    padding: const EdgeInsets.all(4),
-                    constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
-                  ),
                   IconButton(
                     icon: const Icon(Icons.more_vert, size: 20),
                     tooltip: '更多',
-                    onPressed: () => _showAttachmentMenu(context, info),
+                    onPressed: _downloading.contains(info.fileName)
+                        ? null
+                        : () => _showAttachmentMenu(context, info),
                     padding: const EdgeInsets.all(4),
                     constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                   ),
@@ -275,10 +299,12 @@ class _AttachmentInfo {
   final String fileName;
   final String contentType;
   final MimePart part;
+  final int cachedSize;
 
   const _AttachmentInfo({
     required this.fileName,
     required this.contentType,
     required this.part,
+    this.cachedSize = 0,
   });
 }

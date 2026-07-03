@@ -10,7 +10,7 @@ abstract class EmailRepository {
   Future<void> deleteAccount(int id);
 
   // --- Email operations ---
-  Future<List<MimeMessage>> fetchEmails(int accountId, {String folder = 'INBOX', int count = 30});
+  Future<List<MimeMessage>> fetchEmails(int accountId, {int count = 30});
   Future<MimeMessage?> fetchFullEmail(int accountId, MimeMessage envelope);
   Future<void> sendEmail(int accountId, MimeMessage message);
   Future<void> sendEmailBuilder(int accountId, MessageBuilder messageBuilder);

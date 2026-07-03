@@ -925,6 +925,11 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
   late final GeneratedColumn<String> messageId = GeneratedColumn<String>(
       'message_id', aliasedName, false,
       type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _uidMeta = const VerificationMeta('uid');
+  @override
+  late final GeneratedColumn<int> uid = GeneratedColumn<int>(
+      'uid', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
   static const VerificationMeta _subjectMeta =
       const VerificationMeta('subject');
   @override
@@ -1019,6 +1024,24 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
   late final GeneratedColumn<String> threadId = GeneratedColumn<String>(
       'thread_id', aliasedName, true,
       type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _inReplyToMeta =
+      const VerificationMeta('inReplyTo');
+  @override
+  late final GeneratedColumn<String> inReplyTo = GeneratedColumn<String>(
+      'in_reply_to', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _referencesMeta =
+      const VerificationMeta('references');
+  @override
+  late final GeneratedColumn<String> references = GeneratedColumn<String>(
+      'references', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
+  static const VerificationMeta _replyToMeta =
+      const VerificationMeta('replyTo');
+  @override
+  late final GeneratedColumn<String> replyTo = GeneratedColumn<String>(
+      'reply_to', aliasedName, true,
+      type: DriftSqlType.string, requiredDuringInsert: false);
   static const VerificationMeta _originalMessageJsonMeta =
       const VerificationMeta('originalMessageJson');
   @override
@@ -1030,6 +1053,7 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
         id,
         accountId,
         messageId,
+        uid,
         subject,
         fromName,
         fromAddress,
@@ -1044,6 +1068,9 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
         isStarred,
         folder,
         threadId,
+        inReplyTo,
+        references,
+        replyTo,
         originalMessageJson
       ];
   @override
@@ -1070,6 +1097,10 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
           messageId.isAcceptableOrUnknown(data['message_id']!, _messageIdMeta));
     } else if (isInserting) {
       context.missing(_messageIdMeta);
+    }
+    if (data.containsKey('uid')) {
+      context.handle(
+          _uidMeta, uid.isAcceptableOrUnknown(data['uid']!, _uidMeta));
     }
     if (data.containsKey('subject')) {
       context.handle(_subjectMeta,
@@ -1137,6 +1168,22 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
       context.handle(_threadIdMeta,
           threadId.isAcceptableOrUnknown(data['thread_id']!, _threadIdMeta));
     }
+    if (data.containsKey('in_reply_to')) {
+      context.handle(
+          _inReplyToMeta,
+          inReplyTo.isAcceptableOrUnknown(
+              data['in_reply_to']!, _inReplyToMeta));
+    }
+    if (data.containsKey('references')) {
+      context.handle(
+          _referencesMeta,
+          references.isAcceptableOrUnknown(
+              data['references']!, _referencesMeta));
+    }
+    if (data.containsKey('reply_to')) {
+      context.handle(_replyToMeta,
+          replyTo.isAcceptableOrUnknown(data['reply_to']!, _replyToMeta));
+    }
     if (data.containsKey('original_message_json')) {
       context.handle(
           _originalMessageJsonMeta,
@@ -1158,6 +1205,8 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
           .read(DriftSqlType.int, data['${effectivePrefix}account_id'])!,
       messageId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}message_id'])!,
+      uid: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}uid']),
       subject: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}subject']),
       fromName: attachedDatabase.typeMapping
@@ -1186,6 +1235,12 @@ class $EmailsTable extends Emails with TableInfo<$EmailsTable, Email> {
           .read(DriftSqlType.string, data['${effectivePrefix}folder'])!,
       threadId: attachedDatabase.typeMapping
           .read(DriftSqlType.string, data['${effectivePrefix}thread_id']),
+      inReplyTo: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}in_reply_to']),
+      references: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}references']),
+      replyTo: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}reply_to']),
       originalMessageJson: attachedDatabase.typeMapping.read(
           DriftSqlType.string, data['${effectivePrefix}original_message_json']),
     );
@@ -1201,6 +1256,7 @@ class Email extends DataClass implements Insertable<Email> {
   final int id;
   final int accountId;
   final String messageId;
+  final int? uid;
   final String? subject;
   final String? fromName;
   final String fromAddress;
@@ -1215,11 +1271,15 @@ class Email extends DataClass implements Insertable<Email> {
   final bool isStarred;
   final String folder;
   final String? threadId;
+  final String? inReplyTo;
+  final String? references;
+  final String? replyTo;
   final String? originalMessageJson;
   const Email(
       {required this.id,
       required this.accountId,
       required this.messageId,
+      this.uid,
       this.subject,
       this.fromName,
       required this.fromAddress,
@@ -1234,6 +1294,9 @@ class Email extends DataClass implements Insertable<Email> {
       required this.isStarred,
       required this.folder,
       this.threadId,
+      this.inReplyTo,
+      this.references,
+      this.replyTo,
       this.originalMessageJson});
   @override
   Map<String, Expression> toColumns(bool nullToAbsent) {
@@ -1241,6 +1304,9 @@ class Email extends DataClass implements Insertable<Email> {
     map['id'] = Variable<int>(id);
     map['account_id'] = Variable<int>(accountId);
     map['message_id'] = Variable<String>(messageId);
+    if (!nullToAbsent || uid != null) {
+      map['uid'] = Variable<int>(uid);
+    }
     if (!nullToAbsent || subject != null) {
       map['subject'] = Variable<String>(subject);
     }
@@ -1271,6 +1337,15 @@ class Email extends DataClass implements Insertable<Email> {
     if (!nullToAbsent || threadId != null) {
       map['thread_id'] = Variable<String>(threadId);
     }
+    if (!nullToAbsent || inReplyTo != null) {
+      map['in_reply_to'] = Variable<String>(inReplyTo);
+    }
+    if (!nullToAbsent || references != null) {
+      map['references'] = Variable<String>(references);
+    }
+    if (!nullToAbsent || replyTo != null) {
+      map['reply_to'] = Variable<String>(replyTo);
+    }
     if (!nullToAbsent || originalMessageJson != null) {
       map['original_message_json'] = Variable<String>(originalMessageJson);
     }
@@ -1282,6 +1357,7 @@ class Email extends DataClass implements Insertable<Email> {
       id: Value(id),
       accountId: Value(accountId),
       messageId: Value(messageId),
+      uid: uid == null && nullToAbsent ? const Value.absent() : Value(uid),
       subject: subject == null && nullToAbsent
           ? const Value.absent()
           : Value(subject),
@@ -1310,6 +1386,15 @@ class Email extends DataClass implements Insertable<Email> {
       threadId: threadId == null && nullToAbsent
           ? const Value.absent()
           : Value(threadId),
+      inReplyTo: inReplyTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(inReplyTo),
+      references: references == null && nullToAbsent
+          ? const Value.absent()
+          : Value(references),
+      replyTo: replyTo == null && nullToAbsent
+          ? const Value.absent()
+          : Value(replyTo),
       originalMessageJson: originalMessageJson == null && nullToAbsent
           ? const Value.absent()
           : Value(originalMessageJson),
@@ -1323,6 +1408,7 @@ class Email extends DataClass implements Insertable<Email> {
       id: serializer.fromJson<int>(json['id']),
       accountId: serializer.fromJson<int>(json['accountId']),
       messageId: serializer.fromJson<String>(json['messageId']),
+      uid: serializer.fromJson<int?>(json['uid']),
       subject: serializer.fromJson<String?>(json['subject']),
       fromName: serializer.fromJson<String?>(json['fromName']),
       fromAddress: serializer.fromJson<String>(json['fromAddress']),
@@ -1337,6 +1423,9 @@ class Email extends DataClass implements Insertable<Email> {
       isStarred: serializer.fromJson<bool>(json['isStarred']),
       folder: serializer.fromJson<String>(json['folder']),
       threadId: serializer.fromJson<String?>(json['threadId']),
+      inReplyTo: serializer.fromJson<String?>(json['inReplyTo']),
+      references: serializer.fromJson<String?>(json['references']),
+      replyTo: serializer.fromJson<String?>(json['replyTo']),
       originalMessageJson:
           serializer.fromJson<String?>(json['originalMessageJson']),
     );
@@ -1348,6 +1437,7 @@ class Email extends DataClass implements Insertable<Email> {
       'id': serializer.toJson<int>(id),
       'accountId': serializer.toJson<int>(accountId),
       'messageId': serializer.toJson<String>(messageId),
+      'uid': serializer.toJson<int?>(uid),
       'subject': serializer.toJson<String?>(subject),
       'fromName': serializer.toJson<String?>(fromName),
       'fromAddress': serializer.toJson<String>(fromAddress),
@@ -1362,6 +1452,9 @@ class Email extends DataClass implements Insertable<Email> {
       'isStarred': serializer.toJson<bool>(isStarred),
       'folder': serializer.toJson<String>(folder),
       'threadId': serializer.toJson<String?>(threadId),
+      'inReplyTo': serializer.toJson<String?>(inReplyTo),
+      'references': serializer.toJson<String?>(references),
+      'replyTo': serializer.toJson<String?>(replyTo),
       'originalMessageJson': serializer.toJson<String?>(originalMessageJson),
     };
   }
@@ -1370,6 +1463,7 @@ class Email extends DataClass implements Insertable<Email> {
           {int? id,
           int? accountId,
           String? messageId,
+          Value<int?> uid = const Value.absent(),
           Value<String?> subject = const Value.absent(),
           Value<String?> fromName = const Value.absent(),
           String? fromAddress,
@@ -1384,11 +1478,15 @@ class Email extends DataClass implements Insertable<Email> {
           bool? isStarred,
           String? folder,
           Value<String?> threadId = const Value.absent(),
+          Value<String?> inReplyTo = const Value.absent(),
+          Value<String?> references = const Value.absent(),
+          Value<String?> replyTo = const Value.absent(),
           Value<String?> originalMessageJson = const Value.absent()}) =>
       Email(
         id: id ?? this.id,
         accountId: accountId ?? this.accountId,
         messageId: messageId ?? this.messageId,
+        uid: uid.present ? uid.value : this.uid,
         subject: subject.present ? subject.value : this.subject,
         fromName: fromName.present ? fromName.value : this.fromName,
         fromAddress: fromAddress ?? this.fromAddress,
@@ -1403,6 +1501,9 @@ class Email extends DataClass implements Insertable<Email> {
         isStarred: isStarred ?? this.isStarred,
         folder: folder ?? this.folder,
         threadId: threadId.present ? threadId.value : this.threadId,
+        inReplyTo: inReplyTo.present ? inReplyTo.value : this.inReplyTo,
+        references: references.present ? references.value : this.references,
+        replyTo: replyTo.present ? replyTo.value : this.replyTo,
         originalMessageJson: originalMessageJson.present
             ? originalMessageJson.value
             : this.originalMessageJson,
@@ -1412,6 +1513,7 @@ class Email extends DataClass implements Insertable<Email> {
       id: data.id.present ? data.id.value : this.id,
       accountId: data.accountId.present ? data.accountId.value : this.accountId,
       messageId: data.messageId.present ? data.messageId.value : this.messageId,
+      uid: data.uid.present ? data.uid.value : this.uid,
       subject: data.subject.present ? data.subject.value : this.subject,
       fromName: data.fromName.present ? data.fromName.value : this.fromName,
       fromAddress:
@@ -1430,6 +1532,10 @@ class Email extends DataClass implements Insertable<Email> {
       isStarred: data.isStarred.present ? data.isStarred.value : this.isStarred,
       folder: data.folder.present ? data.folder.value : this.folder,
       threadId: data.threadId.present ? data.threadId.value : this.threadId,
+      inReplyTo: data.inReplyTo.present ? data.inReplyTo.value : this.inReplyTo,
+      references:
+          data.references.present ? data.references.value : this.references,
+      replyTo: data.replyTo.present ? data.replyTo.value : this.replyTo,
       originalMessageJson: data.originalMessageJson.present
           ? data.originalMessageJson.value
           : this.originalMessageJson,
@@ -1442,6 +1548,7 @@ class Email extends DataClass implements Insertable<Email> {
           ..write('id: $id, ')
           ..write('accountId: $accountId, ')
           ..write('messageId: $messageId, ')
+          ..write('uid: $uid, ')
           ..write('subject: $subject, ')
           ..write('fromName: $fromName, ')
           ..write('fromAddress: $fromAddress, ')
@@ -1456,31 +1563,39 @@ class Email extends DataClass implements Insertable<Email> {
           ..write('isStarred: $isStarred, ')
           ..write('folder: $folder, ')
           ..write('threadId: $threadId, ')
+          ..write('inReplyTo: $inReplyTo, ')
+          ..write('references: $references, ')
+          ..write('replyTo: $replyTo, ')
           ..write('originalMessageJson: $originalMessageJson')
           ..write(')'))
         .toString();
   }
 
   @override
-  int get hashCode => Object.hash(
-      id,
-      accountId,
-      messageId,
-      subject,
-      fromName,
-      fromAddress,
-      toList,
-      ccList,
-      bccList,
-      bodyText,
-      bodyHtml,
-      hasAttachments,
-      receivedAt,
-      isRead,
-      isStarred,
-      folder,
-      threadId,
-      originalMessageJson);
+  int get hashCode => Object.hashAll([
+        id,
+        accountId,
+        messageId,
+        uid,
+        subject,
+        fromName,
+        fromAddress,
+        toList,
+        ccList,
+        bccList,
+        bodyText,
+        bodyHtml,
+        hasAttachments,
+        receivedAt,
+        isRead,
+        isStarred,
+        folder,
+        threadId,
+        inReplyTo,
+        references,
+        replyTo,
+        originalMessageJson
+      ]);
   @override
   bool operator ==(Object other) =>
       identical(this, other) ||
@@ -1488,6 +1603,7 @@ class Email extends DataClass implements Insertable<Email> {
           other.id == this.id &&
           other.accountId == this.accountId &&
           other.messageId == this.messageId &&
+          other.uid == this.uid &&
           other.subject == this.subject &&
           other.fromName == this.fromName &&
           other.fromAddress == this.fromAddress &&
@@ -1502,6 +1618,9 @@ class Email extends DataClass implements Insertable<Email> {
           other.isStarred == this.isStarred &&
           other.folder == this.folder &&
           other.threadId == this.threadId &&
+          other.inReplyTo == this.inReplyTo &&
+          other.references == this.references &&
+          other.replyTo == this.replyTo &&
           other.originalMessageJson == this.originalMessageJson);
 }
 
@@ -1509,6 +1628,7 @@ class EmailsCompanion extends UpdateCompanion<Email> {
   final Value<int> id;
   final Value<int> accountId;
   final Value<String> messageId;
+  final Value<int?> uid;
   final Value<String?> subject;
   final Value<String?> fromName;
   final Value<String> fromAddress;
@@ -1523,11 +1643,15 @@ class EmailsCompanion extends UpdateCompanion<Email> {
   final Value<bool> isStarred;
   final Value<String> folder;
   final Value<String?> threadId;
+  final Value<String?> inReplyTo;
+  final Value<String?> references;
+  final Value<String?> replyTo;
   final Value<String?> originalMessageJson;
   const EmailsCompanion({
     this.id = const Value.absent(),
     this.accountId = const Value.absent(),
     this.messageId = const Value.absent(),
+    this.uid = const Value.absent(),
     this.subject = const Value.absent(),
     this.fromName = const Value.absent(),
     this.fromAddress = const Value.absent(),
@@ -1542,12 +1666,16 @@ class EmailsCompanion extends UpdateCompanion<Email> {
     this.isStarred = const Value.absent(),
     this.folder = const Value.absent(),
     this.threadId = const Value.absent(),
+    this.inReplyTo = const Value.absent(),
+    this.references = const Value.absent(),
+    this.replyTo = const Value.absent(),
     this.originalMessageJson = const Value.absent(),
   });
   EmailsCompanion.insert({
     this.id = const Value.absent(),
     required int accountId,
     required String messageId,
+    this.uid = const Value.absent(),
     this.subject = const Value.absent(),
     this.fromName = const Value.absent(),
     required String fromAddress,
@@ -1562,6 +1690,9 @@ class EmailsCompanion extends UpdateCompanion<Email> {
     this.isStarred = const Value.absent(),
     this.folder = const Value.absent(),
     this.threadId = const Value.absent(),
+    this.inReplyTo = const Value.absent(),
+    this.references = const Value.absent(),
+    this.replyTo = const Value.absent(),
     this.originalMessageJson = const Value.absent(),
   })  : accountId = Value(accountId),
         messageId = Value(messageId),
@@ -1571,6 +1702,7 @@ class EmailsCompanion extends UpdateCompanion<Email> {
     Expression<int>? id,
     Expression<int>? accountId,
     Expression<String>? messageId,
+    Expression<int>? uid,
     Expression<String>? subject,
     Expression<String>? fromName,
     Expression<String>? fromAddress,
@@ -1585,12 +1717,16 @@ class EmailsCompanion extends UpdateCompanion<Email> {
     Expression<bool>? isStarred,
     Expression<String>? folder,
     Expression<String>? threadId,
+    Expression<String>? inReplyTo,
+    Expression<String>? references,
+    Expression<String>? replyTo,
     Expression<String>? originalMessageJson,
   }) {
     return RawValuesInsertable({
       if (id != null) 'id': id,
       if (accountId != null) 'account_id': accountId,
       if (messageId != null) 'message_id': messageId,
+      if (uid != null) 'uid': uid,
       if (subject != null) 'subject': subject,
       if (fromName != null) 'from_name': fromName,
       if (fromAddress != null) 'from_address': fromAddress,
@@ -1605,6 +1741,9 @@ class EmailsCompanion extends UpdateCompanion<Email> {
       if (isStarred != null) 'is_starred': isStarred,
       if (folder != null) 'folder': folder,
       if (threadId != null) 'thread_id': threadId,
+      if (inReplyTo != null) 'in_reply_to': inReplyTo,
+      if (references != null) 'references': references,
+      if (replyTo != null) 'reply_to': replyTo,
       if (originalMessageJson != null)
         'original_message_json': originalMessageJson,
     });
@@ -1614,6 +1753,7 @@ class EmailsCompanion extends UpdateCompanion<Email> {
       {Value<int>? id,
       Value<int>? accountId,
       Value<String>? messageId,
+      Value<int?>? uid,
       Value<String?>? subject,
       Value<String?>? fromName,
       Value<String>? fromAddress,
@@ -1628,11 +1768,15 @@ class EmailsCompanion extends UpdateCompanion<Email> {
       Value<bool>? isStarred,
       Value<String>? folder,
       Value<String?>? threadId,
+      Value<String?>? inReplyTo,
+      Value<String?>? references,
+      Value<String?>? replyTo,
       Value<String?>? originalMessageJson}) {
     return EmailsCompanion(
       id: id ?? this.id,
       accountId: accountId ?? this.accountId,
       messageId: messageId ?? this.messageId,
+      uid: uid ?? this.uid,
       subject: subject ?? this.subject,
       fromName: fromName ?? this.fromName,
       fromAddress: fromAddress ?? this.fromAddress,
@@ -1647,6 +1791,9 @@ class EmailsCompanion extends UpdateCompanion<Email> {
       isStarred: isStarred ?? this.isStarred,
       folder: folder ?? this.folder,
       threadId: threadId ?? this.threadId,
+      inReplyTo: inReplyTo ?? this.inReplyTo,
+      references: references ?? this.references,
+      replyTo: replyTo ?? this.replyTo,
       originalMessageJson: originalMessageJson ?? this.originalMessageJson,
     );
   }
@@ -1662,6 +1809,9 @@ class EmailsCompanion extends UpdateCompanion<Email> {
     }
     if (messageId.present) {
       map['message_id'] = Variable<String>(messageId.value);
+    }
+    if (uid.present) {
+      map['uid'] = Variable<int>(uid.value);
     }
     if (subject.present) {
       map['subject'] = Variable<String>(subject.value);
@@ -1705,6 +1855,15 @@ class EmailsCompanion extends UpdateCompanion<Email> {
     if (threadId.present) {
       map['thread_id'] = Variable<String>(threadId.value);
     }
+    if (inReplyTo.present) {
+      map['in_reply_to'] = Variable<String>(inReplyTo.value);
+    }
+    if (references.present) {
+      map['references'] = Variable<String>(references.value);
+    }
+    if (replyTo.present) {
+      map['reply_to'] = Variable<String>(replyTo.value);
+    }
     if (originalMessageJson.present) {
       map['original_message_json'] =
           Variable<String>(originalMessageJson.value);
@@ -1718,6 +1877,7 @@ class EmailsCompanion extends UpdateCompanion<Email> {
           ..write('id: $id, ')
           ..write('accountId: $accountId, ')
           ..write('messageId: $messageId, ')
+          ..write('uid: $uid, ')
           ..write('subject: $subject, ')
           ..write('fromName: $fromName, ')
           ..write('fromAddress: $fromAddress, ')
@@ -1732,6 +1892,9 @@ class EmailsCompanion extends UpdateCompanion<Email> {
           ..write('isStarred: $isStarred, ')
           ..write('folder: $folder, ')
           ..write('threadId: $threadId, ')
+          ..write('inReplyTo: $inReplyTo, ')
+          ..write('references: $references, ')
+          ..write('replyTo: $replyTo, ')
           ..write('originalMessageJson: $originalMessageJson')
           ..write(')'))
         .toString();
@@ -11361,6 +11524,7 @@ typedef $$EmailsTableCreateCompanionBuilder = EmailsCompanion Function({
   Value<int> id,
   required int accountId,
   required String messageId,
+  Value<int?> uid,
   Value<String?> subject,
   Value<String?> fromName,
   required String fromAddress,
@@ -11375,12 +11539,16 @@ typedef $$EmailsTableCreateCompanionBuilder = EmailsCompanion Function({
   Value<bool> isStarred,
   Value<String> folder,
   Value<String?> threadId,
+  Value<String?> inReplyTo,
+  Value<String?> references,
+  Value<String?> replyTo,
   Value<String?> originalMessageJson,
 });
 typedef $$EmailsTableUpdateCompanionBuilder = EmailsCompanion Function({
   Value<int> id,
   Value<int> accountId,
   Value<String> messageId,
+  Value<int?> uid,
   Value<String?> subject,
   Value<String?> fromName,
   Value<String> fromAddress,
@@ -11395,6 +11563,9 @@ typedef $$EmailsTableUpdateCompanionBuilder = EmailsCompanion Function({
   Value<bool> isStarred,
   Value<String> folder,
   Value<String?> threadId,
+  Value<String?> inReplyTo,
+  Value<String?> references,
+  Value<String?> replyTo,
   Value<String?> originalMessageJson,
 });
 
@@ -11465,6 +11636,9 @@ class $$EmailsTableFilterComposer
   ColumnFilters<String> get messageId => $composableBuilder(
       column: $table.messageId, builder: (column) => ColumnFilters(column));
 
+  ColumnFilters<int> get uid => $composableBuilder(
+      column: $table.uid, builder: (column) => ColumnFilters(column));
+
   ColumnFilters<String> get subject => $composableBuilder(
       column: $table.subject, builder: (column) => ColumnFilters(column));
 
@@ -11507,6 +11681,15 @@ class $$EmailsTableFilterComposer
 
   ColumnFilters<String> get threadId => $composableBuilder(
       column: $table.threadId, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get inReplyTo => $composableBuilder(
+      column: $table.inReplyTo, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get references => $composableBuilder(
+      column: $table.references, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get replyTo => $composableBuilder(
+      column: $table.replyTo, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<String> get originalMessageJson => $composableBuilder(
       column: $table.originalMessageJson,
@@ -11590,6 +11773,9 @@ class $$EmailsTableOrderingComposer
   ColumnOrderings<String> get messageId => $composableBuilder(
       column: $table.messageId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<int> get uid => $composableBuilder(
+      column: $table.uid, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get subject => $composableBuilder(
       column: $table.subject, builder: (column) => ColumnOrderings(column));
 
@@ -11633,6 +11819,15 @@ class $$EmailsTableOrderingComposer
   ColumnOrderings<String> get threadId => $composableBuilder(
       column: $table.threadId, builder: (column) => ColumnOrderings(column));
 
+  ColumnOrderings<String> get inReplyTo => $composableBuilder(
+      column: $table.inReplyTo, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get references => $composableBuilder(
+      column: $table.references, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get replyTo => $composableBuilder(
+      column: $table.replyTo, builder: (column) => ColumnOrderings(column));
+
   ColumnOrderings<String> get originalMessageJson => $composableBuilder(
       column: $table.originalMessageJson,
       builder: (column) => ColumnOrderings(column));
@@ -11672,6 +11867,9 @@ class $$EmailsTableAnnotationComposer
 
   GeneratedColumn<String> get messageId =>
       $composableBuilder(column: $table.messageId, builder: (column) => column);
+
+  GeneratedColumn<int> get uid =>
+      $composableBuilder(column: $table.uid, builder: (column) => column);
 
   GeneratedColumn<String> get subject =>
       $composableBuilder(column: $table.subject, builder: (column) => column);
@@ -11714,6 +11912,15 @@ class $$EmailsTableAnnotationComposer
 
   GeneratedColumn<String> get threadId =>
       $composableBuilder(column: $table.threadId, builder: (column) => column);
+
+  GeneratedColumn<String> get inReplyTo =>
+      $composableBuilder(column: $table.inReplyTo, builder: (column) => column);
+
+  GeneratedColumn<String> get references => $composableBuilder(
+      column: $table.references, builder: (column) => column);
+
+  GeneratedColumn<String> get replyTo =>
+      $composableBuilder(column: $table.replyTo, builder: (column) => column);
 
   GeneratedColumn<String> get originalMessageJson => $composableBuilder(
       column: $table.originalMessageJson, builder: (column) => column);
@@ -11808,6 +12015,7 @@ class $$EmailsTableTableManager extends RootTableManager<
             Value<int> id = const Value.absent(),
             Value<int> accountId = const Value.absent(),
             Value<String> messageId = const Value.absent(),
+            Value<int?> uid = const Value.absent(),
             Value<String?> subject = const Value.absent(),
             Value<String?> fromName = const Value.absent(),
             Value<String> fromAddress = const Value.absent(),
@@ -11822,12 +12030,16 @@ class $$EmailsTableTableManager extends RootTableManager<
             Value<bool> isStarred = const Value.absent(),
             Value<String> folder = const Value.absent(),
             Value<String?> threadId = const Value.absent(),
+            Value<String?> inReplyTo = const Value.absent(),
+            Value<String?> references = const Value.absent(),
+            Value<String?> replyTo = const Value.absent(),
             Value<String?> originalMessageJson = const Value.absent(),
           }) =>
               EmailsCompanion(
             id: id,
             accountId: accountId,
             messageId: messageId,
+            uid: uid,
             subject: subject,
             fromName: fromName,
             fromAddress: fromAddress,
@@ -11842,12 +12054,16 @@ class $$EmailsTableTableManager extends RootTableManager<
             isStarred: isStarred,
             folder: folder,
             threadId: threadId,
+            inReplyTo: inReplyTo,
+            references: references,
+            replyTo: replyTo,
             originalMessageJson: originalMessageJson,
           ),
           createCompanionCallback: ({
             Value<int> id = const Value.absent(),
             required int accountId,
             required String messageId,
+            Value<int?> uid = const Value.absent(),
             Value<String?> subject = const Value.absent(),
             Value<String?> fromName = const Value.absent(),
             required String fromAddress,
@@ -11862,12 +12078,16 @@ class $$EmailsTableTableManager extends RootTableManager<
             Value<bool> isStarred = const Value.absent(),
             Value<String> folder = const Value.absent(),
             Value<String?> threadId = const Value.absent(),
+            Value<String?> inReplyTo = const Value.absent(),
+            Value<String?> references = const Value.absent(),
+            Value<String?> replyTo = const Value.absent(),
             Value<String?> originalMessageJson = const Value.absent(),
           }) =>
               EmailsCompanion.insert(
             id: id,
             accountId: accountId,
             messageId: messageId,
+            uid: uid,
             subject: subject,
             fromName: fromName,
             fromAddress: fromAddress,
@@ -11882,6 +12102,9 @@ class $$EmailsTableTableManager extends RootTableManager<
             isStarred: isStarred,
             folder: folder,
             threadId: threadId,
+            inReplyTo: inReplyTo,
+            references: references,
+            replyTo: replyTo,
             originalMessageJson: originalMessageJson,
           ),
           withReferenceMapper: (p0) => p0

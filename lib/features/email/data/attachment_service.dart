@@ -28,36 +28,13 @@ class AttachmentService {
 
   /// Extract attachment metadata from a MimeMessage
   List<AttachmentInfo> extractAttachments(MimeMessage message) {
-    final attachments = <AttachmentInfo>[];
-
-    void processPart(MimePart part, String parentPath) {
-      final fileName = part.decodeFileName();
-      if (fileName != null && fileName.isNotEmpty) {
-        final contentType = part.mediaType.text;
-        attachments.add(AttachmentInfo(
-          fileName: fileName,
-          contentType: contentType,
-          size: 0,
-          path: parentPath,
-        ));
-      }
-
-      final childParts = part.parts;
-      if (childParts != null) {
-        for (final child in childParts) {
-          processPart(child, '$parentPath/$fileName');
-        }
-      }
-    }
-
-    final messageParts = message.parts;
-    if (messageParts != null) {
-      for (final part in messageParts) {
-        processPart(part, '');
-      }
-    }
-
-    return attachments;
+    final contentInfos = message.findContentInfo(disposition: ContentDisposition.attachment);
+    return contentInfos.map((info) => AttachmentInfo(
+      fileName: info.fileName ?? '',
+      contentType: info.mediaType?.text ?? 'application/octet-stream',
+      size: 0,
+      path: '',
+    )).where((a) => a.fileName.isNotEmpty).toList();
   }
 
   /// Download and save an attachment from a message

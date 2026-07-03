@@ -43,19 +43,11 @@ class MailDataSource {
   Mailbox? get selectedMailbox => _selectedMailbox;
 
   Future<void> connect() async {
-    _client = MailClient(_account, isLogEnabled: false);
+    _client = MailClient(_account, isLogEnabled: false, downloadSizeLimit: 100 * 1024);
     await _client.connect(timeout: const Duration(seconds: 15));
     _connected = true;
 
     _subscriptions.addAll([
-      _client.eventBus.on<MailLoadEvent>().listen((event) {
-        _appEventBus.publish(NewEmailReceivedEvent(
-          messageId: event.message.decodeHeaderValue('message-id') ?? '',
-          localEmailId: 0,
-          fromAddress: event.message.from?.first.toString() ?? '',
-          subject: event.message.decodeSubject() ?? '',
-        ));
-      }),
       _client.eventBus.on<MailConnectionLostEvent>().listen((_) {
         _connected = false;
         _appEventBus.publish(EmailConnectionLostEvent(accountId: accountId));
@@ -74,25 +66,25 @@ class MailDataSource {
   Future<List<Mailbox>> listMailboxes() => _client.listMailboxes();
 
   Future<Mailbox> selectInbox() async {
-    final mailbox = await _client.selectInbox();
+    final mailbox = await _client.selectInbox(enableCondStore: true);
     _selectedMailbox = mailbox;
     return mailbox;
   }
 
   Future<Mailbox> selectMailbox(Mailbox mailbox) async {
-    final selected = await _client.selectMailbox(mailbox);
+    final selected = await _client.selectMailbox(mailbox, enableCondStore: true);
     _selectedMailbox = selected;
     return selected;
   }
 
   Future<Mailbox> selectMailboxByFlag(MailboxFlag flag) async {
-    final selected = await _client.selectMailboxByFlag(flag);
+    final selected = await _client.selectMailboxByFlag(flag, enableCondStore: true);
     _selectedMailbox = selected;
     return selected;
   }
 
   Future<Mailbox> selectMailboxByPath(String path) async {
-    final selected = await _client.selectMailboxByPath(path);
+    final selected = await _client.selectMailboxByPath(path, enableCondStore: true);
     _selectedMailbox = selected;
     return selected;
   }
@@ -111,7 +103,7 @@ class MailDataSource {
       await selectInbox();
     }
     return _client.fetchMessages(
-      mailbox: targetMailbox ?? _selectedMailbox,
+      mailbox: mailbox ?? _selectedMailbox!,
       count: count,
       fetchPreference: fetchPreference,
     );
@@ -431,14 +423,6 @@ class MailDataSource {
     await disconnect();
   }
 
-  @Deprecated('Use close() instead')
-  void dispose() {
-    for (final sub in _subscriptions) {
-      sub.cancel();
-    }
-    stopPolling();
-    close();
-  }
 }
 
 /// Auto-discover email server configuration
@@ -520,11 +504,12 @@ Future<ConnectionTestResult> testConnection({
 
     final tree = await client.listMailboxesAsTree();
     final folderCount = tree.root.children?.length ?? 0;
+    final supportsIdle = client.account.incoming.supports('IDLE');
 
     return ConnectionTestResult(
       success: true,
       imapFolders: folderCount,
-      supportsIdle: false,
+      supportsIdle: supportsIdle,
     );
   } on MailException catch (e) {
     return ConnectionTestResult(

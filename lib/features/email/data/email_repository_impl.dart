@@ -7,6 +7,7 @@ import '../../../core/database/tables/mailbox_folders_dao.dart';
 import '../../../core/security/credential_store.dart';
 import 'mail_data_sources_notifier.dart';
 import 'email_repository.dart';
+import 'mime_message_mapper.dart';
 import '../domain/email_account_entity.dart';
 
 class EmailRepositoryImpl implements EmailRepository {
@@ -148,7 +149,7 @@ class EmailRepositoryImpl implements EmailRepository {
   }
 
   @override
-  Future<List<MimeMessage>> fetchEmails(int accountId, {String folder = 'INBOX', int count = 30}) async {
+  Future<List<MimeMessage>> fetchEmails(int accountId, {int count = 30}) async {
     final ds = _dataSources.get(accountId);
     if (ds == null) return [];
     return ds.fetchMessages(count: count);
@@ -214,6 +215,17 @@ class EmailRepositoryImpl implements EmailRepository {
     final ds = _dataSources.get(accountId);
     if (ds == null) throw Exception('Account not connected');
     await ds.sendMessage(message);
+
+    // Save the sent message locally without switching folders.
+    try {
+      final sentMailbox = ds.getMailboxByFlag(MailboxFlag.sent);
+      if (sentMailbox != null) {
+        final companion = MimeMessageMapper.toCompanion(
+          message, accountId, folder: sentMailbox.path,
+        );
+        await _emailsDao.upsertEmail(companion);
+      }
+    } catch (_) {}
   }
 
   @override

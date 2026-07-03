@@ -16,24 +16,31 @@ final mailDataSourcesProvider =
   (ref) => MailDataSourcesNotifier(ref),
 );
 
-final emailRepositoryProvider = Provider<EmailRepository>((ref) {
+final emailRepositoryProvider = Provider<EmailRepository?>((ref) {
+  final emailsDao = ref.watch(emailsDaoProvider).valueOrNull;
+  final accountsDao = ref.watch(emailAccountsDaoProvider).valueOrNull;
+  final mailboxDao = ref.watch(mailboxFoldersDaoProvider).valueOrNull;
+  if (emailsDao == null || accountsDao == null || mailboxDao == null) return null;
+
   return EmailRepositoryImpl(
-    ref.watch(emailsDaoProvider).requireValue,
-    ref.watch(emailAccountsDaoProvider).requireValue,
+    emailsDao,
+    accountsDao,
     ref.watch(mailDataSourcesProvider.notifier),
     ref.watch(credentialStoreProvider),
-    ref.watch(mailboxFoldersDaoProvider).requireValue,
+    mailboxDao,
   );
 });
 
 final emailAccountListProvider = FutureProvider<List<EmailAccountEntity>>((ref) async {
   final repo = ref.watch(emailRepositoryProvider);
+  if (repo == null) return [];
   return repo.getAllAccounts();
 });
 
 final emailListProvider =
     FutureProvider.family<List<MimeMessage>, int>((ref, accountId) async {
   final repo = ref.watch(emailRepositoryProvider);
+  if (repo == null) return [];
   return repo.fetchEmails(accountId);
 });
 
@@ -80,25 +87,21 @@ final unifiedEmailListProvider = FutureProvider.family<List<Email>, String>((ref
 
 final unreadCountProvider = FutureProvider.family<int, int>((ref, accountId) async {
   final repo = ref.watch(emailRepositoryProvider);
+  if (repo == null) return 0;
   return repo.getUnreadCount(accountId);
 });
 
-final totalUnreadProvider = Provider<AsyncValue<int>>((ref) {
+final totalUnreadProvider = FutureProvider<int>((ref) async {
   final accountsAsync = ref.watch(emailAccountListProvider);
-  return accountsAsync.when(
-    data: (accounts) {
-      int total = 0;
-      for (final account in accounts) {
-        if (account.id != null) {
-          final count = ref.watch(unreadCountProvider(account.id!));
-          count.whenData((c) => total += c);
-        }
-      }
-      return AsyncData(total);
-    },
-    loading: () => const AsyncLoading(),
-    error: (e, st) => AsyncError(e, st),
-  );
+  final accounts = accountsAsync.valueOrNull ?? [];
+  int total = 0;
+  for (final account in accounts) {
+    if (account.id != null) {
+      final count = await ref.watch(unreadCountProvider(account.id!).future);
+      total += count;
+    }
+  }
+  return total;
 });
 
 final selectedEmailIdProvider = StateProvider<int?>((ref) => null);

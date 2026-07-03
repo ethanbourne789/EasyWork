@@ -37,8 +37,23 @@ class EmailToolbar extends ConsumerWidget {
                   label: folder.displayName,
                   isSelected: isSelected,
                   badge: folder.totalUnseen > 0 ? folder.totalUnseen.toString() : null,
-                  onTap: () {
-                    ref.read(selectedFolderProvider.notifier).state = folder.key;
+                  onTap: () async {
+                    if (folder.key != selectedFolder) {
+                      ref.read(selectedFolderProvider.notifier).state = folder.key;
+                      final syncService = ref.read(emailSyncServiceProvider);
+                      if (syncService != null) {
+                        for (final info in folder.accounts) {
+                          final ds = ref.read(mailDataSourcesProvider)[info.accountId];
+                          if (ds != null) {
+                            try {
+                              await ds.selectMailboxByPath(info.mailboxPath);
+                              await syncService.syncFolder(info.accountId, ds.selectedMailbox!, count: 20);
+                            } catch (_) {}
+                          }
+                        }
+                      }
+                      ref.invalidate(unifiedEmailListProvider(folder.key));
+                    }
                   },
                 );
               }),

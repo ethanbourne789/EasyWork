@@ -66,7 +66,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 5;
+  int get schemaVersion => 8;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -104,6 +104,27 @@ class AppDatabase extends _$AppDatabase {
       case 5:
         await m.createTable(mailboxFolders);
         await m.addColumn(emailAccounts, emailAccounts.accentColor);
+        break;
+      case 6:
+        await customStatement('''
+          DELETE FROM emails WHERE rowid NOT IN (
+            SELECT MIN(rowid) FROM emails
+            WHERE message_id IS NOT NULL AND message_id != ''
+            GROUP BY message_id, account_id
+          ) AND message_id IS NOT NULL AND message_id != ''
+        ''');
+        await customStatement('''
+          CREATE UNIQUE INDEX IF NOT EXISTS idx_emails_message_account
+          ON emails(message_id, account_id)
+        ''');
+        break;
+      case 7:
+        await m.addColumn(emails, emails.uid);
+        break;
+      case 8:
+        await m.addColumn(emails, emails.inReplyTo);
+        await m.addColumn(emails, emails.references);
+        await m.addColumn(emails, emails.replyTo);
         break;
     }
   }

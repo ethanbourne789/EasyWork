@@ -5,6 +5,7 @@ class Emails extends Table {
   IntColumn get id => integer().autoIncrement()();
   IntColumn get accountId => integer().references(EmailAccounts, #id)();
   TextColumn get messageId => text()();
+  IntColumn get uid => integer().nullable()();
   TextColumn get subject => text().nullable()();
   TextColumn get fromName => text().nullable()();
   TextColumn get fromAddress => text()();
@@ -19,5 +20,8 @@ class Emails extends Table {
   BoolColumn get isStarred => boolean().withDefault(const Constant(false))();
   TextColumn get folder => text().withDefault(const Constant('inbox'))();
   TextColumn get threadId => text().nullable()();
+  TextColumn get inReplyTo => text().nullable()();
+  TextColumn get references => text().nullable()();
+  TextColumn get replyTo => text().nullable()();
   TextColumn get originalMessageJson => text().nullable()();
 }
