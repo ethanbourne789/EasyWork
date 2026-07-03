@@ -22,37 +22,37 @@ List<NavigationItem> getNavigationItems(BuildContext context) {
     NavigationItem(
       icon: Icons.note_alt_outlined,
       selectedIcon: Icons.note_alt,
-      label: l10n.navNotes,
+      label: l10n.nav_notes,
       route: '/notes',
     ),
     NavigationItem(
       icon: Icons.task_alt_outlined,
       selectedIcon: Icons.task_alt,
-      label: l10n.navTaskBoard,
+      label: l10n.nav_task_board,
       route: '/tasks',
     ),
     NavigationItem(
       icon: Icons.email_outlined,
       selectedIcon: Icons.email,
-      label: l10n.navEmail,
+      label: l10n.nav_email,
       route: '/email',
     ),
     NavigationItem(
       icon: Icons.account_balance_wallet_outlined,
       selectedIcon: Icons.account_balance_wallet,
-      label: l10n.navAccounting,
+      label: l10n.nav_accounting,
       route: '/accounting',
     ),
     NavigationItem(
       icon: Icons.fitness_center_outlined,
       selectedIcon: Icons.fitness_center,
-      label: l10n.navExercise,
+      label: l10n.nav_exercise,
       route: '/exercise',
     ),
     NavigationItem(
       icon: Icons.people_outlined,
       selectedIcon: Icons.people,
-      label: l10n.navContacts,
+      label: l10n.nav_contacts,
       route: '/contacts',
     ),
   ];

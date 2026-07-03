@@ -1,13 +1,16 @@
 import 'dart:async';
+import 'dart:io';
 
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
+import 'l10n/app_localizations.dart';
 import 'router/app_router.dart';
 import 'presentation/theme/app_theme.dart';
 import 'presentation/theme/theme_mode_notifier.dart';
 import 'core/providers/database_providers.dart';
 import 'core/security/credential_store.dart';
+import 'core/platform/system_tray_service.dart';
 import 'features/email/providers/email_providers.dart';
 import 'features/email/data/email_sync_service.dart';
 
@@ -31,11 +34,24 @@ class EasyWorkApp extends ConsumerStatefulWidget {
 class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
   final Completer<void> _initCompleter = Completer<void>();
   bool _initFailed = false;
+  SystemTrayService? _systemTrayService;
 
   @override
   void initState() {
     super.initState();
+    _initPlatformServices();
     _initializeEmailAccounts();
+  }
+
+  Future<void> _initPlatformServices() async {
+    if (!Platform.isWindows) return;
+    try {
+      _systemTrayService = SystemTrayService(ref);
+      await _systemTrayService!.init();
+      debugPrint('System tray initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize system tray: $e');
+    }
   }
 
   Future<void> _initializeEmailAccounts() async {
@@ -112,6 +128,8 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
       themeMode: themeMode,
       routerConfig: router,
       debugShowCheckedModeBanner: false,
+      localizationsDelegates: EasyWorkLocalizations.localizationsDelegates,
+      supportedLocales: EasyWorkLocalizations.supportedLocales,
     );
   }
 }
