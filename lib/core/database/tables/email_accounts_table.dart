@@ -17,6 +17,7 @@ class EmailAccounts extends Table {
   TextColumn get loginType => text().withDefault(const Constant('normal'))();
   TextColumn get syncPeriod => text().withDefault(const Constant('1m'))();
   IntColumn get syncInterval => integer().withDefault(const Constant(5))();
+  IntColumn get accentColor => integer().withDefault(const Constant(0xFF2196F3))();
   DateTimeColumn get createdAt => dateTime()();
   DateTimeColumn get updatedAt => dateTime()();
 }
