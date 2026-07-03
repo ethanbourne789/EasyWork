@@ -72,7 +72,7 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
               ),
               VerticalDivider(width: 1),
               SizedBox(
-                width: 56,
+                width: 200,
                 child: EmailToolbar(accountId: accountId),
               ),
             ],

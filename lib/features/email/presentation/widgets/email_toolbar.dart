@@ -26,6 +26,7 @@ class EmailToolbar extends ConsumerWidget {
     'All Mail': Icons.all_inbox,
     'Starred': Icons.star,
     'Important': Icons.label_important,
+    'Outbox': Icons.outbox,
     '[Gmail]/All Mail': Icons.all_inbox,
     '[Gmail]/Drafts': Icons.drafts,
     '[Gmail]/Important': Icons.label_important,
@@ -53,6 +54,7 @@ class EmailToolbar extends ConsumerWidget {
     'All Mail': '全部邮件',
     'Starred': '星标邮件',
     'Important': '重要邮件',
+    'Outbox': '发件箱',
     '[Gmail]/All Mail': '全部邮件',
     '[Gmail]/Drafts': '草稿',
     '[Gmail]/Important': '重要邮件',
@@ -62,6 +64,14 @@ class EmailToolbar extends ConsumerWidget {
     '[Gmail]/Starred': '星标',
     '[Gmail]/Trash': '已删除',
   };
+
+  static const _priorityFolders = [
+    'INBOX', 'Inbox',
+    'Sent', 'Sent Messages', 'Sent Items', 'Outbox',
+    'Junk', 'Junk Email', 'Spam',
+    '[Gmail]/Junk Mail', '[Gmail]/Spam',
+    'Starred', '[Gmail]/Starred',
+  ];
 
   String _translateFolder(String path) {
     return _folderLabels[path] ?? path;
@@ -77,62 +87,89 @@ class EmailToolbar extends ConsumerWidget {
     final selectedFolder = ref.watch(selectedFolderProvider);
 
     return Container(
-      width: 56,
       decoration: BoxDecoration(
         color: Theme.of(context).colorScheme.surface,
         border: Border(left: BorderSide(color: Theme.of(context).dividerColor)),
       ),
       child: mailboxesAsync.when(
         data: (mailboxes) {
-          return ListView(
-            padding: const EdgeInsets.symmetric(vertical: 8),
+          final priorityItems = <MapEntry<String, IconData>>[];
+          final otherItems = <MapEntry<String, IconData>>[];
+
+          for (final mailbox in mailboxes) {
+            final entry = MapEntry(mailbox.path, _folderIcon(mailbox.path));
+            if (_priorityFolders.contains(mailbox.path) ||
+                _priorityFolders.contains(mailbox.name)) {
+              priorityItems.add(entry);
+            } else {
+              otherItems.add(entry);
+            }
+          }
+
+          return Column(
             children: [
-              // Folder items
-              ...mailboxes.map((mailbox) {
-                final isSelected = mailbox.path == selectedFolder;
-                final label = _translateFolder(mailbox.path);
-                return _ToolbarIcon(
-                  icon: _folderIcon(mailbox.path),
-                  label: label,
-                  isSelected: isSelected,
-                  onTap: () {
-                    ref.read(selectedFolderProvider.notifier).state = mailbox.path;
-                  },
-                );
-              }),
-              if (mailboxes.isNotEmpty) const Divider(height: 16),
-              // Action items
-              _ToolbarIcon(
-                icon: Icons.refresh,
-                label: '刷新',
-                onTap: () {
-                  ref.invalidate(localEmailListProvider(accountId));
-                },
+              Expanded(
+                child: ListView(
+                  padding: const EdgeInsets.symmetric(vertical: 4),
+                  children: [
+                    ...priorityItems.map((entry) => _FolderTile(
+                      icon: entry.value,
+                      label: _translateFolder(entry.key),
+                      isSelected: entry.key == selectedFolder,
+                      onTap: () {
+                        ref.read(selectedFolderProvider.notifier).state = entry.key;
+                      },
+                    )),
+                    if (otherItems.isNotEmpty) ...[
+                      const Padding(
+                        padding: EdgeInsets.fromLTRB(16, 8, 16, 4),
+                        child: Text('其他文件夹', style: TextStyle(fontSize: 11, color: Colors.grey)),
+                      ),
+                      ...otherItems.map((entry) => _FolderTile(
+                        icon: entry.value,
+                        label: _translateFolder(entry.key),
+                        isSelected: entry.key == selectedFolder,
+                        onTap: () {
+                          ref.read(selectedFolderProvider.notifier).state = entry.key;
+                        },
+                      )),
+                    ],
+                  ],
+                ),
               ),
-              _ToolbarIcon(
-                icon: Icons.edit,
-                label: '写邮件',
-                onTap: () {
-                  Navigator.push<void>(
-                    context,
-                    MaterialPageRoute<void>(builder: (_) => const ComposePage()),
-                  );
-                },
-              ),
-              _ToolbarIcon(
-                icon: Icons.settings,
-                label: '账户设置',
-                onTap: () {
-                  Navigator.push<void>(
-                    context,
-                    MaterialPageRoute<void>(builder: (_) => const EmailAccountsPage()),
-                  );
-                },
-              ),
-              _ToolbarIcon(
-                icon: Icons.contacts,
-                label: '通讯录',
-                onTap: () {},
+              const Divider(height: 1),
+              SafeArea(
+                child: Column(
+                  children: [
+                    _ActionTile(
+                      icon: Icons.refresh,
+                      label: '刷新',
+                      onTap: () {
+                        ref.invalidate(localEmailListProvider(accountId));
+                      },
+                    ),
+                    _ActionTile(
+                      icon: Icons.edit,
+                      label: '写邮件',
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(builder: (_) => const ComposePage()),
+                        );
+                      },
+                    ),
+                    _ActionTile(
+                      icon: Icons.settings,
+                      label: '账户设置',
+                      onTap: () {
+                        Navigator.push<void>(
+                          context,
+                          MaterialPageRoute<void>(builder: (_) => const EmailAccountsPage()),
+                        );
+                      },
+                    ),
+                  ],
+                ),
               ),
             ],
           );
@@ -144,36 +181,76 @@ class EmailToolbar extends ConsumerWidget {
   }
 }
 
-class _ToolbarIcon extends StatelessWidget {
+class _FolderTile extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool isSelected;
   final VoidCallback onTap;
 
-  const _ToolbarIcon({
+  const _FolderTile({
     required this.icon,
     required this.label,
-    this.isSelected = false,
+    required this.isSelected,
     required this.onTap,
   });
 
   @override
   Widget build(BuildContext context) {
-    return Tooltip(
-      message: label,
-      preferBelow: false,
-      child: Container(
-        height: 48,
-        alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(8),
+    final theme = Theme.of(context);
+    return Material(
+      color: isSelected ? theme.colorScheme.primaryContainer : Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 18, color: isSelected ? theme.colorScheme.primary : null),
+              const SizedBox(width: 12),
+              Expanded(
+                child: Text(
+                  label,
+                  style: TextStyle(
+                    fontSize: 14,
+                    fontWeight: isSelected ? FontWeight.w600 : FontWeight.normal,
+                    color: isSelected ? theme.colorScheme.primary : null,
+                  ),
+                ),
+              ),
+            ],
+          ),
         ),
-        child: IconButton(
-          icon: Icon(icon, size: 20),
-          color: isSelected ? Theme.of(context).colorScheme.primary : null,
-          onPressed: onTap,
-          tooltip: label,
+      ),
+    );
+  }
+}
+
+class _ActionTile extends StatelessWidget {
+  final IconData icon;
+  final String label;
+  final VoidCallback onTap;
+
+  const _ActionTile({
+    required this.icon,
+    required this.label,
+    required this.onTap,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Material(
+      color: Colors.transparent,
+      child: InkWell(
+        onTap: onTap,
+        child: Padding(
+          padding: const EdgeInsets.symmetric(horizontal: 12, vertical: 10),
+          child: Row(
+            children: [
+              Icon(icon, size: 18),
+              const SizedBox(width: 12),
+              Text(label, style: const TextStyle(fontSize: 14)),
+            ],
+          ),
         ),
       ),
     );
