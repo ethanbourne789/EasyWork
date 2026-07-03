@@ -29,6 +29,32 @@ class EmailsDao extends DatabaseAccessor<AppDatabase> with _$EmailsDaoMixin {
   Future<int> deleteEmailsByAccount(int accountId) =>
       (delete(emails)..where((t) => t.accountId.equals(accountId))).go();
 
+  Future<int> deleteDuplicateEmails(int accountId) async {
+    final allEmails = await getEmailsByAccount(accountId);
+    final seen = <String, Email>{};
+    final idsToDelete = <int>{};
+    for (final email in allEmails) {
+      final existing = seen[email.messageId];
+      if (existing == null) {
+        seen[email.messageId] = email;
+      } else {
+        if (email.bodyHtml != null && existing.bodyHtml == null) {
+          idsToDelete.add(existing.id!);
+          seen[email.messageId] = email;
+        } else {
+          idsToDelete.add(email.id!);
+        }
+      }
+    }
+    if (idsToDelete.isEmpty) return 0;
+    int deleted = 0;
+    for (final id in idsToDelete) {
+      await deleteEmail(id);
+      deleted++;
+    }
+    return deleted;
+  }
+
   Future<int> insertEmail(EmailsCompanion email) => into(emails).insert(email);
 
   Future<bool> updateEmail(EmailsCompanion email) =>

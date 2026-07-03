@@ -58,12 +58,14 @@ class EmailSyncService {
     if (ds == null) return SyncResult.error('Account not connected');
 
     try {
+      await _emailsDao.deleteDuplicateEmails(accountId);
       final messages = await ds.fetchMessages(
         count: count,
-        fetchPreference: FetchPreference.envelope,
+        fetchPreference: FetchPreference.fullWhenWithinSize,
       );
       int imported = 0;
       int skipped = 0;
+      int maxUid = 0;
 
       for (final message in messages) {
         final messageId = message.decodeHeaderValue('message-id');
@@ -88,6 +90,15 @@ class EmailSyncService {
         final companion = MimeMessageMapper.toCompanion(fullMessage, accountId);
         await _emailsDao.insertEmail(companion);
         imported++;
+
+        final uid = message.uid;
+        if (uid != null && uid > maxUid) {
+          maxUid = uid;
+        }
+      }
+
+      if (maxUid > 0) {
+        _lastSyncedUids[accountId] = maxUid;
       }
 
       await connectAndSync(accountId);
