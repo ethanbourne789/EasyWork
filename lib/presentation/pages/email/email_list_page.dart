@@ -241,6 +241,8 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
     final selectedFolder = ref.watch(selectedFolderProvider);
     final mailboxesAsync = ref.watch(unifiedMailboxListProvider);
     final emailsAsync = ref.watch(localEmailListProvider(widget.accountId));
+    final accounts = ref.watch(emailAccountListProvider).valueOrNull ?? [];
+    final accountColorMap = {for (final a in accounts) a.id!: Color(a.accentColor)};
 
     return Column(
       children: [
@@ -303,50 +305,64 @@ class _NarrowEmailFolderListState extends ConsumerState<_NarrowEmailFolderList> 
                     final date = email.receivedAt;
                     final isRead = email.isRead;
 
-                    return ListTile(
-                      leading: CircleAvatar(
-                        child: Text(from.isNotEmpty ? from[0].toUpperCase() : '?'),
-                      ),
-                      title: Text(
-                        subject,
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                        style: TextStyle(
-                          fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                        ),
-                      ),
-                      subtitle: Text(
-                        '$from${date != null ? ' · ${DateUtil.formatRelativeDate(date)}' : ''}',
-                        maxLines: 1,
-                        overflow: TextOverflow.ellipsis,
-                      ),
-                      trailing: !isRead
-                          ? Container(
-                              width: 8,
-                              height: 8,
-                              decoration: const BoxDecoration(
-                                color: Color(0xFF1A73E8),
-                                shape: BoxShape.circle,
-                              ),
-                            )
-                          : null,
-                      onTap: () async {
-                        final mimeMessage = MimeMessageMapper.fromOriginalMessageJson(
-                          email.originalMessageJson,
-                        );
-                        if (mounted) {
-                          Navigator.push<Widget>(
-                            context,
-                            MaterialPageRoute<Widget>(
-                              builder: (_) => EmailDetailPage(
-                                message: mimeMessage,
-                                localEmailId: email.id,
-                                accountId: widget.accountId,
+                    return Row(
+                      children: [
+                        Expanded(
+                          child: ListTile(
+                            leading: CircleAvatar(
+                              child: Text(from.isNotEmpty ? from[0].toUpperCase() : '?'),
+                            ),
+                            title: Text(
+                              subject,
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                              style: TextStyle(
+                                fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
                               ),
                             ),
-                          );
-                        }
-                      },
+                            subtitle: Text(
+                              '$from${date != null ? ' · ${DateUtil.formatRelativeDate(date)}' : ''}',
+                              maxLines: 1,
+                              overflow: TextOverflow.ellipsis,
+                            ),
+                            trailing: !isRead
+                                ? Container(
+                                    width: 8,
+                                    height: 8,
+                                    decoration: const BoxDecoration(
+                                      color: Color(0xFF1A73E8),
+                                      shape: BoxShape.circle,
+                                    ),
+                                  )
+                                : null,
+                            onTap: () async {
+                              final mimeMessage = MimeMessageMapper.fromOriginalMessageJson(
+                                email.originalMessageJson,
+                              );
+                              if (mounted) {
+                                Navigator.push<Widget>(
+                                  context,
+                                  MaterialPageRoute<Widget>(
+                                    builder: (_) => EmailDetailPage(
+                                      message: mimeMessage,
+                                      localEmailId: email.id,
+                                      accountId: widget.accountId,
+                                    ),
+                                  ),
+                                );
+                              }
+                            },
+                          ),
+                        ),
+                        Container(
+                          width: 4,
+                          margin: const EdgeInsets.symmetric(vertical: 4),
+                          decoration: BoxDecoration(
+                            color: accountColorMap[email.accountId] ?? Colors.grey,
+                            borderRadius: BorderRadius.circular(2),
+                          ),
+                        ),
+                      ],
                     );
                   },
                 ),
