@@ -6,6 +6,7 @@ import 'package:system_tray/system_tray.dart';
 import 'package:window_manager/window_manager.dart';
 
 import '../event/app_event.dart';
+import '../event/window_events.dart';
 import '../providers/event_providers.dart';
 import '../../shared/events/email_events.dart';
 
@@ -88,6 +89,8 @@ class SystemTrayService {
   Future<void> _showWindow() async {
     await windowManager.show();
     await windowManager.focus();
+    final eventBus = _ref.read(eventBusProvider);
+    eventBus.publish<WindowShownEvent>(WindowShownEvent());
   }
 
   void _navigateTo(String route) {
@@ -109,8 +112,20 @@ class SystemTrayService {
   void _listenToEmailEvents() {
     final eventBus = _ref.read(eventBusProvider);
     eventBus.on<NewEmailReceivedEvent>().listen((event) {
+      showNotification(
+        title: '新邮件',
+        body: '${event.fromAddress} - ${event.subject}',
+      );
       flashIcon();
     });
+  }
+
+  Future<void> showNotification({
+    required String title,
+    required String body,
+  }) async {
+    if (!Platform.isWindows || !_isInitialized) return;
+    await _systemTray.setToolTip(body);
   }
 
   void flashIcon() {

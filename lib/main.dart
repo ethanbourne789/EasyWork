@@ -11,11 +11,21 @@ import 'presentation/theme/theme_mode_notifier.dart';
 import 'core/providers/database_providers.dart';
 import 'core/security/credential_store.dart';
 import 'core/platform/system_tray_service.dart';
+import 'core/platform/windows_single_instance.dart';
+import 'core/platform/window_manager_service.dart';
+import 'core/platform/background_sync_manager.dart';
 import 'features/email/providers/email_providers.dart';
 import 'features/email/data/email_sync_service.dart';
 
 void main() async {
   WidgetsFlutterBinding.ensureInitialized();
+
+  if (Platform.isWindows) {
+    final isDuplicate = await WindowsSingleInstance.ensureOnlyInstance();
+    if (isDuplicate) {
+      exit(0);
+    }
+  }
 
   runApp(
     const ProviderScope(
@@ -34,7 +44,9 @@ class EasyWorkApp extends ConsumerStatefulWidget {
 class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
   final Completer<void> _initCompleter = Completer<void>();
   bool _initFailed = false;
+  WindowManagerService? _windowManagerService;
   SystemTrayService? _systemTrayService;
+  BackgroundSyncManager? _backgroundSyncManager;
 
   @override
   void initState() {
@@ -45,12 +57,29 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
 
   Future<void> _initPlatformServices() async {
     if (!Platform.isWindows) return;
+
+    try {
+      _windowManagerService = WindowManagerService(ref);
+      await _windowManagerService!.init();
+      debugPrint('Window manager initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize window manager: $e');
+    }
+
     try {
       _systemTrayService = SystemTrayService(ref);
       await _systemTrayService!.init();
       debugPrint('System tray initialized successfully');
     } catch (e) {
       debugPrint('Failed to initialize system tray: $e');
+    }
+
+    try {
+      _backgroundSyncManager = BackgroundSyncManager(ref);
+      _backgroundSyncManager!.init();
+      debugPrint('Background sync manager initialized successfully');
+    } catch (e) {
+      debugPrint('Failed to initialize background sync manager: $e');
     }
   }
 
