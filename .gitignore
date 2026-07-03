@@ -2,13 +2,29 @@ easy_work/
 
 # Dart/Flutter build artifacts
 .dart_tool/
-build/
+.build/
+.flutter-plugins
+.flutter-plugins-dependencies
+
+# Generated code (drift/build_runner)
+*.g.dart
+*.freezed.dart
+*.mocks.dart
+*.mock.dart
+
+# Coverage
+coverage/
+*.lcov
 
 # IDE
 .idea/
 .vscode/
 *.iml
+*.swp
+*.swo
+*~
 
 # OS
 .DS_Store
 Thumbs.db
+desktop.ini
