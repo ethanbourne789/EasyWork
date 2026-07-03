@@ -49,6 +49,7 @@ class EmailRepositoryImpl implements EmailRepository {
         supportsIdle: a.supportsIdle,
         syncPeriod: a.syncPeriod,
         syncInterval: a.syncInterval,
+        accentColor: a.accentColor,
         createdAt: a.createdAt,
       ));
     }
@@ -79,6 +80,7 @@ class EmailRepositoryImpl implements EmailRepository {
       supportsIdle: a.supportsIdle,
       syncPeriod: a.syncPeriod,
       syncInterval: a.syncInterval,
+      accentColor: a.accentColor,
       createdAt: a.createdAt,
     );
   }

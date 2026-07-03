@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../data/mailbox_merger.dart';
 import '../../providers/email_providers.dart';
 import '../pages/compose_page.dart';
 import '../pages/email_accounts_page.dart';
@@ -9,72 +10,11 @@ class EmailToolbar extends ConsumerWidget {
 
   const EmailToolbar({super.key, required this.accountId});
 
-  static const Map<String, IconData> _folderIcons = {
-    'INBOX': Icons.inbox,
-    'Inbox': Icons.inbox,
-    'Sent': Icons.send,
-    'Sent Messages': Icons.send,
-    'Sent Items': Icons.send,
-    'Drafts': Icons.drafts,
-    'Junk': Icons.report_problem,
-    'Junk Email': Icons.report_problem,
-    'Spam': Icons.report_problem,
-    'Trash': Icons.delete,
-    'Deleted Messages': Icons.delete,
-    'Deleted Items': Icons.delete,
-    'Archive': Icons.archive,
-    'All Mail': Icons.all_inbox,
-    'Starred': Icons.star,
-    'Important': Icons.label_important,
-    '[Gmail]/All Mail': Icons.all_inbox,
-    '[Gmail]/Drafts': Icons.drafts,
-    '[Gmail]/Important': Icons.label_important,
-    '[Gmail]/Junk Mail': Icons.report_problem,
-    '[Gmail]/Sent Mail': Icons.send,
-    '[Gmail]/Spam': Icons.report_problem,
-    '[Gmail]/Starred': Icons.star,
-    '[Gmail]/Trash': Icons.delete,
-  };
-
-  static const Map<String, String> _folderLabels = {
-    'INBOX': '收件箱',
-    'Inbox': '收件箱',
-    'Sent': '已发送',
-    'Sent Messages': '已发送',
-    'Sent Items': '已发送',
-    'Drafts': '草稿',
-    'Junk': '垃圾邮件',
-    'Junk Email': '垃圾邮件',
-    'Spam': '垃圾邮件',
-    'Trash': '已删除',
-    'Deleted Messages': '已删除',
-    'Deleted Items': '已删除',
-    'Archive': '归档',
-    'All Mail': '全部邮件',
-    'Starred': '星标邮件',
-    'Important': '重要邮件',
-    '[Gmail]/All Mail': '全部邮件',
-    '[Gmail]/Drafts': '草稿',
-    '[Gmail]/Important': '重要邮件',
-    '[Gmail]/Junk Mail': '垃圾邮件',
-    '[Gmail]/Sent Mail': '已发送',
-    '[Gmail]/Spam': '垃圾邮件',
-    '[Gmail]/Starred': '星标',
-    '[Gmail]/Trash': '已删除',
-  };
-
-  String _translateFolder(String path) {
-    return _folderLabels[path] ?? path;
-  }
-
-  IconData _folderIcon(String path) {
-    return _folderIcons[path] ?? Icons.folder;
-  }
-
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final mailboxesAsync = ref.watch(mailboxListProvider(accountId));
+    final unifiedAsync = ref.watch(unifiedMailboxListProvider);
     final selectedFolder = ref.watch(selectedFolderProvider);
+    final accountsAsync = ref.watch(emailAccountListProvider);
 
     return Container(
       width: 56,
@@ -82,31 +22,29 @@ class EmailToolbar extends ConsumerWidget {
         color: Theme.of(context).colorScheme.surface,
         border: Border(left: BorderSide(color: Theme.of(context).dividerColor)),
       ),
-      child: mailboxesAsync.when(
-        data: (mailboxes) {
+      child: unifiedAsync.when(
+        data: (folders) {
           return ListView(
             padding: const EdgeInsets.symmetric(vertical: 8),
             children: [
-              // Folder items
-              ...mailboxes.map((mailbox) {
-                final isSelected = mailbox.path == selectedFolder;
-                final label = _translateFolder(mailbox.path);
+              ...folders.map((folder) {
+                final isSelected = folder.key == selectedFolder;
                 return _ToolbarIcon(
-                  icon: _folderIcon(mailbox.path),
-                  label: label,
+                  icon: folder.icon,
+                  label: folder.displayName,
                   isSelected: isSelected,
+                  badge: folder.totalUnseen > 0 ? folder.totalUnseen.toString() : null,
                   onTap: () {
-                    ref.read(selectedFolderProvider.notifier).state = mailbox.path;
+                    ref.read(selectedFolderProvider.notifier).state = folder.key;
                   },
                 );
               }),
-              if (mailboxes.isNotEmpty) const Divider(height: 16),
-              // Action items
+              if (folders.isNotEmpty) const Divider(height: 16),
               _ToolbarIcon(
                 icon: Icons.refresh,
                 label: '刷新',
                 onTap: () {
-                  ref.invalidate(localEmailListProvider(accountId));
+                  ref.invalidate(unifiedMailboxListProvider);
                 },
               ),
               _ToolbarIcon(
@@ -134,6 +72,20 @@ class EmailToolbar extends ConsumerWidget {
                 label: '通讯录',
                 onTap: () {},
               ),
+              if (accountsAsync.valueOrNull != null &&
+                  accountsAsync.valueOrNull!.isNotEmpty)
+                const Divider(height: 16),
+              ...accountsAsync.when(
+                data: (accounts) => accounts.map((a) => _AccountIndicator(
+                  color: Color(a.accentColor),
+                  label: a.displayName.isNotEmpty
+                      ? a.displayName.characters.first
+                      : a.email.characters.first.toUpperCase(),
+                  tooltip: a.email,
+                )),
+                loading: () => [const SizedBox.shrink()],
+                error: (_, __) => [const SizedBox.shrink()],
+              ),
             ],
           );
         },
@@ -148,12 +100,14 @@ class _ToolbarIcon extends StatelessWidget {
   final IconData icon;
   final String label;
   final bool isSelected;
+  final String? badge;
   final VoidCallback onTap;
 
   const _ToolbarIcon({
     required this.icon,
     required this.label,
     this.isSelected = false,
+    this.badge,
     required this.onTap,
   });
 
@@ -162,18 +116,83 @@ class _ToolbarIcon extends StatelessWidget {
     return Tooltip(
       message: label,
       preferBelow: false,
+      child: Stack(
+        clipBehavior: Clip.none,
+        children: [
+          Container(
+            height: 48,
+            alignment: Alignment.center,
+            decoration: BoxDecoration(
+              color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
+              borderRadius: BorderRadius.circular(8),
+            ),
+            child: IconButton(
+              icon: Icon(icon, size: 20),
+              color: isSelected ? Theme.of(context).colorScheme.primary : null,
+              onPressed: onTap,
+              tooltip: label,
+            ),
+          ),
+          if (badge != null)
+            Positioned(
+              top: 2,
+              right: 2,
+              child: Container(
+                padding: const EdgeInsets.symmetric(horizontal: 3, vertical: 1),
+                decoration: BoxDecoration(
+                  color: Theme.of(context).colorScheme.error,
+                  borderRadius: BorderRadius.circular(6),
+                ),
+                child: Text(
+                  badge!,
+                  style: TextStyle(
+                    fontSize: 9,
+                    color: Theme.of(context).colorScheme.onError,
+                  ),
+                ),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+}
+
+class _AccountIndicator extends StatelessWidget {
+  final Color color;
+  final String label;
+  final String tooltip;
+
+  const _AccountIndicator({
+    required this.color,
+    required this.label,
+    required this.tooltip,
+  });
+
+  @override
+  Widget build(BuildContext context) {
+    return Tooltip(
+      message: tooltip,
+      preferBelow: false,
       child: Container(
-        height: 48,
+        height: 32,
         alignment: Alignment.center,
-        decoration: BoxDecoration(
-          color: isSelected ? Theme.of(context).colorScheme.primaryContainer : null,
-          borderRadius: BorderRadius.circular(8),
-        ),
-        child: IconButton(
-          icon: Icon(icon, size: 20),
-          color: isSelected ? Theme.of(context).colorScheme.primary : null,
-          onPressed: onTap,
-          tooltip: label,
+        child: Container(
+          width: 20,
+          height: 20,
+          alignment: Alignment.center,
+          decoration: BoxDecoration(
+            color: color,
+            borderRadius: BorderRadius.circular(4),
+          ),
+          child: Text(
+            label,
+            style: const TextStyle(
+              color: Colors.white,
+              fontSize: 11,
+              fontWeight: FontWeight.bold,
+            ),
+          ),
         ),
       ),
     );

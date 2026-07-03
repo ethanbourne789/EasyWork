@@ -13,6 +13,7 @@ class EmailAccountEntity {
   final bool isActive;
   final String syncPeriod;
   final int syncInterval;
+  final int accentColor;
   final DateTime createdAt;
 
   EmailAccountEntity({
@@ -30,6 +31,7 @@ class EmailAccountEntity {
     this.isActive = true,
     this.syncPeriod = '1m',
     this.syncInterval = 5,
+    this.accentColor = 0xFF2196F3,
     DateTime? createdAt,
   }) : createdAt = createdAt ?? DateTime.now();
 
@@ -48,6 +50,7 @@ class EmailAccountEntity {
     bool? isActive,
     String? syncPeriod,
     int? syncInterval,
+    int? accentColor,
   }) {
     return EmailAccountEntity(
       id: id ?? this.id,
@@ -64,6 +67,7 @@ class EmailAccountEntity {
       isActive: isActive ?? this.isActive,
       syncPeriod: syncPeriod ?? this.syncPeriod,
       syncInterval: syncInterval ?? this.syncInterval,
+      accentColor: accentColor ?? this.accentColor,
       createdAt: createdAt,
     );
   }
