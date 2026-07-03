@@ -288,7 +288,7 @@ class _ComposePageState extends ConsumerState<ComposePage> {
               }
               _selectedAccount ??= accounts.first;
               return DropdownButtonFormField<EmailAccountEntity>(
-                initialValue: _selectedAccount,
+                value: _selectedAccount,
                 decoration: const InputDecoration(
                   labelText: '发件账户',
                   border: UnderlineInputBorder(),

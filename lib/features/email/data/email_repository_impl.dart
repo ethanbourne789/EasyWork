@@ -84,6 +84,9 @@ class EmailRepositoryImpl implements EmailRepository {
 
   @override
   Future<void> updateAccount(EmailAccountEntity account) async {
+    if (account.id == null) {
+      throw ArgumentError('Account id cannot be null for update');
+    }
     final existing = await _accountsDao.getAccountById(account.id!);
     await _accountsDao.updateAccount(EmailAccountsCompanion(
       id: Value(account.id!),
@@ -261,7 +264,7 @@ class EmailRepositoryImpl implements EmailRepository {
       final mailboxes = await ds.listMailboxes();
       final target = mailboxes.firstWhere(
         (m) => m.path == mailboxPath,
-        orElse: () => mailboxes.first,
+        orElse: () => throw StateError('Mailbox not found: $mailboxPath'),
       );
       await ds.deleteMailbox(target);
     }
@@ -335,7 +338,7 @@ class EmailRepositoryImpl implements EmailRepository {
       final mailboxes = await ds.listMailboxes();
       final target = mailboxes.firstWhere(
         (m) => m.flags.any((f) => f.name == flag),
-        orElse: () => mailboxes.first,
+        orElse: () => throw StateError('Mailbox with flag $flag not found'),
       );
       final matchingFlag = target.flags.isNotEmpty ? target.flags.first : MailboxFlag.marked;
       await ds.moveMessagesToFlagBySequence(sequence, matchingFlag);
@@ -355,7 +358,7 @@ class EmailRepositoryImpl implements EmailRepository {
       final mailboxes = await ds.listMailboxes();
       final target = mailboxes.firstWhere(
         (m) => m.path == mailboxPath,
-        orElse: () => mailboxes.first,
+        orElse: () => throw StateError('Mailbox not found: $mailboxPath'),
       );
       await ds.appendMessage(message, target);
     }
@@ -368,7 +371,7 @@ class EmailRepositoryImpl implements EmailRepository {
       final mailboxes = await ds.listMailboxes();
       final target = mailboxes.firstWhere(
         (m) => m.path == mailboxPath,
-        orElse: () => mailboxes.first,
+        orElse: () => throw StateError('Mailbox not found: $mailboxPath'),
       );
       await ds.deleteAllMessages(target, expunge: expunge);
     }

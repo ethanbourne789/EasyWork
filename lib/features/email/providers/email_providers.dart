@@ -64,8 +64,10 @@ final totalUnreadProvider = Provider<AsyncValue<int>>((ref) {
     data: (accounts) {
       int total = 0;
       for (final account in accounts) {
-        final count = ref.watch(unreadCountProvider(account.id!));
-        count.whenData((c) => total += c);
+        if (account.id != null) {
+          final count = ref.watch(unreadCountProvider(account.id!));
+          count.whenData((c) => total += c);
+        }
       }
       return AsyncData(total);
     },
