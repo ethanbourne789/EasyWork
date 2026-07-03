@@ -4,6 +4,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
 import '../providers/event_providers.dart';
+import '../providers/database_providers.dart';
 import '../event/window_events.dart';
 import '../../features/email/providers/email_providers.dart';
 import '../../features/email/data/email_sync_service.dart';
@@ -49,7 +50,9 @@ class BackgroundSyncManager {
 
   Future<void> _loadSyncMode() async {
     try {
-      _syncMode = 'idle';
+      final dao = await _ref.read(settingsDaoProvider.future);
+      final setting = await dao.getSetting('emailSyncMode');
+      _syncMode = setting?.value ?? 'idle';
     } catch (e) {
       _syncMode = 'idle';
     }
@@ -71,7 +74,14 @@ class BackgroundSyncManager {
   }
 
   Future<Duration> _getPollInterval() async {
-    return const Duration(minutes: 5);
+    try {
+      final dao = await _ref.read(settingsDaoProvider.future);
+      final setting = await dao.getSetting('email_poll_interval');
+      final minutes = int.tryParse(setting?.value ?? '5') ?? 5;
+      return Duration(minutes: minutes);
+    } catch (e) {
+      return const Duration(minutes: 5);
+    }
   }
 
   Future<void> _pollForNewEmails() async {

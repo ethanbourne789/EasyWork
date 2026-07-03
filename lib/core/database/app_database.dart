@@ -275,6 +275,8 @@ class AppDatabase extends _$AppDatabase {
       SettingsCompanion.insert(key: 'email_sync_limit', value: '200'),
       SettingsCompanion.insert(
           key: 'email_block_external_images', value: 'false'),
+      SettingsCompanion.insert(key: 'closeToTray', value: 'true'),
+      SettingsCompanion.insert(key: 'emailSyncMode', value: 'idle'),
     ];
 
     await batch((batch) {
