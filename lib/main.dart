@@ -98,7 +98,8 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
   @override
   Widget build(BuildContext context) {
     final router = ref.watch(routerProvider);
-    final themeMode = ref.watch(themeModeProvider);
+    final themeModeAsync = ref.watch(themeModeProvider);
+    final themeMode = themeModeAsync.value ?? ThemeMode.system;
 
     return MaterialApp.router(
       title: 'EasyWork',

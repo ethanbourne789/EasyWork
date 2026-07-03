@@ -40,7 +40,7 @@ class MailDataSourcesNotifier extends StateNotifier<Map<int, MailDataSource>> {
   Future<void> removeAccount(int accountId) async {
     final ds = state[accountId];
     if (ds != null) {
-      ds.dispose();
+      await ds.close();
       state = Map.from(state)..remove(accountId);
     }
   }
@@ -50,7 +50,7 @@ class MailDataSourcesNotifier extends StateNotifier<Map<int, MailDataSource>> {
   @override
   void dispose() {
     for (final ds in state.values) {
-      ds.dispose();
+      ds.close();
     }
     super.dispose();
   }

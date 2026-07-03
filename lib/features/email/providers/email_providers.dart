@@ -1,6 +1,7 @@
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:enough_mail/enough_mail.dart';
 import '../../../core/providers/database_providers.dart';
+import '../../../core/providers/event_providers.dart';
 import '../../../core/database/app_database.dart';
 import '../data/mail_data_source.dart';
 import '../data/mail_data_sources_notifier.dart';
@@ -19,6 +20,7 @@ final emailRepositoryProvider = Provider<EmailRepository>((ref) {
     ref.watch(emailsDaoProvider).requireValue,
     ref.watch(emailAccountsDaoProvider).requireValue,
     ref.watch(mailDataSourcesProvider.notifier),
+    ref.watch(credentialStoreProvider),
   );
 });
 

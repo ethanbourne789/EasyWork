@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables/emails_dao.dart';
 import '../../../core/database/tables/email_accounts_dao.dart';
+import '../../../core/security/credential_store.dart';
 import 'mail_data_sources_notifier.dart';
 import 'email_repository.dart';
 import '../domain/email_account_entity.dart';
@@ -11,43 +12,61 @@ class EmailRepositoryImpl implements EmailRepository {
   final EmailsDao _emailsDao;
   final EmailAccountsDao _accountsDao;
   final MailDataSourcesNotifier _dataSources;
+  final CredentialStore _credentialStore;
 
   EmailRepositoryImpl(
     this._emailsDao,
     this._accountsDao,
     this._dataSources,
+    this._credentialStore,
   );
 
   @override
   Future<List<EmailAccountEntity>> getAllAccounts() async {
     final accounts = await _accountsDao.getAllAccounts();
-    return accounts.map((a) => EmailAccountEntity(
-      id: a.id,
-      displayName: a.displayName ?? '',
-      email: a.email,
-      password: a.password,
-      imapHost: a.imapHost,
-      imapPort: a.imapPort,
-      imapUseSsl: a.imapUseSsl,
-      smtpHost: a.smtpHost,
-      smtpPort: a.smtpPort,
-      smtpUseSsl: a.smtpUseSsl,
-      supportsIdle: a.supportsIdle,
-      syncPeriod: a.syncPeriod,
-      syncInterval: a.syncInterval,
-      createdAt: a.createdAt,
-    )).toList();
+    final result = <EmailAccountEntity>[];
+    for (final a in accounts) {
+      String? password;
+      try {
+        password = await _credentialStore.getPassword(a.id);
+      } catch (e) {
+        password = a.password;
+      }
+      result.add(EmailAccountEntity(
+        id: a.id,
+        displayName: a.displayName ?? '',
+        email: a.email,
+        password: password,
+        imapHost: a.imapHost,
+        imapPort: a.imapPort,
+        imapUseSsl: a.imapUseSsl,
+        smtpHost: a.smtpHost,
+        smtpPort: a.smtpPort,
+        smtpUseSsl: a.smtpUseSsl,
+        supportsIdle: a.supportsIdle,
+        syncPeriod: a.syncPeriod,
+        syncInterval: a.syncInterval,
+        createdAt: a.createdAt,
+      ));
+    }
+    return result;
   }
 
   @override
   Future<EmailAccountEntity?> getAccountById(int id) async {
     final a = await _accountsDao.getAccountById(id);
     if (a == null) return null;
+    String? password;
+    try {
+      password = await _credentialStore.getPassword(a.id);
+    } catch (e) {
+      password = a.password;
+    }
     return EmailAccountEntity(
       id: a.id,
       displayName: a.displayName ?? '',
       email: a.email,
-      password: a.password,
+      password: password,
       imapHost: a.imapHost,
       imapPort: a.imapPort,
       imapUseSsl: a.imapUseSsl,
@@ -63,10 +82,10 @@ class EmailRepositoryImpl implements EmailRepository {
 
   @override
   Future<int> createAccount(EmailAccountEntity account) async {
-    return _accountsDao.insertAccount(EmailAccountsCompanion(
+    final accountId = await _accountsDao.insertAccount(EmailAccountsCompanion(
       displayName: Value(account.displayName),
       email: Value(account.email),
-      password: Value(account.password),
+      password: const Value(''),
       imapHost: Value(account.imapHost),
       imapPort: Value(account.imapPort),
       imapUseSsl: Value(account.imapUseSsl),
@@ -80,6 +99,10 @@ class EmailRepositoryImpl implements EmailRepository {
       createdAt: Value(DateTime.now()),
       updatedAt: Value(DateTime.now()),
     ));
+    if (account.password != null && account.password!.isNotEmpty) {
+      await _credentialStore.savePassword(accountId, account.password!);
+    }
+    return accountId;
   }
 
   @override
@@ -92,7 +115,7 @@ class EmailRepositoryImpl implements EmailRepository {
       id: Value(account.id!),
       displayName: Value(account.displayName),
       email: Value(account.email),
-      password: Value(account.password),
+      password: const Value(''),
       imapHost: Value(account.imapHost),
       imapPort: Value(account.imapPort),
       imapUseSsl: Value(account.imapUseSsl),
@@ -106,12 +129,16 @@ class EmailRepositoryImpl implements EmailRepository {
       createdAt: Value(existing?.createdAt ?? DateTime.now()),
       updatedAt: Value(DateTime.now()),
     ));
+    if (account.password != null && account.password!.isNotEmpty) {
+      await _credentialStore.savePassword(account.id!, account.password!);
+    }
   }
 
   @override
   Future<void> deleteAccount(int id) async {
     await _dataSources.removeAccount(id);
     await _accountsDao.deleteAccount(id);
+    await _credentialStore.deletePassword(id);
   }
 
   @override

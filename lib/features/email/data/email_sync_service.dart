@@ -19,6 +19,7 @@ class EmailSyncService {
   final Map<int, StreamSubscription<MailLoadEvent>> _messageSubscriptions = {};
   final Map<int, StreamSubscription<MailUpdateEvent>> _updateSubscriptions = {};
   final Map<int, StreamSubscription<MailVanishedEvent>> _vanishedSubscriptions = {};
+  final Map<int, int> _lastSyncedUids = {};
 
   EmailSyncService({
     required EmailsDao emailsDao,
@@ -107,14 +108,23 @@ class EmailSyncService {
     if (ds == null) return SyncResult.error('Account not connected');
 
     try {
+      final lastSyncedUid = _lastSyncedUids[accountId];
       final messages = await ds.fetchMessages(
         count: 30,
         fetchPreference: FetchPreference.fullWhenWithinSize,
       );
+      
       int imported = 0;
       int skipped = 0;
+      int maxUid = lastSyncedUid ?? 0;
 
       for (final message in messages) {
+        final uid = message.uid;
+        if (uid != null && uid <= (lastSyncedUid ?? 0)) {
+          skipped++;
+          continue;
+        }
+
         final messageId = message.decodeHeaderValue('message-id');
         if (messageId == null || messageId.isEmpty) {
           skipped++;
@@ -137,6 +147,14 @@ class EmailSyncService {
         final companion = MimeMessageMapper.toCompanion(fullMessage, accountId);
         await _emailsDao.insertEmail(companion);
         imported++;
+
+        if (uid != null && uid > maxUid) {
+          maxUid = uid;
+        }
+      }
+
+      if (maxUid > 0) {
+        _lastSyncedUids[accountId] = maxUid;
       }
 
       if (imported > 0) {

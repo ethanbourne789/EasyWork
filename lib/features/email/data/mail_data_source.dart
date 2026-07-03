@@ -8,7 +8,7 @@ class MailDataSource {
   final int accountId;
   final MailAccount _account;
   final EventBus _appEventBus;
-  late final MailClient _client;
+  MailClient? _client;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   bool _connected = false;
   Mailbox? _selectedMailbox;
@@ -38,8 +38,8 @@ class MailDataSource {
         ),
         _appEventBus = appEventBus;
 
-  MailClient get client => _client;
-  bool get isConnected => _connected;
+  MailClient get client => _client ?? throw StateError('Not connected. Call connect() first.');
+  bool get isConnected => _client != null && _connected;
   Mailbox? get selectedMailbox => _selectedMailbox;
 
   Future<void> connect() async {
@@ -423,12 +423,21 @@ class MailDataSource {
     _connected = false;
   }
 
+  Future<void> close() async {
+    for (final sub in _subscriptions) {
+      await sub.cancel();
+    }
+    stopPolling();
+    await disconnect();
+  }
+
+  @Deprecated('Use close() instead')
   void dispose() {
     for (final sub in _subscriptions) {
       sub.cancel();
     }
     stopPolling();
-    disconnect();
+    close();
   }
 }
 
@@ -512,8 +521,6 @@ Future<ConnectionTestResult> testConnection({
     final tree = await client.listMailboxesAsTree();
     final folderCount = tree.root.children?.length ?? 0;
 
-    await client.disconnect();
-
     return ConnectionTestResult(
       success: true,
       imapFolders: folderCount,
@@ -529,6 +536,10 @@ Future<ConnectionTestResult> testConnection({
       success: false,
       errorMessage: '连接失败: ${e.toString()}',
     );
+  } finally {
+    try {
+      await client.disconnect();
+    } catch (_) {}
   }
 }
 
