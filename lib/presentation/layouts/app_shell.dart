@@ -1,5 +1,62 @@
 import 'package:flutter/material.dart';
 import 'package:go_router/go_router.dart';
+import '../../l10n/app_localizations.dart';
+
+class NavigationItem {
+  final IconData icon;
+  final IconData selectedIcon;
+  final String label;
+  final String route;
+
+  const NavigationItem({
+    required this.icon,
+    required this.selectedIcon,
+    required this.label,
+    required this.route,
+  });
+}
+
+List<NavigationItem> getNavigationItems(BuildContext context) {
+  final l10n = AppLocalizations.of(context)!;
+  return [
+    NavigationItem(
+      icon: Icons.note_alt_outlined,
+      selectedIcon: Icons.note_alt,
+      label: l10n.navNotes,
+      route: '/notes',
+    ),
+    NavigationItem(
+      icon: Icons.task_alt_outlined,
+      selectedIcon: Icons.task_alt,
+      label: l10n.navTaskBoard,
+      route: '/tasks',
+    ),
+    NavigationItem(
+      icon: Icons.email_outlined,
+      selectedIcon: Icons.email,
+      label: l10n.navEmail,
+      route: '/email',
+    ),
+    NavigationItem(
+      icon: Icons.account_balance_wallet_outlined,
+      selectedIcon: Icons.account_balance_wallet,
+      label: l10n.navAccounting,
+      route: '/accounting',
+    ),
+    NavigationItem(
+      icon: Icons.fitness_center_outlined,
+      selectedIcon: Icons.fitness_center,
+      label: l10n.navExercise,
+      route: '/exercise',
+    ),
+    NavigationItem(
+      icon: Icons.people_outlined,
+      selectedIcon: Icons.people,
+      label: l10n.navContacts,
+      route: '/contacts',
+    ),
+  ];
+}
 
 class AppShell extends StatelessWidget {
   final Widget child;
@@ -29,54 +86,29 @@ class _NavigationRail extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
-    final selectedIndex = _getSelectedIndex(location);
+    final navigationItems = getNavigationItems(context);
+    final selectedIndex = _getSelectedIndex(location, navigationItems);
 
-    return NavigationRail(
-      selectedIndex: selectedIndex,
-      onDestinationSelected: (index) {
-        final routes = ['/notes', '/tasks', '/email', '/accounting', '/exercise', '/contacts'];
-        context.go(routes[index]);
-      },
-      destinations: const [
-        NavigationRailDestination(
-          icon: Icon(Icons.note_alt_outlined),
-          selectedIcon: Icon(Icons.note_alt),
-          label: Text('笔记'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.task_alt_outlined),
-          selectedIcon: Icon(Icons.task_alt),
-          label: Text('任务'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.email_outlined),
-          selectedIcon: Icon(Icons.email),
-          label: Text('邮件'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.account_balance_wallet_outlined),
-          selectedIcon: Icon(Icons.account_balance_wallet),
-          label: Text('记账'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.fitness_center_outlined),
-          selectedIcon: Icon(Icons.fitness_center),
-          label: Text('运动'),
-        ),
-        NavigationRailDestination(
-          icon: Icon(Icons.people_outlined),
-          selectedIcon: Icon(Icons.people),
-          label: Text('通讯录'),
-        ),
-      ],
-      trailing: Expanded(
-        child: Align(
-          alignment: Alignment.bottomCenter,
-          child: Padding(
-            padding: const EdgeInsets.only(bottom: 16),
-            child: IconButton(
-              icon: const Icon(Icons.settings_outlined),
-              onPressed: () => context.go('/settings'),
+    return SafeArea(
+      child: NavigationRail(
+        selectedIndex: selectedIndex,
+        onDestinationSelected: (index) {
+          context.go(navigationItems[index].route);
+        },
+        destinations: navigationItems.map((item) => NavigationRailDestination(
+          icon: Icon(item.icon),
+          selectedIcon: Icon(item.selectedIcon),
+          label: Text(item.label),
+        )).toList(),
+        trailing: Expanded(
+          child: Align(
+            alignment: Alignment.bottomCenter,
+            child: Padding(
+              padding: const EdgeInsets.only(bottom: 16),
+              child: IconButton(
+                icon: const Icon(Icons.settings_outlined),
+                onPressed: () => context.go('/settings'),
+              ),
             ),
           ),
         ),
@@ -84,13 +116,10 @@ class _NavigationRail extends StatelessWidget {
     );
   }
 
-  int _getSelectedIndex(String location) {
-    if (location.startsWith('/notes')) return 0;
-    if (location.startsWith('/tasks')) return 1;
-    if (location.startsWith('/email')) return 2;
-    if (location.startsWith('/accounting')) return 3;
-    if (location.startsWith('/exercise')) return 4;
-    if (location.startsWith('/contacts')) return 5;
+  int _getSelectedIndex(String location, List<NavigationItem> navigationItems) {
+    for (int i = 0; i < navigationItems.length; i++) {
+      if (location.startsWith(navigationItems[i].route)) return i;
+    }
     return 0;
   }
 }
@@ -101,6 +130,7 @@ class _NavigationDrawer extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
+    final navigationItems = getNavigationItems(context);
 
     return Drawer(
       child: SafeArea(
@@ -122,54 +152,15 @@ class _NavigationDrawer extends StatelessWidget {
                 ),
               ),
             ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.note_alt_outlined,
-              selectedIcon: Icons.note_alt,
-              label: '笔记',
-              route: '/notes',
-              isSelected: location.startsWith('/notes'),
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.task_alt_outlined,
-              selectedIcon: Icons.task_alt,
-              label: '任务',
-              route: '/tasks',
-              isSelected: location.startsWith('/tasks'),
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.email_outlined,
-              selectedIcon: Icons.email,
-              label: '邮件',
-              route: '/email',
-              isSelected: location.startsWith('/email'),
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.account_balance_wallet_outlined,
-              selectedIcon: Icons.account_balance_wallet,
-              label: '记账',
-              route: '/accounting',
-              isSelected: location.startsWith('/accounting'),
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.fitness_center_outlined,
-              selectedIcon: Icons.fitness_center,
-              label: '运动',
-              route: '/exercise',
-              isSelected: location.startsWith('/exercise'),
-            ),
-            _buildDrawerItem(
-              context,
-              icon: Icons.people_outlined,
-              selectedIcon: Icons.people,
-              label: '通讯录',
-              route: '/contacts',
-              isSelected: location.startsWith('/contacts'),
-            ),
+            for (final item in navigationItems)
+              _buildDrawerItem(
+                context,
+                icon: item.icon,
+                selectedIcon: item.selectedIcon,
+                label: item.label,
+                route: item.route,
+                isSelected: location.startsWith(item.route),
+              ),
             const Divider(),
             _buildDrawerItem(
               context,

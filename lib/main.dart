@@ -1,3 +1,5 @@
+import 'dart:async';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 
@@ -27,7 +29,8 @@ class EasyWorkApp extends ConsumerStatefulWidget {
 }
 
 class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
-  bool _initialized = false;
+  final Completer<void> _initCompleter = Completer<void>();
+  bool _initFailed = false;
 
   @override
   void initState() {
@@ -36,9 +39,6 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
   }
 
   Future<void> _initializeEmailAccounts() async {
-    if (_initialized) return;
-    _initialized = true;
-
     try {
       final db = await ref.read(appDatabaseProvider.future);
       final accounts = await db.select(db.emailAccounts).get();
@@ -76,8 +76,7 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
         }
       }
 
-      // After all accounts connected, start sync in background
-      await Future<void>.delayed(const Duration(seconds: 1));
+      // Start sync in background for all accounts
       for (final account in accounts) {
         try {
           final syncService = ref.read(emailSyncServiceProvider);
@@ -92,6 +91,11 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
       }
     } catch (e) {
       debugPrint('Failed to initialize email accounts: $e');
+      _initFailed = true;
+    } finally {
+      if (!_initCompleter.isCompleted) {
+        _initCompleter.complete();
+      }
     }
   }
 

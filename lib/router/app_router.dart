@@ -8,10 +8,16 @@ import '../presentation/pages/accounting/accounting_page.dart';
 import '../presentation/pages/exercise/exercise_page.dart';
 import '../presentation/pages/contacts/contacts_page.dart';
 import '../presentation/pages/settings/settings_page.dart';
+import '../presentation/pages/error_page.dart';
+import '../features/email/presentation/pages/compose_page.dart';
+import '../features/email/presentation/pages/email_detail_page.dart';
 
 final routerProvider = Provider<GoRouter>((ref) {
   return GoRouter(
     initialLocation: '/notes',
+    errorPageBuilder: (context, state) => NoTransitionPage(
+      child: ErrorPage(error: state.error?.toString()),
+    ),
     routes: [
       ShellRoute(
         builder: (context, state, child) {
@@ -35,6 +41,30 @@ final routerProvider = Provider<GoRouter>((ref) {
             pageBuilder: (context, state) => const NoTransitionPage(
               child: EmailListPage(),
             ),
+            routes: [
+              GoRoute(
+                path: 'compose',
+                pageBuilder: (context, state) {
+                  final extra = state.extra as Map<String, dynamic>?;
+                  return NoTransitionPage(
+                    child: ComposePage(
+                      to: extra?['to'] as String?,
+                      subject: extra?['subject'] as String?,
+                      body: extra?['body'] as String?,
+                    ),
+                  );
+                },
+              ),
+              GoRoute(
+                path: ':id',
+                pageBuilder: (context, state) {
+                  final emailId = int.tryParse(state.pathParameters['id'] ?? '');
+                  return NoTransitionPage(
+                    child: EmailDetailPage(localEmailId: emailId ?? 0),
+                  );
+                },
+              ),
+            ],
           ),
           GoRoute(
             path: '/accounting',
