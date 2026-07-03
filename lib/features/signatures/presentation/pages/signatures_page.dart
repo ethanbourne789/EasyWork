@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../data/signature_repository.dart';
 import '../../data/signature_repository_impl.dart';
 import '../../domain/signature_entity.dart';
@@ -19,11 +20,12 @@ class SignaturesPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final sigsAsync = ref.watch(signatureListProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('邮件签名'),
+        title: Text('邮件签名'),
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
@@ -67,13 +69,14 @@ class SignaturesPage extends ConsumerWidget {
   }
 
   void _showAddDialog(BuildContext context, WidgetRef ref) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final nameController = TextEditingController();
     final contentController = TextEditingController();
 
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('添加签名'),
+            title: const Text('添加签名'),
         content: Column(
           mainAxisSize: MainAxisSize.min,
           children: [
@@ -82,7 +85,7 @@ class SignaturesPage extends ConsumerWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.common_cancel)),
           TextButton(
             onPressed: () async {
               if (nameController.text.isNotEmpty && contentController.text.isNotEmpty) {
@@ -95,7 +98,7 @@ class SignaturesPage extends ConsumerWidget {
                 if (context.mounted) Navigator.pop(context);
               }
             },
-            child: const Text('保存'),
+            child: Text(loc.common_save),
           ),
         ],
       ),
@@ -103,6 +106,7 @@ class SignaturesPage extends ConsumerWidget {
   }
 
   void _showEditDialog(BuildContext context, WidgetRef ref, SignatureEntity sig) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final nameController = TextEditingController(text: sig.name);
     final contentController = TextEditingController(text: sig.content);
 
@@ -125,9 +129,9 @@ class SignaturesPage extends ConsumerWidget {
               ref.invalidate(signatureListProvider);
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text(loc.common_delete, style: const TextStyle(color: Colors.red)),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.common_cancel)),
           TextButton(
             onPressed: () async {
               final repo = ref.read(signatureRepositoryProvider);
@@ -141,7 +145,7 @@ class SignaturesPage extends ConsumerWidget {
               ref.invalidate(signatureListProvider);
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text('保存'),
+            child: Text(loc.common_save),
           ),
         ],
       ),

@@ -60,7 +60,7 @@ class EmailSyncService {
     try {
       final messages = await ds.fetchMessages(
         count: count,
-        fetchPreference: FetchPreference.fullWhenWithinSize,
+        fetchPreference: FetchPreference.envelope,
       );
       int imported = 0;
       int skipped = 0;

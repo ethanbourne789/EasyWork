@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../data/contact_repository.dart';
 import '../../data/contact_repository_impl.dart';
 import '../../domain/contact_entity.dart';
@@ -19,11 +20,12 @@ class ContactsPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final contactsAsync = ref.watch(contactListProvider);
 
     return Scaffold(
       appBar: AppBar(
-        title: const Text('通讯录'),
+        title: Text(loc.contact_list),
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddContactDialog(context, ref),
@@ -67,6 +69,7 @@ class ContactsPage extends ConsumerWidget {
   }
 
   void _showAddContactDialog(BuildContext context, WidgetRef ref) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final nameController = TextEditingController();
     final emailController = TextEditingController();
     final phoneController = TextEditingController();
@@ -84,7 +87,7 @@ class ContactsPage extends ConsumerWidget {
           ],
         ),
         actions: [
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.common_cancel)),
           TextButton(
             onPressed: () async {
               if (nameController.text.isNotEmpty) {
@@ -98,7 +101,7 @@ class ContactsPage extends ConsumerWidget {
                 if (context.mounted) Navigator.pop(context);
               }
             },
-            child: const Text('保存'),
+            child: Text(loc.common_save),
           ),
         ],
       ),
@@ -106,6 +109,7 @@ class ContactsPage extends ConsumerWidget {
   }
 
   void _showEditContactDialog(BuildContext context, WidgetRef ref, ContactEntity contact) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final nameController = TextEditingController(text: contact.displayName);
     final emailController = TextEditingController(text: contact.emailAddresses);
     final phoneController = TextEditingController(text: contact.phoneNumbers);
@@ -130,9 +134,9 @@ class ContactsPage extends ConsumerWidget {
               ref.invalidate(contactListProvider);
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text('删除', style: TextStyle(color: Colors.red)),
+            child: Text(loc.common_delete, style: const TextStyle(color: Colors.red)),
           ),
-          TextButton(onPressed: () => Navigator.pop(context), child: const Text('取消')),
+          TextButton(onPressed: () => Navigator.pop(context), child: Text(loc.common_cancel)),
           TextButton(
             onPressed: () async {
               final repo = ref.read(contactRepositoryProvider);
@@ -146,7 +150,7 @@ class ContactsPage extends ConsumerWidget {
               ref.invalidate(contactListProvider);
               if (context.mounted) Navigator.pop(context);
             },
-            child: const Text('保存'),
+            child: Text(loc.common_save),
           ),
         ],
       ),

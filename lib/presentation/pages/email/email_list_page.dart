@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../l10n/app_localizations.dart';
 import '../../../features/email/providers/email_providers.dart';
 import '../../../features/email/domain/email_account_entity.dart';
 import '../../../features/email/presentation/pages/email_accounts_page.dart';
@@ -41,6 +42,7 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final isWide = MediaQuery.of(context).size.width > 600;
     final accountsAsync = ref.watch(emailAccountListProvider);
 
@@ -85,6 +87,7 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
   }
 
   Widget _buildNarrowLayout(AsyncValue<List<EmailAccountEntity>> accountsAsync) {
+    final loc = EasyWorkLocalizations.of(context)!;
     return Scaffold(
       appBar: AppBar(
         title: const Text('邮件'),
@@ -93,11 +96,11 @@ class _EmailListPageState extends ConsumerState<EmailListPage> {
             icon: const Icon(Icons.more_vert),
             onSelected: (value) => _handleNarrowMenuAction(context, value),
             itemBuilder: (context) => [
-              const PopupMenuItem(value: 'inbox', child: ListTile(leading: Icon(Icons.inbox), title: Text('收件箱'), dense: true)),
+              PopupMenuItem(value: 'inbox', child: ListTile(leading: Icon(Icons.inbox), title: Text(loc.email_inbox), dense: true)),
               const PopupMenuItem(value: 'refresh', child: ListTile(leading: Icon(Icons.refresh), title: Text('刷新'), dense: true)),
-              const PopupMenuItem(value: 'compose', child: ListTile(leading: Icon(Icons.edit), title: Text('写邮件'), dense: true)),
+              PopupMenuItem(value: 'compose', child: ListTile(leading: Icon(Icons.edit), title: Text(loc.email_compose), dense: true)),
               const PopupMenuItem(value: 'settings', child: ListTile(leading: Icon(Icons.settings), title: Text('账户设置'), dense: true)),
-              const PopupMenuItem(value: 'contacts', child: ListTile(leading: Icon(Icons.contacts), title: Text('通讯录'), dense: true)),
+              PopupMenuItem(value: 'contacts', child: ListTile(leading: Icon(Icons.contacts), title: Text(loc.contact_list), dense: true)),
             ],
           ),
         ],

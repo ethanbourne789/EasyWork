@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../data/mailbox_merger.dart';
 import '../../providers/email_providers.dart';
 import '../pages/compose_page.dart';

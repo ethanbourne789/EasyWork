@@ -149,11 +149,14 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
         Text(subject, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
         const SizedBox(height: 16),
         if (htmlBody != null && htmlBody.isNotEmpty)
-          Container(
-            constraints: const BoxConstraints(minHeight: 200),
-            child: HtmlWidget(
-              _stripTableBorders(htmlBody),
-              textStyle: const TextStyle(fontSize: 15, height: 1.5),
+          SizedBox(
+            width: double.infinity,
+            child: Container(
+              constraints: const BoxConstraints(minHeight: 200),
+              child: HtmlWidget(
+                _stripTableBorders(htmlBody),
+                textStyle: const TextStyle(fontSize: 15, height: 1.5),
+              ),
             ),
           )
         else if (plainBody != null && plainBody.isNotEmpty)

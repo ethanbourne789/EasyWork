@@ -1,6 +1,7 @@
 import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../l10n/app_localizations.dart';
 import 'package:drift/drift.dart' hide Column;
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import '../pages/compose_page.dart';
@@ -70,6 +71,7 @@ class _EmailDetailPageState extends ConsumerState<EmailDetailPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = EasyWorkLocalizations.of(context)!;
     final msg = widget.message;
     final local = _localEmail;
 
@@ -90,7 +92,7 @@ class _EmailDetailPageState extends ConsumerState<EmailDetailPage> {
       appBar: AppBar(
         title: Text(subject, maxLines: 1, overflow: TextOverflow.ellipsis),
         actions: [
-          if (widget.localEmailId != null)
+              if (widget.localEmailId != null)
             IconButton(
               icon: Icon(
                 _isStarred ? Icons.star : Icons.star_border,
@@ -313,15 +315,16 @@ class _EmailDetailPageState extends ConsumerState<EmailDetailPage> {
   }
 
   void _confirmDelete(BuildContext context) {
+    final loc = EasyWorkLocalizations.of(context)!;
     showDialog<void>(
       context: context,
       builder: (context) => AlertDialog(
-        title: const Text('删除邮件'),
+        title: Text(loc.common_delete),
         content: const Text('确定要删除这封邮件吗？'),
         actions: [
           TextButton(
             onPressed: () => Navigator.pop(context),
-            child: const Text('取消'),
+            child: Text(loc.common_cancel),
           ),
           TextButton(
             onPressed: () async {
@@ -339,11 +342,11 @@ class _EmailDetailPageState extends ConsumerState<EmailDetailPage> {
                 }
               }
 
-              if (context.mounted) {
+                if (context.mounted) {
                 Navigator.pop(context);
                 Navigator.pop(context);
                 ScaffoldMessenger.of(context).showSnackBar(
-                  const SnackBar(content: Text('已删除')),
+                  SnackBar(content: Text(loc.common_success)),
                 );
               }
             },
@@ -370,11 +373,14 @@ class _HtmlEmailBody extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
-    return Container(
-      constraints: const BoxConstraints(minHeight: 200),
-      child: HtmlWidget(
-        html,
-        textStyle: const TextStyle(fontSize: 15, height: 1.5),
+    return SizedBox(
+      width: double.infinity,
+      child: Container(
+        constraints: const BoxConstraints(minHeight: 200),
+        child: HtmlWidget(
+          html,
+          textStyle: const TextStyle(fontSize: 15, height: 1.5),
+        ),
       ),
     );
   }
