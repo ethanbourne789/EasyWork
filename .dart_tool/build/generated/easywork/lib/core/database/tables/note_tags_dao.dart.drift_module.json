@@ -1,0 +1,52 @@
+{
+  "elements": {
+    "NoteTagsDao": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/note_tags_dao.dart",
+        "name": "NoteTagsDao"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/note_tags_dao.dart",
+        "offset": 176,
+        "name": "NoteTagsDao"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/note_tags_table.dart",
+          "name": "note_tags"
+        }
+      ],
+      "type": "dao",
+      "tables": [
+        {
+          "library_uri": "package:easywork/core/database/tables/note_tags_table.dart",
+          "name": "note_tags"
+        }
+      ],
+      "views": [],
+      "includes": [],
+      "queries": [],
+      "dart_type": {
+        "elements": [
+          {
+            "lexeme": "NoteTagsDao",
+            "import_uri": "package:easywork/core/database/tables/note_tags_dao.dart"
+          }
+        ]
+      },
+      "database": {
+        "elements": [
+          {
+            "lexeme": "AppDatabase",
+            "import_uri": "package:easywork/core/database/app_database.dart"
+          }
+        ]
+      }
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/note_tags_table.dart"
+  ]
+}

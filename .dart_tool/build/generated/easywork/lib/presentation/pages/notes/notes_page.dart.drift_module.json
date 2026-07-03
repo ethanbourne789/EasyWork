@@ -1,0 +1,8 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:easywork/presentation/layouts/responsive_scaffold.dart",
+    "package:easywork/presentation/widgets/empty_state_widget.dart"
+  ]
+}

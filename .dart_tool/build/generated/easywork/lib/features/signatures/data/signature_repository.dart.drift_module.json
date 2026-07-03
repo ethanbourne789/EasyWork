@@ -1,0 +1,6 @@
+{
+  "elements": {},
+  "imports": [
+    "package:easywork/features/signatures/domain/signature_entity.dart"
+  ]
+}

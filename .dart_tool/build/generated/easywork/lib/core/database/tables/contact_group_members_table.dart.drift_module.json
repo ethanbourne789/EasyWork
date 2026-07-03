@@ -1,0 +1,124 @@
+{
+  "elements": {
+    "contact_group_members": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/contact_group_members_table.dart",
+        "name": "contact_group_members"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/contact_group_members_table.dart",
+        "offset": 112,
+        "name": "ContactGroupMembers"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/contacts_table.dart",
+          "name": "contacts"
+        },
+        {
+          "library_uri": "package:easywork/core/database/tables/contact_groups_table.dart",
+          "name": "contact_groups"
+        }
+      ],
+      "type": "table",
+      "columns": [
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": false,
+          "nameInSql": "contact_id",
+          "nameInDart": "contactId",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contact_group_members_table.dart",
+            "offset": 165,
+            "name": "contactId"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [
+            {
+              "type": "foreign_key",
+              "column": {
+                "table": {
+                  "library_uri": "package:easywork/core/database/tables/contacts_table.dart",
+                  "name": "contacts"
+                },
+                "name": "id"
+              },
+              "onUpdate": null,
+              "onDelete": null,
+              "initiallyDeferred": false
+            }
+          ],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": false,
+          "nameInSql": "group_id",
+          "nameInDart": "groupId",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contact_group_members_table.dart",
+            "offset": 234,
+            "name": "groupId"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [
+            {
+              "type": "foreign_key",
+              "column": {
+                "table": {
+                  "library_uri": "package:easywork/core/database/tables/contact_groups_table.dart",
+                  "name": "contact_groups"
+                },
+                "name": "id"
+              },
+              "onUpdate": null,
+              "onDelete": null,
+              "initiallyDeferred": false
+            }
+          ],
+          "customConstraints": null
+        }
+      ],
+      "existing_data_class": null,
+      "table_constraints": [
+        {
+          "type": "primary_key",
+          "columns": [
+            "contact_id",
+            "group_id"
+          ]
+        }
+      ],
+      "custom_parent_class": null,
+      "interfaces_for_row_class": [],
+      "fixed_entity_info_name": null,
+      "base_dart_name": "ContactGroupMembers",
+      "row_class_name": "ContactGroupMember",
+      "companion_class_name": null,
+      "without_rowid": false,
+      "strict": false,
+      "write_default_constraints": true,
+      "custom_constraints": [],
+      "attached_indices": []
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/tables/contacts_table.dart",
+    "package:easywork/core/database/tables/contact_groups_table.dart"
+  ]
+}

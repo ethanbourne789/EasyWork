@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
+import '../../../core/database/app_database.dart';
 import '../../../core/database/tables/mailbox_folders_dao.dart';
 import '../../../core/database/tables/mailbox_folders_table.dart';
 

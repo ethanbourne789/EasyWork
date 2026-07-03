@@ -1,0 +1,10 @@
+^E:\DEV\EASYWORK070101\BUILD\WINDOWS\X64\CMAKEFILES\8C6B9549FBDD7CDE4415D67C6D3D63BC\INSTALL_FORCE.RULE
+setlocal
+cd .
+if %errorlevel% neq 0 goto :cmEnd
+:cmEnd
+endlocal & call :cmErrorLevel %errorlevel% & goto :cmDone
+:cmErrorLevel
+exit /b %1
+:cmDone
+if %errorlevel% neq 0 goto :VCEnd

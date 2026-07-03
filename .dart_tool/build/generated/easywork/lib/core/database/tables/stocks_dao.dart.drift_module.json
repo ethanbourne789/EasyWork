@@ -1,0 +1,52 @@
+{
+  "elements": {
+    "StocksDao": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/stocks_dao.dart",
+        "name": "StocksDao"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/stocks_dao.dart",
+        "offset": 168,
+        "name": "StocksDao"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/stocks_table.dart",
+          "name": "stocks"
+        }
+      ],
+      "type": "dao",
+      "tables": [
+        {
+          "library_uri": "package:easywork/core/database/tables/stocks_table.dart",
+          "name": "stocks"
+        }
+      ],
+      "views": [],
+      "includes": [],
+      "queries": [],
+      "dart_type": {
+        "elements": [
+          {
+            "lexeme": "StocksDao",
+            "import_uri": "package:easywork/core/database/tables/stocks_dao.dart"
+          }
+        ]
+      },
+      "database": {
+        "elements": [
+          {
+            "lexeme": "AppDatabase",
+            "import_uri": "package:easywork/core/database/app_database.dart"
+          }
+        ]
+      }
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/stocks_table.dart"
+  ]
+}

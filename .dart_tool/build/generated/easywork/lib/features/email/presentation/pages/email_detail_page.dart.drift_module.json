@@ -1,0 +1,16 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:enough_mail/enough_mail.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:drift/drift.dart",
+    "package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart",
+    "package:easywork/features/email/presentation/pages/compose_page.dart",
+    "package:easywork/features/email/presentation/widgets/attachment_list_widget.dart",
+    "package:easywork/features/email/presentation/widgets/email_to_task_dialog.dart",
+    "package:easywork/features/email/providers/email_providers.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/providers/database_providers.dart"
+  ]
+}

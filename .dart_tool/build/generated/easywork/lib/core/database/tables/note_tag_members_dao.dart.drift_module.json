@@ -1,0 +1,52 @@
+{
+  "elements": {
+    "NoteTagMembersDao": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/note_tag_members_dao.dart",
+        "name": "NoteTagMembersDao"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/note_tag_members_dao.dart",
+        "offset": 196,
+        "name": "NoteTagMembersDao"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/note_tag_members_table.dart",
+          "name": "note_tag_members"
+        }
+      ],
+      "type": "dao",
+      "tables": [
+        {
+          "library_uri": "package:easywork/core/database/tables/note_tag_members_table.dart",
+          "name": "note_tag_members"
+        }
+      ],
+      "views": [],
+      "includes": [],
+      "queries": [],
+      "dart_type": {
+        "elements": [
+          {
+            "lexeme": "NoteTagMembersDao",
+            "import_uri": "package:easywork/core/database/tables/note_tag_members_dao.dart"
+          }
+        ]
+      },
+      "database": {
+        "elements": [
+          {
+            "lexeme": "AppDatabase",
+            "import_uri": "package:easywork/core/database/app_database.dart"
+          }
+        ]
+      }
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/note_tag_members_table.dart"
+  ]
+}

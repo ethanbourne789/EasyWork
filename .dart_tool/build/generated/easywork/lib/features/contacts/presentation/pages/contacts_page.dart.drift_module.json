@@ -1,0 +1,11 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:easywork/features/contacts/data/contact_repository.dart",
+    "package:easywork/features/contacts/data/contact_repository_impl.dart",
+    "package:easywork/features/contacts/domain/contact_entity.dart",
+    "package:easywork/core/providers/database_providers.dart"
+  ]
+}

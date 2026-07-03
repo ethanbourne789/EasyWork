@@ -1,0 +1,9 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:easywork/features/email/providers/email_providers.dart",
+    "package:easywork/features/email/presentation/pages/email_account_form_page.dart"
+  ]
+}

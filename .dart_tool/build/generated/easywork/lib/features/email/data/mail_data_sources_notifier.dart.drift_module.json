@@ -1,0 +1,8 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:easywork/core/providers/event_providers.dart",
+    "package:easywork/features/email/data/mail_data_source.dart"
+  ]
+}

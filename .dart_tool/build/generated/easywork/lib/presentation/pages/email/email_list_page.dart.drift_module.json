@@ -1,0 +1,18 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:easywork/features/email/providers/email_providers.dart",
+    "package:easywork/features/email/domain/email_account_entity.dart",
+    "package:easywork/features/email/presentation/pages/email_accounts_page.dart",
+    "package:easywork/features/email/presentation/pages/email_detail_page.dart",
+    "package:easywork/features/email/presentation/pages/compose_page.dart",
+    "package:easywork/features/email/presentation/widgets/email_list_view.dart",
+    "package:easywork/features/email/presentation/widgets/email_detail_view.dart",
+    "package:easywork/features/email/presentation/widgets/email_toolbar.dart",
+    "package:easywork/features/email/data/mime_message_mapper.dart",
+    "package:easywork/core/providers/database_providers.dart",
+    "package:easywork/core/utils/date_util.dart"
+  ]
+}

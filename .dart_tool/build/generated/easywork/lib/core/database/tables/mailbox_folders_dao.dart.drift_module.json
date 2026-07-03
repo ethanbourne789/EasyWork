@@ -1,0 +1,53 @@
+{
+  "elements": {
+    "MailboxFoldersDao": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/mailbox_folders_dao.dart",
+        "name": "MailboxFoldersDao"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/mailbox_folders_dao.dart",
+        "offset": 257,
+        "name": "MailboxFoldersDao"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/mailbox_folders_table.dart",
+          "name": "mailbox_folders"
+        }
+      ],
+      "type": "dao",
+      "tables": [
+        {
+          "library_uri": "package:easywork/core/database/tables/mailbox_folders_table.dart",
+          "name": "mailbox_folders"
+        }
+      ],
+      "views": [],
+      "includes": [],
+      "queries": [],
+      "dart_type": {
+        "elements": [
+          {
+            "lexeme": "MailboxFoldersDao",
+            "import_uri": "package:easywork/core/database/tables/mailbox_folders_dao.dart"
+          }
+        ]
+      },
+      "database": {
+        "elements": [
+          {
+            "lexeme": "AppDatabase",
+            "import_uri": "package:easywork/core/database/app_database.dart"
+          }
+        ]
+      }
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:enough_mail/enough_mail.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/mailbox_folders_table.dart"
+  ]
+}

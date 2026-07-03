@@ -1,0 +1,17 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:enough_mail/enough_mail.dart",
+    "package:easywork/core/providers/database_providers.dart",
+    "package:easywork/core/providers/event_providers.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/features/email/data/mail_data_source.dart",
+    "package:easywork/features/email/data/mail_data_sources_notifier.dart",
+    "package:easywork/features/email/data/email_repository.dart",
+    "package:easywork/features/email/data/email_repository_impl.dart",
+    "package:easywork/features/email/domain/email_account_entity.dart",
+    "package:easywork/features/email/data/mime_message_mapper.dart",
+    "package:easywork/features/email/data/mailbox_merger.dart"
+  ]
+}

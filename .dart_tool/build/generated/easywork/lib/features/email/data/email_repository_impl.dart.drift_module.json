@@ -1,0 +1,15 @@
+{
+  "elements": {},
+  "imports": [
+    "package:enough_mail/enough_mail.dart",
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/emails_dao.dart",
+    "package:easywork/core/database/tables/email_accounts_dao.dart",
+    "package:easywork/core/database/tables/mailbox_folders_dao.dart",
+    "package:easywork/core/security/credential_store.dart",
+    "package:easywork/features/email/data/mail_data_sources_notifier.dart",
+    "package:easywork/features/email/data/email_repository.dart",
+    "package:easywork/features/email/domain/email_account_entity.dart"
+  ]
+}

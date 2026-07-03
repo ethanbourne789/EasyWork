@@ -1,0 +1,52 @@
+{
+  "elements": {
+    "TasksDao": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/tasks_dao.dart",
+        "name": "TasksDao"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/tasks_dao.dart",
+        "offset": 165,
+        "name": "TasksDao"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/tasks_table.dart",
+          "name": "tasks"
+        }
+      ],
+      "type": "dao",
+      "tables": [
+        {
+          "library_uri": "package:easywork/core/database/tables/tasks_table.dart",
+          "name": "tasks"
+        }
+      ],
+      "views": [],
+      "includes": [],
+      "queries": [],
+      "dart_type": {
+        "elements": [
+          {
+            "lexeme": "TasksDao",
+            "import_uri": "package:easywork/core/database/tables/tasks_dao.dart"
+          }
+        ]
+      },
+      "database": {
+        "elements": [
+          {
+            "lexeme": "AppDatabase",
+            "import_uri": "package:easywork/core/database/app_database.dart"
+          }
+        ]
+      }
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/tasks_table.dart"
+  ]
+}

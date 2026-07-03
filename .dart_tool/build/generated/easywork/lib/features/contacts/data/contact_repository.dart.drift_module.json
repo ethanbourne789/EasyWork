@@ -1,0 +1,6 @@
+{
+  "elements": {},
+  "imports": [
+    "package:easywork/features/contacts/domain/contact_entity.dart"
+  ]
+}

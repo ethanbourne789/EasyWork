@@ -1,0 +1,14 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter/material.dart",
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:easywork/core/utils/validators.dart",
+    "package:easywork/core/security/credential_store.dart",
+    "package:easywork/features/email/domain/email_account_entity.dart",
+    "package:easywork/features/email/providers/email_providers.dart",
+    "package:easywork/features/email/data/mail_data_source.dart",
+    "package:easywork/features/email/data/email_providers_config.dart",
+    "package:easywork/features/email/data/email_sync_service.dart"
+  ]
+}

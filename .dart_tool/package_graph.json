@@ -13,6 +13,7 @@
         "drift",
         "enough_convert",
         "enough_mail",
+        "ffi",
         "file_picker",
         "fl_chart",
         "flutter",
@@ -37,6 +38,7 @@
         "table_calendar",
         "url_launcher",
         "vcard_dart",
+        "win32",
         "window_manager",
         "workmanager"
       ],
@@ -233,6 +235,18 @@
         "stream_channel",
         "test_api",
         "vector_math"
+      ]
+    },
+    {
+      "name": "ffi",
+      "version": "2.2.0",
+      "dependencies": []
+    },
+    {
+      "name": "win32",
+      "version": "5.15.0",
+      "dependencies": [
+        "ffi"
       ]
     },
     {
@@ -1193,18 +1207,6 @@
         "meta",
         "web"
       ]
-    },
-    {
-      "name": "win32",
-      "version": "5.15.0",
-      "dependencies": [
-        "ffi"
-      ]
-    },
-    {
-      "name": "ffi",
-      "version": "2.2.0",
-      "dependencies": []
     },
     {
       "name": "plugin_platform_interface",

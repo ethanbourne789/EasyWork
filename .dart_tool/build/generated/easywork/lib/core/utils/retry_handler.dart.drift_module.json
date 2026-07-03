@@ -1,0 +1,6 @@
+{
+  "elements": {},
+  "imports": [
+    "package:easywork/core/errors/app_exception.dart"
+  ]
+}

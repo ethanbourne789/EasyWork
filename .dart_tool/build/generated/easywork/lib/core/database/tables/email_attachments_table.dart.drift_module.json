@@ -1,0 +1,207 @@
+{
+  "elements": {
+    "email_attachments": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+        "name": "email_attachments"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+        "offset": 73,
+        "name": "EmailAttachments"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/emails_table.dart",
+          "name": "emails"
+        }
+      ],
+      "type": "table",
+      "columns": [
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": false,
+          "nameInSql": "id",
+          "nameInDart": "id",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 123,
+            "name": "id"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [
+            {
+              "type": "primary",
+              "is_auto_increment": true
+            }
+          ],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": false,
+          "nameInSql": "email_id",
+          "nameInDart": "emailId",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 175,
+            "name": "emailId"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [
+            {
+              "type": "foreign_key",
+              "column": {
+                "table": {
+                  "library_uri": "package:easywork/core/database/tables/emails_table.dart",
+                  "name": "emails"
+                },
+                "name": "id"
+              },
+              "onUpdate": null,
+              "onDelete": null,
+              "initiallyDeferred": false
+            }
+          ],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": false,
+          "nameInSql": "filename",
+          "nameInDart": "filename",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 241,
+            "name": "filename"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "mime_type",
+          "nameInDart": "mimeType",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 281,
+            "name": "mimeType"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": true,
+          "nameInSql": "size",
+          "nameInDart": "size",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 331,
+            "name": "size"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "local_path",
+          "nameInDart": "localPath",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 381,
+            "name": "localPath"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "cid",
+          "nameInDart": "cid",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/email_attachments_table.dart",
+            "offset": 433,
+            "name": "cid"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        }
+      ],
+      "existing_data_class": null,
+      "table_constraints": [],
+      "custom_parent_class": null,
+      "interfaces_for_row_class": [],
+      "fixed_entity_info_name": null,
+      "base_dart_name": "EmailAttachments",
+      "row_class_name": "EmailAttachment",
+      "companion_class_name": null,
+      "without_rowid": false,
+      "strict": false,
+      "write_default_constraints": true,
+      "custom_constraints": [],
+      "attached_indices": []
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/tables/emails_table.dart"
+  ]
+}

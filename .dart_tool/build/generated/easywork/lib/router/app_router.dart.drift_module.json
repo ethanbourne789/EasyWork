@@ -1,0 +1,18 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_riverpod/flutter_riverpod.dart",
+    "package:go_router/go_router.dart",
+    "package:easywork/presentation/layouts/app_shell.dart",
+    "package:easywork/presentation/pages/notes/notes_page.dart",
+    "package:easywork/presentation/pages/tasks/task_board_page.dart",
+    "package:easywork/presentation/pages/email/email_list_page.dart",
+    "package:easywork/presentation/pages/accounting/accounting_page.dart",
+    "package:easywork/presentation/pages/exercise/exercise_page.dart",
+    "package:easywork/presentation/pages/contacts/contacts_page.dart",
+    "package:easywork/presentation/pages/settings/settings_page.dart",
+    "package:easywork/presentation/pages/error_page.dart",
+    "package:easywork/features/email/presentation/pages/compose_page.dart",
+    "package:easywork/features/email/presentation/pages/email_detail_page.dart"
+  ]
+}

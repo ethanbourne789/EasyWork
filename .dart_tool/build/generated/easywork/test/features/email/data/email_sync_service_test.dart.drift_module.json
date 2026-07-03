@@ -1,0 +1,11 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_test/flutter_test.dart",
+    "package:mocktail/mocktail.dart",
+    "package:easywork/features/email/data/email_sync_service.dart",
+    "package:easywork/core/database/tables/emails_dao.dart",
+    "package:easywork/core/event/event_bus.dart",
+    "package:easywork/features/email/data/mail_data_sources_notifier.dart"
+  ]
+}

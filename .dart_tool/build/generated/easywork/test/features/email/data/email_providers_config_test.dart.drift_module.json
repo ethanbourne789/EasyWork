@@ -1,0 +1,7 @@
+{
+  "elements": {},
+  "imports": [
+    "package:flutter_test/flutter_test.dart",
+    "package:easywork/features/email/data/email_providers_config.dart"
+  ]
+}

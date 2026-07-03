@@ -1,0 +1,52 @@
+{
+  "elements": {
+    "PendingEmailsDao": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/pending_emails_dao.dart",
+        "name": "PendingEmailsDao"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/pending_emails_dao.dart",
+        "offset": 191,
+        "name": "PendingEmailsDao"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/pending_emails_table.dart",
+          "name": "pending_emails"
+        }
+      ],
+      "type": "dao",
+      "tables": [
+        {
+          "library_uri": "package:easywork/core/database/tables/pending_emails_table.dart",
+          "name": "pending_emails"
+        }
+      ],
+      "views": [],
+      "includes": [],
+      "queries": [],
+      "dart_type": {
+        "elements": [
+          {
+            "lexeme": "PendingEmailsDao",
+            "import_uri": "package:easywork/core/database/tables/pending_emails_dao.dart"
+          }
+        ]
+      },
+      "database": {
+        "elements": [
+          {
+            "lexeme": "AppDatabase",
+            "import_uri": "package:easywork/core/database/app_database.dart"
+          }
+        ]
+      }
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/pending_emails_table.dart"
+  ]
+}

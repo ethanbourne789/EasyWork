@@ -1,0 +1,1 @@
+{"valid_import":true,"imports":[{"uri":"package:flutter/material.dart","transitive":false},{"uri":"package:enough_mail/enough_mail.dart","transitive":false},{"uri":"package:easywork/core/database/tables/mailbox_folders_dao.dart","transitive":false},{"uri":"package:easywork/core/database/tables/mailbox_folders_table.dart","transitive":false}],"elements":[]}

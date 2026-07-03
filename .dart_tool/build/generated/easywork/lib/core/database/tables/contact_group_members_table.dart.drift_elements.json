@@ -1,0 +1,1 @@
+{"valid_import":true,"imports":[{"uri":"package:drift/drift.dart","transitive":false},{"uri":"package:easywork/core/database/tables/contacts_table.dart","transitive":false},{"uri":"package:easywork/core/database/tables/contact_groups_table.dart","transitive":false}],"elements":[{"kind":"table","name":"contact_group_members","dart_name":"ContactGroupMembers"}]}

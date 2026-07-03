@@ -125,6 +125,14 @@ class $EmailAccountsTable extends EmailAccounts
       type: DriftSqlType.int,
       requiredDuringInsert: false,
       defaultValue: const Constant(5));
+  static const VerificationMeta _accentColorMeta =
+      const VerificationMeta('accentColor');
+  @override
+  late final GeneratedColumn<int> accentColor = GeneratedColumn<int>(
+      'accent_color', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0xFF2196F3));
   static const VerificationMeta _createdAtMeta =
       const VerificationMeta('createdAt');
   @override
@@ -155,6 +163,7 @@ class $EmailAccountsTable extends EmailAccounts
         loginType,
         syncPeriod,
         syncInterval,
+        accentColor,
         createdAt,
         updatedAt
       ];
@@ -259,6 +268,12 @@ class $EmailAccountsTable extends EmailAccounts
           syncInterval.isAcceptableOrUnknown(
               data['sync_interval']!, _syncIntervalMeta));
     }
+    if (data.containsKey('accent_color')) {
+      context.handle(
+          _accentColorMeta,
+          accentColor.isAcceptableOrUnknown(
+              data['accent_color']!, _accentColorMeta));
+    }
     if (data.containsKey('created_at')) {
       context.handle(_createdAtMeta,
           createdAt.isAcceptableOrUnknown(data['created_at']!, _createdAtMeta));
@@ -313,6 +328,8 @@ class $EmailAccountsTable extends EmailAccounts
           .read(DriftSqlType.string, data['${effectivePrefix}sync_period'])!,
       syncInterval: attachedDatabase.typeMapping
           .read(DriftSqlType.int, data['${effectivePrefix}sync_interval'])!,
+      accentColor: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}accent_color'])!,
       createdAt: attachedDatabase.typeMapping
           .read(DriftSqlType.dateTime, data['${effectivePrefix}created_at'])!,
       updatedAt: attachedDatabase.typeMapping
@@ -343,6 +360,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
   final String loginType;
   final String syncPeriod;
   final int syncInterval;
+  final int accentColor;
   final DateTime createdAt;
   final DateTime updatedAt;
   const EmailAccount(
@@ -362,6 +380,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
       required this.loginType,
       required this.syncPeriod,
       required this.syncInterval,
+      required this.accentColor,
       required this.createdAt,
       required this.updatedAt});
   @override
@@ -389,6 +408,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
     map['login_type'] = Variable<String>(loginType);
     map['sync_period'] = Variable<String>(syncPeriod);
     map['sync_interval'] = Variable<int>(syncInterval);
+    map['accent_color'] = Variable<int>(accentColor);
     map['created_at'] = Variable<DateTime>(createdAt);
     map['updated_at'] = Variable<DateTime>(updatedAt);
     return map;
@@ -418,6 +438,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
       loginType: Value(loginType),
       syncPeriod: Value(syncPeriod),
       syncInterval: Value(syncInterval),
+      accentColor: Value(accentColor),
       createdAt: Value(createdAt),
       updatedAt: Value(updatedAt),
     );
@@ -444,6 +465,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
       loginType: serializer.fromJson<String>(json['loginType']),
       syncPeriod: serializer.fromJson<String>(json['syncPeriod']),
       syncInterval: serializer.fromJson<int>(json['syncInterval']),
+      accentColor: serializer.fromJson<int>(json['accentColor']),
       createdAt: serializer.fromJson<DateTime>(json['createdAt']),
       updatedAt: serializer.fromJson<DateTime>(json['updatedAt']),
     );
@@ -468,6 +490,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
       'loginType': serializer.toJson<String>(loginType),
       'syncPeriod': serializer.toJson<String>(syncPeriod),
       'syncInterval': serializer.toJson<int>(syncInterval),
+      'accentColor': serializer.toJson<int>(accentColor),
       'createdAt': serializer.toJson<DateTime>(createdAt),
       'updatedAt': serializer.toJson<DateTime>(updatedAt),
     };
@@ -490,6 +513,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
           String? loginType,
           String? syncPeriod,
           int? syncInterval,
+          int? accentColor,
           DateTime? createdAt,
           DateTime? updatedAt}) =>
       EmailAccount(
@@ -511,6 +535,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
         loginType: loginType ?? this.loginType,
         syncPeriod: syncPeriod ?? this.syncPeriod,
         syncInterval: syncInterval ?? this.syncInterval,
+        accentColor: accentColor ?? this.accentColor,
         createdAt: createdAt ?? this.createdAt,
         updatedAt: updatedAt ?? this.updatedAt,
       );
@@ -544,6 +569,8 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
       syncInterval: data.syncInterval.present
           ? data.syncInterval.value
           : this.syncInterval,
+      accentColor:
+          data.accentColor.present ? data.accentColor.value : this.accentColor,
       createdAt: data.createdAt.present ? data.createdAt.value : this.createdAt,
       updatedAt: data.updatedAt.present ? data.updatedAt.value : this.updatedAt,
     );
@@ -568,6 +595,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
           ..write('loginType: $loginType, ')
           ..write('syncPeriod: $syncPeriod, ')
           ..write('syncInterval: $syncInterval, ')
+          ..write('accentColor: $accentColor, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -592,6 +620,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
       loginType,
       syncPeriod,
       syncInterval,
+      accentColor,
       createdAt,
       updatedAt);
   @override
@@ -614,6 +643,7 @@ class EmailAccount extends DataClass implements Insertable<EmailAccount> {
           other.loginType == this.loginType &&
           other.syncPeriod == this.syncPeriod &&
           other.syncInterval == this.syncInterval &&
+          other.accentColor == this.accentColor &&
           other.createdAt == this.createdAt &&
           other.updatedAt == this.updatedAt);
 }
@@ -635,6 +665,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
   final Value<String> loginType;
   final Value<String> syncPeriod;
   final Value<int> syncInterval;
+  final Value<int> accentColor;
   final Value<DateTime> createdAt;
   final Value<DateTime> updatedAt;
   const EmailAccountsCompanion({
@@ -654,6 +685,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
     this.loginType = const Value.absent(),
     this.syncPeriod = const Value.absent(),
     this.syncInterval = const Value.absent(),
+    this.accentColor = const Value.absent(),
     this.createdAt = const Value.absent(),
     this.updatedAt = const Value.absent(),
   });
@@ -674,6 +706,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
     this.loginType = const Value.absent(),
     this.syncPeriod = const Value.absent(),
     this.syncInterval = const Value.absent(),
+    this.accentColor = const Value.absent(),
     required DateTime createdAt,
     required DateTime updatedAt,
   })  : email = Value(email),
@@ -701,6 +734,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
     Expression<String>? loginType,
     Expression<String>? syncPeriod,
     Expression<int>? syncInterval,
+    Expression<int>? accentColor,
     Expression<DateTime>? createdAt,
     Expression<DateTime>? updatedAt,
   }) {
@@ -722,6 +756,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
       if (loginType != null) 'login_type': loginType,
       if (syncPeriod != null) 'sync_period': syncPeriod,
       if (syncInterval != null) 'sync_interval': syncInterval,
+      if (accentColor != null) 'accent_color': accentColor,
       if (createdAt != null) 'created_at': createdAt,
       if (updatedAt != null) 'updated_at': updatedAt,
     });
@@ -744,6 +779,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
       Value<String>? loginType,
       Value<String>? syncPeriod,
       Value<int>? syncInterval,
+      Value<int>? accentColor,
       Value<DateTime>? createdAt,
       Value<DateTime>? updatedAt}) {
     return EmailAccountsCompanion(
@@ -763,6 +799,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
       loginType: loginType ?? this.loginType,
       syncPeriod: syncPeriod ?? this.syncPeriod,
       syncInterval: syncInterval ?? this.syncInterval,
+      accentColor: accentColor ?? this.accentColor,
       createdAt: createdAt ?? this.createdAt,
       updatedAt: updatedAt ?? this.updatedAt,
     );
@@ -820,6 +857,9 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
     if (syncInterval.present) {
       map['sync_interval'] = Variable<int>(syncInterval.value);
     }
+    if (accentColor.present) {
+      map['accent_color'] = Variable<int>(accentColor.value);
+    }
     if (createdAt.present) {
       map['created_at'] = Variable<DateTime>(createdAt.value);
     }
@@ -848,6 +888,7 @@ class EmailAccountsCompanion extends UpdateCompanion<EmailAccount> {
           ..write('loginType: $loginType, ')
           ..write('syncPeriod: $syncPeriod, ')
           ..write('syncInterval: $syncInterval, ')
+          ..write('accentColor: $accentColor, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
           ..write(')'))
@@ -4212,6 +4253,650 @@ class EmailSignaturesCompanion extends UpdateCompanion<EmailSignature> {
           ..write('isDefault: $isDefault, ')
           ..write('createdAt: $createdAt, ')
           ..write('updatedAt: $updatedAt')
+          ..write(')'))
+        .toString();
+  }
+}
+
+class $MailboxFoldersTable extends MailboxFolders
+    with TableInfo<$MailboxFoldersTable, MailboxFolder> {
+  @override
+  final GeneratedDatabase attachedDatabase;
+  final String? _alias;
+  $MailboxFoldersTable(this.attachedDatabase, [this._alias]);
+  static const VerificationMeta _idMeta = const VerificationMeta('id');
+  @override
+  late final GeneratedColumn<int> id = GeneratedColumn<int>(
+      'id', aliasedName, false,
+      hasAutoIncrement: true,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('PRIMARY KEY AUTOINCREMENT'));
+  static const VerificationMeta _accountIdMeta =
+      const VerificationMeta('accountId');
+  @override
+  late final GeneratedColumn<int> accountId = GeneratedColumn<int>(
+      'account_id', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: true,
+      defaultConstraints:
+          GeneratedColumn.constraintIsAlways('REFERENCES email_accounts (id)'));
+  static const VerificationMeta _encodedNameMeta =
+      const VerificationMeta('encodedName');
+  @override
+  late final GeneratedColumn<String> encodedName = GeneratedColumn<String>(
+      'encoded_name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _encodedPathMeta =
+      const VerificationMeta('encodedPath');
+  @override
+  late final GeneratedColumn<String> encodedPath = GeneratedColumn<String>(
+      'encoded_path', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _pathMeta = const VerificationMeta('path');
+  @override
+  late final GeneratedColumn<String> path = GeneratedColumn<String>(
+      'path', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _nameMeta = const VerificationMeta('name');
+  @override
+  late final GeneratedColumn<String> name = GeneratedColumn<String>(
+      'name', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _pathSeparatorMeta =
+      const VerificationMeta('pathSeparator');
+  @override
+  late final GeneratedColumn<String> pathSeparator = GeneratedColumn<String>(
+      'path_separator', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _flagsJsonMeta =
+      const VerificationMeta('flagsJson');
+  @override
+  late final GeneratedColumn<String> flagsJson = GeneratedColumn<String>(
+      'flags_json', aliasedName, false,
+      type: DriftSqlType.string, requiredDuringInsert: true);
+  static const VerificationMeta _isReadWriteMeta =
+      const VerificationMeta('isReadWrite');
+  @override
+  late final GeneratedColumn<bool> isReadWrite = GeneratedColumn<bool>(
+      'is_read_write', aliasedName, false,
+      type: DriftSqlType.bool,
+      requiredDuringInsert: false,
+      defaultConstraints: GeneratedColumn.constraintIsAlways(
+          'CHECK ("is_read_write" IN (0, 1))'),
+      defaultValue: const Constant(true));
+  static const VerificationMeta _messagesUnseenMeta =
+      const VerificationMeta('messagesUnseen');
+  @override
+  late final GeneratedColumn<int> messagesUnseen = GeneratedColumn<int>(
+      'messages_unseen', aliasedName, false,
+      type: DriftSqlType.int,
+      requiredDuringInsert: false,
+      defaultValue: const Constant(0));
+  static const VerificationMeta _uidValidityMeta =
+      const VerificationMeta('uidValidity');
+  @override
+  late final GeneratedColumn<int> uidValidity = GeneratedColumn<int>(
+      'uid_validity', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _uidNextMeta =
+      const VerificationMeta('uidNext');
+  @override
+  late final GeneratedColumn<int> uidNext = GeneratedColumn<int>(
+      'uid_next', aliasedName, true,
+      type: DriftSqlType.int, requiredDuringInsert: false);
+  static const VerificationMeta _syncedAtMeta =
+      const VerificationMeta('syncedAt');
+  @override
+  late final GeneratedColumn<DateTime> syncedAt = GeneratedColumn<DateTime>(
+      'synced_at', aliasedName, false,
+      type: DriftSqlType.dateTime, requiredDuringInsert: true);
+  @override
+  List<GeneratedColumn> get $columns => [
+        id,
+        accountId,
+        encodedName,
+        encodedPath,
+        path,
+        name,
+        pathSeparator,
+        flagsJson,
+        isReadWrite,
+        messagesUnseen,
+        uidValidity,
+        uidNext,
+        syncedAt
+      ];
+  @override
+  String get aliasedName => _alias ?? actualTableName;
+  @override
+  String get actualTableName => $name;
+  static const String $name = 'mailbox_folders';
+  @override
+  VerificationContext validateIntegrity(Insertable<MailboxFolder> instance,
+      {bool isInserting = false}) {
+    final context = VerificationContext();
+    final data = instance.toColumns(true);
+    if (data.containsKey('id')) {
+      context.handle(_idMeta, id.isAcceptableOrUnknown(data['id']!, _idMeta));
+    }
+    if (data.containsKey('account_id')) {
+      context.handle(_accountIdMeta,
+          accountId.isAcceptableOrUnknown(data['account_id']!, _accountIdMeta));
+    } else if (isInserting) {
+      context.missing(_accountIdMeta);
+    }
+    if (data.containsKey('encoded_name')) {
+      context.handle(
+          _encodedNameMeta,
+          encodedName.isAcceptableOrUnknown(
+              data['encoded_name']!, _encodedNameMeta));
+    } else if (isInserting) {
+      context.missing(_encodedNameMeta);
+    }
+    if (data.containsKey('encoded_path')) {
+      context.handle(
+          _encodedPathMeta,
+          encodedPath.isAcceptableOrUnknown(
+              data['encoded_path']!, _encodedPathMeta));
+    } else if (isInserting) {
+      context.missing(_encodedPathMeta);
+    }
+    if (data.containsKey('path')) {
+      context.handle(
+          _pathMeta, path.isAcceptableOrUnknown(data['path']!, _pathMeta));
+    } else if (isInserting) {
+      context.missing(_pathMeta);
+    }
+    if (data.containsKey('name')) {
+      context.handle(
+          _nameMeta, name.isAcceptableOrUnknown(data['name']!, _nameMeta));
+    } else if (isInserting) {
+      context.missing(_nameMeta);
+    }
+    if (data.containsKey('path_separator')) {
+      context.handle(
+          _pathSeparatorMeta,
+          pathSeparator.isAcceptableOrUnknown(
+              data['path_separator']!, _pathSeparatorMeta));
+    } else if (isInserting) {
+      context.missing(_pathSeparatorMeta);
+    }
+    if (data.containsKey('flags_json')) {
+      context.handle(_flagsJsonMeta,
+          flagsJson.isAcceptableOrUnknown(data['flags_json']!, _flagsJsonMeta));
+    } else if (isInserting) {
+      context.missing(_flagsJsonMeta);
+    }
+    if (data.containsKey('is_read_write')) {
+      context.handle(
+          _isReadWriteMeta,
+          isReadWrite.isAcceptableOrUnknown(
+              data['is_read_write']!, _isReadWriteMeta));
+    }
+    if (data.containsKey('messages_unseen')) {
+      context.handle(
+          _messagesUnseenMeta,
+          messagesUnseen.isAcceptableOrUnknown(
+              data['messages_unseen']!, _messagesUnseenMeta));
+    }
+    if (data.containsKey('uid_validity')) {
+      context.handle(
+          _uidValidityMeta,
+          uidValidity.isAcceptableOrUnknown(
+              data['uid_validity']!, _uidValidityMeta));
+    }
+    if (data.containsKey('uid_next')) {
+      context.handle(_uidNextMeta,
+          uidNext.isAcceptableOrUnknown(data['uid_next']!, _uidNextMeta));
+    }
+    if (data.containsKey('synced_at')) {
+      context.handle(_syncedAtMeta,
+          syncedAt.isAcceptableOrUnknown(data['synced_at']!, _syncedAtMeta));
+    } else if (isInserting) {
+      context.missing(_syncedAtMeta);
+    }
+    return context;
+  }
+
+  @override
+  Set<GeneratedColumn> get $primaryKey => {id};
+  @override
+  MailboxFolder map(Map<String, dynamic> data, {String? tablePrefix}) {
+    final effectivePrefix = tablePrefix != null ? '$tablePrefix.' : '';
+    return MailboxFolder(
+      id: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}id'])!,
+      accountId: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}account_id'])!,
+      encodedName: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}encoded_name'])!,
+      encodedPath: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}encoded_path'])!,
+      path: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}path'])!,
+      name: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}name'])!,
+      pathSeparator: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}path_separator'])!,
+      flagsJson: attachedDatabase.typeMapping
+          .read(DriftSqlType.string, data['${effectivePrefix}flags_json'])!,
+      isReadWrite: attachedDatabase.typeMapping
+          .read(DriftSqlType.bool, data['${effectivePrefix}is_read_write'])!,
+      messagesUnseen: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}messages_unseen'])!,
+      uidValidity: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}uid_validity']),
+      uidNext: attachedDatabase.typeMapping
+          .read(DriftSqlType.int, data['${effectivePrefix}uid_next']),
+      syncedAt: attachedDatabase.typeMapping
+          .read(DriftSqlType.dateTime, data['${effectivePrefix}synced_at'])!,
+    );
+  }
+
+  @override
+  $MailboxFoldersTable createAlias(String alias) {
+    return $MailboxFoldersTable(attachedDatabase, alias);
+  }
+}
+
+class MailboxFolder extends DataClass implements Insertable<MailboxFolder> {
+  final int id;
+  final int accountId;
+  final String encodedName;
+  final String encodedPath;
+  final String path;
+  final String name;
+  final String pathSeparator;
+  final String flagsJson;
+  final bool isReadWrite;
+  final int messagesUnseen;
+  final int? uidValidity;
+  final int? uidNext;
+  final DateTime syncedAt;
+  const MailboxFolder(
+      {required this.id,
+      required this.accountId,
+      required this.encodedName,
+      required this.encodedPath,
+      required this.path,
+      required this.name,
+      required this.pathSeparator,
+      required this.flagsJson,
+      required this.isReadWrite,
+      required this.messagesUnseen,
+      this.uidValidity,
+      this.uidNext,
+      required this.syncedAt});
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    map['id'] = Variable<int>(id);
+    map['account_id'] = Variable<int>(accountId);
+    map['encoded_name'] = Variable<String>(encodedName);
+    map['encoded_path'] = Variable<String>(encodedPath);
+    map['path'] = Variable<String>(path);
+    map['name'] = Variable<String>(name);
+    map['path_separator'] = Variable<String>(pathSeparator);
+    map['flags_json'] = Variable<String>(flagsJson);
+    map['is_read_write'] = Variable<bool>(isReadWrite);
+    map['messages_unseen'] = Variable<int>(messagesUnseen);
+    if (!nullToAbsent || uidValidity != null) {
+      map['uid_validity'] = Variable<int>(uidValidity);
+    }
+    if (!nullToAbsent || uidNext != null) {
+      map['uid_next'] = Variable<int>(uidNext);
+    }
+    map['synced_at'] = Variable<DateTime>(syncedAt);
+    return map;
+  }
+
+  MailboxFoldersCompanion toCompanion(bool nullToAbsent) {
+    return MailboxFoldersCompanion(
+      id: Value(id),
+      accountId: Value(accountId),
+      encodedName: Value(encodedName),
+      encodedPath: Value(encodedPath),
+      path: Value(path),
+      name: Value(name),
+      pathSeparator: Value(pathSeparator),
+      flagsJson: Value(flagsJson),
+      isReadWrite: Value(isReadWrite),
+      messagesUnseen: Value(messagesUnseen),
+      uidValidity: uidValidity == null && nullToAbsent
+          ? const Value.absent()
+          : Value(uidValidity),
+      uidNext: uidNext == null && nullToAbsent
+          ? const Value.absent()
+          : Value(uidNext),
+      syncedAt: Value(syncedAt),
+    );
+  }
+
+  factory MailboxFolder.fromJson(Map<String, dynamic> json,
+      {ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return MailboxFolder(
+      id: serializer.fromJson<int>(json['id']),
+      accountId: serializer.fromJson<int>(json['accountId']),
+      encodedName: serializer.fromJson<String>(json['encodedName']),
+      encodedPath: serializer.fromJson<String>(json['encodedPath']),
+      path: serializer.fromJson<String>(json['path']),
+      name: serializer.fromJson<String>(json['name']),
+      pathSeparator: serializer.fromJson<String>(json['pathSeparator']),
+      flagsJson: serializer.fromJson<String>(json['flagsJson']),
+      isReadWrite: serializer.fromJson<bool>(json['isReadWrite']),
+      messagesUnseen: serializer.fromJson<int>(json['messagesUnseen']),
+      uidValidity: serializer.fromJson<int?>(json['uidValidity']),
+      uidNext: serializer.fromJson<int?>(json['uidNext']),
+      syncedAt: serializer.fromJson<DateTime>(json['syncedAt']),
+    );
+  }
+  @override
+  Map<String, dynamic> toJson({ValueSerializer? serializer}) {
+    serializer ??= driftRuntimeOptions.defaultSerializer;
+    return <String, dynamic>{
+      'id': serializer.toJson<int>(id),
+      'accountId': serializer.toJson<int>(accountId),
+      'encodedName': serializer.toJson<String>(encodedName),
+      'encodedPath': serializer.toJson<String>(encodedPath),
+      'path': serializer.toJson<String>(path),
+      'name': serializer.toJson<String>(name),
+      'pathSeparator': serializer.toJson<String>(pathSeparator),
+      'flagsJson': serializer.toJson<String>(flagsJson),
+      'isReadWrite': serializer.toJson<bool>(isReadWrite),
+      'messagesUnseen': serializer.toJson<int>(messagesUnseen),
+      'uidValidity': serializer.toJson<int?>(uidValidity),
+      'uidNext': serializer.toJson<int?>(uidNext),
+      'syncedAt': serializer.toJson<DateTime>(syncedAt),
+    };
+  }
+
+  MailboxFolder copyWith(
+          {int? id,
+          int? accountId,
+          String? encodedName,
+          String? encodedPath,
+          String? path,
+          String? name,
+          String? pathSeparator,
+          String? flagsJson,
+          bool? isReadWrite,
+          int? messagesUnseen,
+          Value<int?> uidValidity = const Value.absent(),
+          Value<int?> uidNext = const Value.absent(),
+          DateTime? syncedAt}) =>
+      MailboxFolder(
+        id: id ?? this.id,
+        accountId: accountId ?? this.accountId,
+        encodedName: encodedName ?? this.encodedName,
+        encodedPath: encodedPath ?? this.encodedPath,
+        path: path ?? this.path,
+        name: name ?? this.name,
+        pathSeparator: pathSeparator ?? this.pathSeparator,
+        flagsJson: flagsJson ?? this.flagsJson,
+        isReadWrite: isReadWrite ?? this.isReadWrite,
+        messagesUnseen: messagesUnseen ?? this.messagesUnseen,
+        uidValidity: uidValidity.present ? uidValidity.value : this.uidValidity,
+        uidNext: uidNext.present ? uidNext.value : this.uidNext,
+        syncedAt: syncedAt ?? this.syncedAt,
+      );
+  MailboxFolder copyWithCompanion(MailboxFoldersCompanion data) {
+    return MailboxFolder(
+      id: data.id.present ? data.id.value : this.id,
+      accountId: data.accountId.present ? data.accountId.value : this.accountId,
+      encodedName:
+          data.encodedName.present ? data.encodedName.value : this.encodedName,
+      encodedPath:
+          data.encodedPath.present ? data.encodedPath.value : this.encodedPath,
+      path: data.path.present ? data.path.value : this.path,
+      name: data.name.present ? data.name.value : this.name,
+      pathSeparator: data.pathSeparator.present
+          ? data.pathSeparator.value
+          : this.pathSeparator,
+      flagsJson: data.flagsJson.present ? data.flagsJson.value : this.flagsJson,
+      isReadWrite:
+          data.isReadWrite.present ? data.isReadWrite.value : this.isReadWrite,
+      messagesUnseen: data.messagesUnseen.present
+          ? data.messagesUnseen.value
+          : this.messagesUnseen,
+      uidValidity:
+          data.uidValidity.present ? data.uidValidity.value : this.uidValidity,
+      uidNext: data.uidNext.present ? data.uidNext.value : this.uidNext,
+      syncedAt: data.syncedAt.present ? data.syncedAt.value : this.syncedAt,
+    );
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MailboxFolder(')
+          ..write('id: $id, ')
+          ..write('accountId: $accountId, ')
+          ..write('encodedName: $encodedName, ')
+          ..write('encodedPath: $encodedPath, ')
+          ..write('path: $path, ')
+          ..write('name: $name, ')
+          ..write('pathSeparator: $pathSeparator, ')
+          ..write('flagsJson: $flagsJson, ')
+          ..write('isReadWrite: $isReadWrite, ')
+          ..write('messagesUnseen: $messagesUnseen, ')
+          ..write('uidValidity: $uidValidity, ')
+          ..write('uidNext: $uidNext, ')
+          ..write('syncedAt: $syncedAt')
+          ..write(')'))
+        .toString();
+  }
+
+  @override
+  int get hashCode => Object.hash(
+      id,
+      accountId,
+      encodedName,
+      encodedPath,
+      path,
+      name,
+      pathSeparator,
+      flagsJson,
+      isReadWrite,
+      messagesUnseen,
+      uidValidity,
+      uidNext,
+      syncedAt);
+  @override
+  bool operator ==(Object other) =>
+      identical(this, other) ||
+      (other is MailboxFolder &&
+          other.id == this.id &&
+          other.accountId == this.accountId &&
+          other.encodedName == this.encodedName &&
+          other.encodedPath == this.encodedPath &&
+          other.path == this.path &&
+          other.name == this.name &&
+          other.pathSeparator == this.pathSeparator &&
+          other.flagsJson == this.flagsJson &&
+          other.isReadWrite == this.isReadWrite &&
+          other.messagesUnseen == this.messagesUnseen &&
+          other.uidValidity == this.uidValidity &&
+          other.uidNext == this.uidNext &&
+          other.syncedAt == this.syncedAt);
+}
+
+class MailboxFoldersCompanion extends UpdateCompanion<MailboxFolder> {
+  final Value<int> id;
+  final Value<int> accountId;
+  final Value<String> encodedName;
+  final Value<String> encodedPath;
+  final Value<String> path;
+  final Value<String> name;
+  final Value<String> pathSeparator;
+  final Value<String> flagsJson;
+  final Value<bool> isReadWrite;
+  final Value<int> messagesUnseen;
+  final Value<int?> uidValidity;
+  final Value<int?> uidNext;
+  final Value<DateTime> syncedAt;
+  const MailboxFoldersCompanion({
+    this.id = const Value.absent(),
+    this.accountId = const Value.absent(),
+    this.encodedName = const Value.absent(),
+    this.encodedPath = const Value.absent(),
+    this.path = const Value.absent(),
+    this.name = const Value.absent(),
+    this.pathSeparator = const Value.absent(),
+    this.flagsJson = const Value.absent(),
+    this.isReadWrite = const Value.absent(),
+    this.messagesUnseen = const Value.absent(),
+    this.uidValidity = const Value.absent(),
+    this.uidNext = const Value.absent(),
+    this.syncedAt = const Value.absent(),
+  });
+  MailboxFoldersCompanion.insert({
+    this.id = const Value.absent(),
+    required int accountId,
+    required String encodedName,
+    required String encodedPath,
+    required String path,
+    required String name,
+    required String pathSeparator,
+    required String flagsJson,
+    this.isReadWrite = const Value.absent(),
+    this.messagesUnseen = const Value.absent(),
+    this.uidValidity = const Value.absent(),
+    this.uidNext = const Value.absent(),
+    required DateTime syncedAt,
+  })  : accountId = Value(accountId),
+        encodedName = Value(encodedName),
+        encodedPath = Value(encodedPath),
+        path = Value(path),
+        name = Value(name),
+        pathSeparator = Value(pathSeparator),
+        flagsJson = Value(flagsJson),
+        syncedAt = Value(syncedAt);
+  static Insertable<MailboxFolder> custom({
+    Expression<int>? id,
+    Expression<int>? accountId,
+    Expression<String>? encodedName,
+    Expression<String>? encodedPath,
+    Expression<String>? path,
+    Expression<String>? name,
+    Expression<String>? pathSeparator,
+    Expression<String>? flagsJson,
+    Expression<bool>? isReadWrite,
+    Expression<int>? messagesUnseen,
+    Expression<int>? uidValidity,
+    Expression<int>? uidNext,
+    Expression<DateTime>? syncedAt,
+  }) {
+    return RawValuesInsertable({
+      if (id != null) 'id': id,
+      if (accountId != null) 'account_id': accountId,
+      if (encodedName != null) 'encoded_name': encodedName,
+      if (encodedPath != null) 'encoded_path': encodedPath,
+      if (path != null) 'path': path,
+      if (name != null) 'name': name,
+      if (pathSeparator != null) 'path_separator': pathSeparator,
+      if (flagsJson != null) 'flags_json': flagsJson,
+      if (isReadWrite != null) 'is_read_write': isReadWrite,
+      if (messagesUnseen != null) 'messages_unseen': messagesUnseen,
+      if (uidValidity != null) 'uid_validity': uidValidity,
+      if (uidNext != null) 'uid_next': uidNext,
+      if (syncedAt != null) 'synced_at': syncedAt,
+    });
+  }
+
+  MailboxFoldersCompanion copyWith(
+      {Value<int>? id,
+      Value<int>? accountId,
+      Value<String>? encodedName,
+      Value<String>? encodedPath,
+      Value<String>? path,
+      Value<String>? name,
+      Value<String>? pathSeparator,
+      Value<String>? flagsJson,
+      Value<bool>? isReadWrite,
+      Value<int>? messagesUnseen,
+      Value<int?>? uidValidity,
+      Value<int?>? uidNext,
+      Value<DateTime>? syncedAt}) {
+    return MailboxFoldersCompanion(
+      id: id ?? this.id,
+      accountId: accountId ?? this.accountId,
+      encodedName: encodedName ?? this.encodedName,
+      encodedPath: encodedPath ?? this.encodedPath,
+      path: path ?? this.path,
+      name: name ?? this.name,
+      pathSeparator: pathSeparator ?? this.pathSeparator,
+      flagsJson: flagsJson ?? this.flagsJson,
+      isReadWrite: isReadWrite ?? this.isReadWrite,
+      messagesUnseen: messagesUnseen ?? this.messagesUnseen,
+      uidValidity: uidValidity ?? this.uidValidity,
+      uidNext: uidNext ?? this.uidNext,
+      syncedAt: syncedAt ?? this.syncedAt,
+    );
+  }
+
+  @override
+  Map<String, Expression> toColumns(bool nullToAbsent) {
+    final map = <String, Expression>{};
+    if (id.present) {
+      map['id'] = Variable<int>(id.value);
+    }
+    if (accountId.present) {
+      map['account_id'] = Variable<int>(accountId.value);
+    }
+    if (encodedName.present) {
+      map['encoded_name'] = Variable<String>(encodedName.value);
+    }
+    if (encodedPath.present) {
+      map['encoded_path'] = Variable<String>(encodedPath.value);
+    }
+    if (path.present) {
+      map['path'] = Variable<String>(path.value);
+    }
+    if (name.present) {
+      map['name'] = Variable<String>(name.value);
+    }
+    if (pathSeparator.present) {
+      map['path_separator'] = Variable<String>(pathSeparator.value);
+    }
+    if (flagsJson.present) {
+      map['flags_json'] = Variable<String>(flagsJson.value);
+    }
+    if (isReadWrite.present) {
+      map['is_read_write'] = Variable<bool>(isReadWrite.value);
+    }
+    if (messagesUnseen.present) {
+      map['messages_unseen'] = Variable<int>(messagesUnseen.value);
+    }
+    if (uidValidity.present) {
+      map['uid_validity'] = Variable<int>(uidValidity.value);
+    }
+    if (uidNext.present) {
+      map['uid_next'] = Variable<int>(uidNext.value);
+    }
+    if (syncedAt.present) {
+      map['synced_at'] = Variable<DateTime>(syncedAt.value);
+    }
+    return map;
+  }
+
+  @override
+  String toString() {
+    return (StringBuffer('MailboxFoldersCompanion(')
+          ..write('id: $id, ')
+          ..write('accountId: $accountId, ')
+          ..write('encodedName: $encodedName, ')
+          ..write('encodedPath: $encodedPath, ')
+          ..write('path: $path, ')
+          ..write('name: $name, ')
+          ..write('pathSeparator: $pathSeparator, ')
+          ..write('flagsJson: $flagsJson, ')
+          ..write('isReadWrite: $isReadWrite, ')
+          ..write('messagesUnseen: $messagesUnseen, ')
+          ..write('uidValidity: $uidValidity, ')
+          ..write('uidNext: $uidNext, ')
+          ..write('syncedAt: $syncedAt')
           ..write(')'))
         .toString();
   }
@@ -9852,6 +10537,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
       $ContactGroupMembersTable(this);
   late final $EmailSignaturesTable emailSignatures =
       $EmailSignaturesTable(this);
+  late final $MailboxFoldersTable mailboxFolders = $MailboxFoldersTable(this);
   late final $TasksTable tasks = $TasksTable(this);
   late final $EmailToTaskTable emailToTask = $EmailToTaskTable(this);
   late final $TaskCommentsTable taskComments = $TaskCommentsTable(this);
@@ -9884,6 +10570,7 @@ abstract class _$AppDatabase extends GeneratedDatabase {
         contactGroups,
         contactGroupMembers,
         emailSignatures,
+        mailboxFolders,
         tasks,
         emailToTask,
         taskComments,
@@ -9920,6 +10607,7 @@ typedef $$EmailAccountsTableCreateCompanionBuilder = EmailAccountsCompanion
   Value<String> loginType,
   Value<String> syncPeriod,
   Value<int> syncInterval,
+  Value<int> accentColor,
   required DateTime createdAt,
   required DateTime updatedAt,
 });
@@ -9941,6 +10629,7 @@ typedef $$EmailAccountsTableUpdateCompanionBuilder = EmailAccountsCompanion
   Value<String> loginType,
   Value<String> syncPeriod,
   Value<int> syncInterval,
+  Value<int> accentColor,
   Value<DateTime> createdAt,
   Value<DateTime> updatedAt,
 });
@@ -10011,6 +10700,21 @@ final class $$EmailAccountsTableReferences
     return ProcessedTableManager(
         manager.$state.copyWith(prefetchedData: cache));
   }
+
+  static MultiTypedResultKey<$MailboxFoldersTable, List<MailboxFolder>>
+      _mailboxFoldersRefsTable(_$AppDatabase db) =>
+          MultiTypedResultKey.fromTable(db.mailboxFolders,
+              aliasName: $_aliasNameGenerator(
+                  db.emailAccounts.id, db.mailboxFolders.accountId));
+
+  $$MailboxFoldersTableProcessedTableManager get mailboxFoldersRefs {
+    final manager = $$MailboxFoldersTableTableManager($_db, $_db.mailboxFolders)
+        .filter((f) => f.accountId.id.sqlEquals($_itemColumn<int>('id')!));
+
+    final cache = $_typedResult.readTableOrNull(_mailboxFoldersRefsTable($_db));
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: cache));
+  }
 }
 
 class $$EmailAccountsTableFilterComposer
@@ -10071,6 +10775,9 @@ class $$EmailAccountsTableFilterComposer
 
   ColumnFilters<int> get syncInterval => $composableBuilder(
       column: $table.syncInterval, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get accentColor => $composableBuilder(
+      column: $table.accentColor, builder: (column) => ColumnFilters(column));
 
   ColumnFilters<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnFilters(column));
@@ -10161,6 +10868,27 @@ class $$EmailAccountsTableFilterComposer
             ));
     return f(composer);
   }
+
+  Expression<bool> mailboxFoldersRefs(
+      Expression<bool> Function($$MailboxFoldersTableFilterComposer f) f) {
+    final $$MailboxFoldersTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.mailboxFolders,
+        getReferencedColumn: (t) => t.accountId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$MailboxFoldersTableFilterComposer(
+              $db: $db,
+              $table: $db.mailboxFolders,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$EmailAccountsTableOrderingComposer
@@ -10223,6 +10951,9 @@ class $$EmailAccountsTableOrderingComposer
   ColumnOrderings<int> get syncInterval => $composableBuilder(
       column: $table.syncInterval,
       builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get accentColor => $composableBuilder(
+      column: $table.accentColor, builder: (column) => ColumnOrderings(column));
 
   ColumnOrderings<DateTime> get createdAt => $composableBuilder(
       column: $table.createdAt, builder: (column) => ColumnOrderings(column));
@@ -10287,6 +11018,9 @@ class $$EmailAccountsTableAnnotationComposer
 
   GeneratedColumn<int> get syncInterval => $composableBuilder(
       column: $table.syncInterval, builder: (column) => column);
+
+  GeneratedColumn<int> get accentColor => $composableBuilder(
+      column: $table.accentColor, builder: (column) => column);
 
   GeneratedColumn<DateTime> get createdAt =>
       $composableBuilder(column: $table.createdAt, builder: (column) => column);
@@ -10377,6 +11111,27 @@ class $$EmailAccountsTableAnnotationComposer
             ));
     return f(composer);
   }
+
+  Expression<T> mailboxFoldersRefs<T extends Object>(
+      Expression<T> Function($$MailboxFoldersTableAnnotationComposer a) f) {
+    final $$MailboxFoldersTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.id,
+        referencedTable: $db.mailboxFolders,
+        getReferencedColumn: (t) => t.accountId,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$MailboxFoldersTableAnnotationComposer(
+              $db: $db,
+              $table: $db.mailboxFolders,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return f(composer);
+  }
 }
 
 class $$EmailAccountsTableTableManager extends RootTableManager<
@@ -10394,7 +11149,8 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
         {bool emailsRefs,
         bool pendingEmailsRefs,
         bool contactsRefs,
-        bool emailSignaturesRefs})> {
+        bool emailSignaturesRefs,
+        bool mailboxFoldersRefs})> {
   $$EmailAccountsTableTableManager(_$AppDatabase db, $EmailAccountsTable table)
       : super(TableManagerState(
           db: db,
@@ -10422,6 +11178,7 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
             Value<String> loginType = const Value.absent(),
             Value<String> syncPeriod = const Value.absent(),
             Value<int> syncInterval = const Value.absent(),
+            Value<int> accentColor = const Value.absent(),
             Value<DateTime> createdAt = const Value.absent(),
             Value<DateTime> updatedAt = const Value.absent(),
           }) =>
@@ -10442,6 +11199,7 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
             loginType: loginType,
             syncPeriod: syncPeriod,
             syncInterval: syncInterval,
+            accentColor: accentColor,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
@@ -10462,6 +11220,7 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
             Value<String> loginType = const Value.absent(),
             Value<String> syncPeriod = const Value.absent(),
             Value<int> syncInterval = const Value.absent(),
+            Value<int> accentColor = const Value.absent(),
             required DateTime createdAt,
             required DateTime updatedAt,
           }) =>
@@ -10482,6 +11241,7 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
             loginType: loginType,
             syncPeriod: syncPeriod,
             syncInterval: syncInterval,
+            accentColor: accentColor,
             createdAt: createdAt,
             updatedAt: updatedAt,
           ),
@@ -10495,14 +11255,16 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
               {emailsRefs = false,
               pendingEmailsRefs = false,
               contactsRefs = false,
-              emailSignaturesRefs = false}) {
+              emailSignaturesRefs = false,
+              mailboxFoldersRefs = false}) {
             return PrefetchHooks(
               db: db,
               explicitlyWatchedTables: [
                 if (emailsRefs) db.emails,
                 if (pendingEmailsRefs) db.pendingEmails,
                 if (contactsRefs) db.contacts,
-                if (emailSignaturesRefs) db.emailSignatures
+                if (emailSignaturesRefs) db.emailSignatures,
+                if (mailboxFoldersRefs) db.mailboxFolders
               ],
               addJoins: null,
               getPrefetchedDataCallback: (items) async {
@@ -10557,6 +11319,19 @@ class $$EmailAccountsTableTableManager extends RootTableManager<
                         referencedItemsForCurrentItem:
                             (item, referencedItems) => referencedItems
                                 .where((e) => e.accountId == item.id),
+                        typedResults: items),
+                  if (mailboxFoldersRefs)
+                    await $_getPrefetchedData<EmailAccount, $EmailAccountsTable,
+                            MailboxFolder>(
+                        currentTable: table,
+                        referencedTable: $$EmailAccountsTableReferences
+                            ._mailboxFoldersRefsTable(db),
+                        managerFromTypedResult: (p0) =>
+                            $$EmailAccountsTableReferences(db, table, p0)
+                                .mailboxFoldersRefs,
+                        referencedItemsForCurrentItem:
+                            (item, referencedItems) => referencedItems
+                                .where((e) => e.accountId == item.id),
                         typedResults: items)
                 ];
               },
@@ -10580,7 +11355,8 @@ typedef $$EmailAccountsTableProcessedTableManager = ProcessedTableManager<
         {bool emailsRefs,
         bool pendingEmailsRefs,
         bool contactsRefs,
-        bool emailSignaturesRefs})>;
+        bool emailSignaturesRefs,
+        bool mailboxFoldersRefs})>;
 typedef $$EmailsTableCreateCompanionBuilder = EmailsCompanion Function({
   Value<int> id,
   required int accountId,
@@ -13212,6 +13988,400 @@ typedef $$EmailSignaturesTableProcessedTableManager = ProcessedTableManager<
     $$EmailSignaturesTableUpdateCompanionBuilder,
     (EmailSignature, $$EmailSignaturesTableReferences),
     EmailSignature,
+    PrefetchHooks Function({bool accountId})>;
+typedef $$MailboxFoldersTableCreateCompanionBuilder = MailboxFoldersCompanion
+    Function({
+  Value<int> id,
+  required int accountId,
+  required String encodedName,
+  required String encodedPath,
+  required String path,
+  required String name,
+  required String pathSeparator,
+  required String flagsJson,
+  Value<bool> isReadWrite,
+  Value<int> messagesUnseen,
+  Value<int?> uidValidity,
+  Value<int?> uidNext,
+  required DateTime syncedAt,
+});
+typedef $$MailboxFoldersTableUpdateCompanionBuilder = MailboxFoldersCompanion
+    Function({
+  Value<int> id,
+  Value<int> accountId,
+  Value<String> encodedName,
+  Value<String> encodedPath,
+  Value<String> path,
+  Value<String> name,
+  Value<String> pathSeparator,
+  Value<String> flagsJson,
+  Value<bool> isReadWrite,
+  Value<int> messagesUnseen,
+  Value<int?> uidValidity,
+  Value<int?> uidNext,
+  Value<DateTime> syncedAt,
+});
+
+final class $$MailboxFoldersTableReferences
+    extends BaseReferences<_$AppDatabase, $MailboxFoldersTable, MailboxFolder> {
+  $$MailboxFoldersTableReferences(
+      super.$_db, super.$_table, super.$_typedResult);
+
+  static $EmailAccountsTable _accountIdTable(_$AppDatabase db) =>
+      db.emailAccounts.createAlias($_aliasNameGenerator(
+          db.mailboxFolders.accountId, db.emailAccounts.id));
+
+  $$EmailAccountsTableProcessedTableManager get accountId {
+    final $_column = $_itemColumn<int>('account_id')!;
+
+    final manager = $$EmailAccountsTableTableManager($_db, $_db.emailAccounts)
+        .filter((f) => f.id.sqlEquals($_column));
+    final item = $_typedResult.readTableOrNull(_accountIdTable($_db));
+    if (item == null) return manager;
+    return ProcessedTableManager(
+        manager.$state.copyWith(prefetchedData: [item]));
+  }
+}
+
+class $$MailboxFoldersTableFilterComposer
+    extends Composer<_$AppDatabase, $MailboxFoldersTable> {
+  $$MailboxFoldersTableFilterComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnFilters<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get encodedName => $composableBuilder(
+      column: $table.encodedName, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get encodedPath => $composableBuilder(
+      column: $table.encodedPath, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get path => $composableBuilder(
+      column: $table.path, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get pathSeparator => $composableBuilder(
+      column: $table.pathSeparator, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<String> get flagsJson => $composableBuilder(
+      column: $table.flagsJson, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<bool> get isReadWrite => $composableBuilder(
+      column: $table.isReadWrite, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get messagesUnseen => $composableBuilder(
+      column: $table.messagesUnseen,
+      builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get uidValidity => $composableBuilder(
+      column: $table.uidValidity, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<int> get uidNext => $composableBuilder(
+      column: $table.uidNext, builder: (column) => ColumnFilters(column));
+
+  ColumnFilters<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnFilters(column));
+
+  $$EmailAccountsTableFilterComposer get accountId {
+    final $$EmailAccountsTableFilterComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.accountId,
+        referencedTable: $db.emailAccounts,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$EmailAccountsTableFilterComposer(
+              $db: $db,
+              $table: $db.emailAccounts,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$MailboxFoldersTableOrderingComposer
+    extends Composer<_$AppDatabase, $MailboxFoldersTable> {
+  $$MailboxFoldersTableOrderingComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  ColumnOrderings<int> get id => $composableBuilder(
+      column: $table.id, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get encodedName => $composableBuilder(
+      column: $table.encodedName, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get encodedPath => $composableBuilder(
+      column: $table.encodedPath, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get path => $composableBuilder(
+      column: $table.path, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get name => $composableBuilder(
+      column: $table.name, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get pathSeparator => $composableBuilder(
+      column: $table.pathSeparator,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<String> get flagsJson => $composableBuilder(
+      column: $table.flagsJson, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<bool> get isReadWrite => $composableBuilder(
+      column: $table.isReadWrite, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get messagesUnseen => $composableBuilder(
+      column: $table.messagesUnseen,
+      builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get uidValidity => $composableBuilder(
+      column: $table.uidValidity, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<int> get uidNext => $composableBuilder(
+      column: $table.uidNext, builder: (column) => ColumnOrderings(column));
+
+  ColumnOrderings<DateTime> get syncedAt => $composableBuilder(
+      column: $table.syncedAt, builder: (column) => ColumnOrderings(column));
+
+  $$EmailAccountsTableOrderingComposer get accountId {
+    final $$EmailAccountsTableOrderingComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.accountId,
+        referencedTable: $db.emailAccounts,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$EmailAccountsTableOrderingComposer(
+              $db: $db,
+              $table: $db.emailAccounts,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$MailboxFoldersTableAnnotationComposer
+    extends Composer<_$AppDatabase, $MailboxFoldersTable> {
+  $$MailboxFoldersTableAnnotationComposer({
+    required super.$db,
+    required super.$table,
+    super.joinBuilder,
+    super.$addJoinBuilderToRootComposer,
+    super.$removeJoinBuilderFromRootComposer,
+  });
+  GeneratedColumn<int> get id =>
+      $composableBuilder(column: $table.id, builder: (column) => column);
+
+  GeneratedColumn<String> get encodedName => $composableBuilder(
+      column: $table.encodedName, builder: (column) => column);
+
+  GeneratedColumn<String> get encodedPath => $composableBuilder(
+      column: $table.encodedPath, builder: (column) => column);
+
+  GeneratedColumn<String> get path =>
+      $composableBuilder(column: $table.path, builder: (column) => column);
+
+  GeneratedColumn<String> get name =>
+      $composableBuilder(column: $table.name, builder: (column) => column);
+
+  GeneratedColumn<String> get pathSeparator => $composableBuilder(
+      column: $table.pathSeparator, builder: (column) => column);
+
+  GeneratedColumn<String> get flagsJson =>
+      $composableBuilder(column: $table.flagsJson, builder: (column) => column);
+
+  GeneratedColumn<bool> get isReadWrite => $composableBuilder(
+      column: $table.isReadWrite, builder: (column) => column);
+
+  GeneratedColumn<int> get messagesUnseen => $composableBuilder(
+      column: $table.messagesUnseen, builder: (column) => column);
+
+  GeneratedColumn<int> get uidValidity => $composableBuilder(
+      column: $table.uidValidity, builder: (column) => column);
+
+  GeneratedColumn<int> get uidNext =>
+      $composableBuilder(column: $table.uidNext, builder: (column) => column);
+
+  GeneratedColumn<DateTime> get syncedAt =>
+      $composableBuilder(column: $table.syncedAt, builder: (column) => column);
+
+  $$EmailAccountsTableAnnotationComposer get accountId {
+    final $$EmailAccountsTableAnnotationComposer composer = $composerBuilder(
+        composer: this,
+        getCurrentColumn: (t) => t.accountId,
+        referencedTable: $db.emailAccounts,
+        getReferencedColumn: (t) => t.id,
+        builder: (joinBuilder,
+                {$addJoinBuilderToRootComposer,
+                $removeJoinBuilderFromRootComposer}) =>
+            $$EmailAccountsTableAnnotationComposer(
+              $db: $db,
+              $table: $db.emailAccounts,
+              $addJoinBuilderToRootComposer: $addJoinBuilderToRootComposer,
+              joinBuilder: joinBuilder,
+              $removeJoinBuilderFromRootComposer:
+                  $removeJoinBuilderFromRootComposer,
+            ));
+    return composer;
+  }
+}
+
+class $$MailboxFoldersTableTableManager extends RootTableManager<
+    _$AppDatabase,
+    $MailboxFoldersTable,
+    MailboxFolder,
+    $$MailboxFoldersTableFilterComposer,
+    $$MailboxFoldersTableOrderingComposer,
+    $$MailboxFoldersTableAnnotationComposer,
+    $$MailboxFoldersTableCreateCompanionBuilder,
+    $$MailboxFoldersTableUpdateCompanionBuilder,
+    (MailboxFolder, $$MailboxFoldersTableReferences),
+    MailboxFolder,
+    PrefetchHooks Function({bool accountId})> {
+  $$MailboxFoldersTableTableManager(
+      _$AppDatabase db, $MailboxFoldersTable table)
+      : super(TableManagerState(
+          db: db,
+          table: table,
+          createFilteringComposer: () =>
+              $$MailboxFoldersTableFilterComposer($db: db, $table: table),
+          createOrderingComposer: () =>
+              $$MailboxFoldersTableOrderingComposer($db: db, $table: table),
+          createComputedFieldComposer: () =>
+              $$MailboxFoldersTableAnnotationComposer($db: db, $table: table),
+          updateCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            Value<int> accountId = const Value.absent(),
+            Value<String> encodedName = const Value.absent(),
+            Value<String> encodedPath = const Value.absent(),
+            Value<String> path = const Value.absent(),
+            Value<String> name = const Value.absent(),
+            Value<String> pathSeparator = const Value.absent(),
+            Value<String> flagsJson = const Value.absent(),
+            Value<bool> isReadWrite = const Value.absent(),
+            Value<int> messagesUnseen = const Value.absent(),
+            Value<int?> uidValidity = const Value.absent(),
+            Value<int?> uidNext = const Value.absent(),
+            Value<DateTime> syncedAt = const Value.absent(),
+          }) =>
+              MailboxFoldersCompanion(
+            id: id,
+            accountId: accountId,
+            encodedName: encodedName,
+            encodedPath: encodedPath,
+            path: path,
+            name: name,
+            pathSeparator: pathSeparator,
+            flagsJson: flagsJson,
+            isReadWrite: isReadWrite,
+            messagesUnseen: messagesUnseen,
+            uidValidity: uidValidity,
+            uidNext: uidNext,
+            syncedAt: syncedAt,
+          ),
+          createCompanionCallback: ({
+            Value<int> id = const Value.absent(),
+            required int accountId,
+            required String encodedName,
+            required String encodedPath,
+            required String path,
+            required String name,
+            required String pathSeparator,
+            required String flagsJson,
+            Value<bool> isReadWrite = const Value.absent(),
+            Value<int> messagesUnseen = const Value.absent(),
+            Value<int?> uidValidity = const Value.absent(),
+            Value<int?> uidNext = const Value.absent(),
+            required DateTime syncedAt,
+          }) =>
+              MailboxFoldersCompanion.insert(
+            id: id,
+            accountId: accountId,
+            encodedName: encodedName,
+            encodedPath: encodedPath,
+            path: path,
+            name: name,
+            pathSeparator: pathSeparator,
+            flagsJson: flagsJson,
+            isReadWrite: isReadWrite,
+            messagesUnseen: messagesUnseen,
+            uidValidity: uidValidity,
+            uidNext: uidNext,
+            syncedAt: syncedAt,
+          ),
+          withReferenceMapper: (p0) => p0
+              .map((e) => (
+                    e.readTable(table),
+                    $$MailboxFoldersTableReferences(db, table, e)
+                  ))
+              .toList(),
+          prefetchHooksCallback: ({accountId = false}) {
+            return PrefetchHooks(
+              db: db,
+              explicitlyWatchedTables: [],
+              addJoins: <
+                  T extends TableManagerState<
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic,
+                      dynamic>>(state) {
+                if (accountId) {
+                  state = state.withJoin(
+                    currentTable: table,
+                    currentColumn: table.accountId,
+                    referencedTable:
+                        $$MailboxFoldersTableReferences._accountIdTable(db),
+                    referencedColumn:
+                        $$MailboxFoldersTableReferences._accountIdTable(db).id,
+                  ) as T;
+                }
+
+                return state;
+              },
+              getPrefetchedDataCallback: (items) async {
+                return [];
+              },
+            );
+          },
+        ));
+}
+
+typedef $$MailboxFoldersTableProcessedTableManager = ProcessedTableManager<
+    _$AppDatabase,
+    $MailboxFoldersTable,
+    MailboxFolder,
+    $$MailboxFoldersTableFilterComposer,
+    $$MailboxFoldersTableOrderingComposer,
+    $$MailboxFoldersTableAnnotationComposer,
+    $$MailboxFoldersTableCreateCompanionBuilder,
+    $$MailboxFoldersTableUpdateCompanionBuilder,
+    (MailboxFolder, $$MailboxFoldersTableReferences),
+    MailboxFolder,
     PrefetchHooks Function({bool accountId})>;
 typedef $$TasksTableCreateCompanionBuilder = TasksCompanion Function({
   Value<int> id,
@@ -17653,6 +18823,8 @@ class $AppDatabaseManager {
       $$ContactGroupMembersTableTableManager(_db, _db.contactGroupMembers);
   $$EmailSignaturesTableTableManager get emailSignatures =>
       $$EmailSignaturesTableTableManager(_db, _db.emailSignatures);
+  $$MailboxFoldersTableTableManager get mailboxFolders =>
+      $$MailboxFoldersTableTableManager(_db, _db.mailboxFolders);
   $$TasksTableTableManager get tasks =>
       $$TasksTableTableManager(_db, _db.tasks);
   $$EmailToTaskTableTableManager get emailToTask =>

@@ -1,0 +1,10 @@
+{
+  "elements": {},
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/app_database.dart",
+    "package:easywork/core/database/tables/email_signatures_dao.dart",
+    "package:easywork/features/signatures/data/signature_repository.dart",
+    "package:easywork/features/signatures/domain/signature_entity.dart"
+  ]
+}

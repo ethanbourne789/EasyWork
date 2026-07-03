@@ -1,0 +1,333 @@
+{
+  "elements": {
+    "contacts": {
+      "id": {
+        "library_uri": "package:easywork/core/database/tables/contacts_table.dart",
+        "name": "contacts"
+      },
+      "declaration": {
+        "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+        "offset": 81,
+        "name": "Contacts"
+      },
+      "references": [
+        {
+          "library_uri": "package:easywork/core/database/tables/email_accounts_table.dart",
+          "name": "email_accounts"
+        }
+      ],
+      "type": "table",
+      "columns": [
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": false,
+          "nameInSql": "id",
+          "nameInDart": "id",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 123,
+            "name": "id"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [
+            {
+              "type": "primary",
+              "is_auto_increment": true
+            }
+          ],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "int"
+          },
+          "nullable": true,
+          "nameInSql": "account_id",
+          "nameInDart": "accountId",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 175,
+            "name": "accountId"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [
+            {
+              "type": "foreign_key",
+              "column": {
+                "table": {
+                  "library_uri": "package:easywork/core/database/tables/email_accounts_table.dart",
+                  "name": "email_accounts"
+                },
+                "name": "id"
+              },
+              "onUpdate": null,
+              "onDelete": null,
+              "initiallyDeferred": false
+            }
+          ],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "first_name",
+          "nameInDart": "firstName",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 261,
+            "name": "firstName"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "last_name",
+          "nameInDart": "lastName",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 313,
+            "name": "lastName"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": false,
+          "nameInSql": "display_name",
+          "nameInDart": "displayName",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 364,
+            "name": "displayName"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "email_addresses",
+          "nameInDart": "emailAddresses",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 407,
+            "name": "emailAddresses"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "phone_numbers",
+          "nameInDart": "phoneNumbers",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 464,
+            "name": "phoneNumbers"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "organization",
+          "nameInDart": "organization",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 519,
+            "name": "organization"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "department",
+          "nameInDart": "department",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 574,
+            "name": "department"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "job_title",
+          "nameInDart": "jobTitle",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 627,
+            "name": "jobTitle"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "string"
+          },
+          "nullable": true,
+          "nameInSql": "notes",
+          "nameInDart": "notes",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 678,
+            "name": "notes"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "dateTime"
+          },
+          "nullable": false,
+          "nameInSql": "created_at",
+          "nameInDart": "createdAt",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 730,
+            "name": "createdAt"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        },
+        {
+          "sqlType": {
+            "builtin": "dateTime"
+          },
+          "nullable": false,
+          "nameInSql": "updated_at",
+          "nameInDart": "updatedAt",
+          "declaration": {
+            "source_uri": "package:easywork/core/database/tables/contacts_table.dart",
+            "offset": 779,
+            "name": "updatedAt"
+          },
+          "typeConverter": null,
+          "clientDefaultCode": null,
+          "defaultArgument": null,
+          "overriddenJsonName": null,
+          "referenceName": null,
+          "documentationComment": null,
+          "constraints": [],
+          "customConstraints": null
+        }
+      ],
+      "existing_data_class": null,
+      "table_constraints": [],
+      "custom_parent_class": null,
+      "interfaces_for_row_class": [],
+      "fixed_entity_info_name": null,
+      "base_dart_name": "Contacts",
+      "row_class_name": "Contact",
+      "companion_class_name": null,
+      "without_rowid": false,
+      "strict": false,
+      "write_default_constraints": true,
+      "custom_constraints": [],
+      "attached_indices": []
+    }
+  },
+  "imports": [
+    "package:drift/drift.dart",
+    "package:easywork/core/database/tables/email_accounts_table.dart"
+  ]
+}

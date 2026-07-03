@@ -1,0 +1,1 @@
+ E:\\Dev\\EasyWork070101\\.dart_tool\\flutter_build\\37c71a9befc1028cc61f81f0dfd2941a\\native_assets.json: 

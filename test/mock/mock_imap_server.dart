@@ -16,7 +16,7 @@ class MockImapServer {
       onDone: () {
         _commandController.close();
       },
-      onError: (error) {
+      onError: (Object error) {
         _commandController.addError(error);
       },
     );

@@ -1,0 +1,6 @@
+// ignore_for_file: type=lint
+mixin _$NoteTagMembersDaoMixin on DatabaseAccessor<AppDatabase> {
+  $NotesTable get notes => attachedDatabase.notes;
+  $NoteTagsTable get noteTags => attachedDatabase.noteTags;
+  $NoteTagMembersTable get noteTagMembers => attachedDatabase.noteTagMembers;
+}
