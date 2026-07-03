@@ -1,7 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:enough_mail/enough_mail.dart",
-    "package:easywork/features/email/domain/email_account_entity.dart"
-  ]
-}

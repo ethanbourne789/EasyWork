@@ -1,8 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter_test/flutter_test.dart",
-    "package:flutter_riverpod/flutter_riverpod.dart",
-    "package:easywork/main.dart"
-  ]
-}

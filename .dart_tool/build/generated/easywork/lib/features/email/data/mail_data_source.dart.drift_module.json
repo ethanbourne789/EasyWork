@@ -1,8 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:enough_mail/enough_mail.dart",
-    "package:easywork/core/event/event_bus.dart",
-    "package:easywork/shared/events/email_events.dart"
-  ]
-}

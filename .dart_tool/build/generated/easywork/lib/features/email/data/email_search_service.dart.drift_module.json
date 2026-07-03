@@ -1,7 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:easywork/core/database/app_database.dart",
-    "package:easywork/core/database/tables/emails_dao.dart"
-  ]
-}

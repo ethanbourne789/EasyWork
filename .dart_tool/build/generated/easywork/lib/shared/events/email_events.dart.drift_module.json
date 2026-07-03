@@ -1,6 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:easywork/core/event/app_event.dart"
-  ]
-}

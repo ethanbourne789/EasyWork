@@ -1,5 +1,0 @@
-// ignore_for_file: type=lint
-mixin _$TimelineEventsDaoMixin on DatabaseAccessor<AppDatabase> {
-  $LogsTable get logs => attachedDatabase.logs;
-  $TimelineEventsTable get timelineEvents => attachedDatabase.timelineEvents;
-}

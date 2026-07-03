@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter/material.dart",
-    "package:enough_mail/enough_mail.dart",
-    "package:easywork/core/database/tables/mailbox_folders_dao.dart",
-    "package:easywork/core/database/tables/mailbox_folders_table.dart"
-  ]
-}

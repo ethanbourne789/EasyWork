@@ -1,1 +1,14 @@
 easy_work/
+
+# Dart/Flutter build artifacts
+.dart_tool/
+build/
+
+# IDE
+.idea/
+.vscode/
+*.iml
+
+# OS
+.DS_Store
+Thumbs.db

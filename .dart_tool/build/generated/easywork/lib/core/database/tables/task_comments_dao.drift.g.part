@@ -1,5 +1,0 @@
-// ignore_for_file: type=lint
-mixin _$TaskCommentsDaoMixin on DatabaseAccessor<AppDatabase> {
-  $TasksTable get tasks => attachedDatabase.tasks;
-  $TaskCommentsTable get taskComments => attachedDatabase.taskComments;
-}

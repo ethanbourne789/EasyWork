@@ -1,8 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter_riverpod/flutter_riverpod.dart",
-    "package:easywork/core/event/event_bus.dart",
-    "package:easywork/core/security/credential_store.dart"
-  ]
-}

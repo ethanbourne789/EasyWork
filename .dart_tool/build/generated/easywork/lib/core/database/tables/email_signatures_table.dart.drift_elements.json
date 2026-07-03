@@ -1,1 +1,0 @@
-{"valid_import":true,"imports":[{"uri":"package:drift/drift.dart","transitive":false},{"uri":"package:easywork/core/database/tables/email_accounts_table.dart","transitive":false}],"elements":[{"kind":"table","name":"email_signatures","dart_name":"EmailSignatures"}]}

@@ -1,6 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:permission_handler/permission_handler.dart"
-  ]
-}

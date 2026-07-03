@@ -1,4 +1,0 @@
-// ignore_for_file: type=lint
-mixin _$ContactGroupsDaoMixin on DatabaseAccessor<AppDatabase> {
-  $ContactGroupsTable get contactGroups => attachedDatabase.contactGroups;
-}

@@ -1,9 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:flutter/material.dart",
-    "package:flutter_riverpod/flutter_riverpod.dart",
-    "package:enough_mail/enough_mail.dart",
-    "package:easywork/core/utils/validators.dart"
-  ]
-}

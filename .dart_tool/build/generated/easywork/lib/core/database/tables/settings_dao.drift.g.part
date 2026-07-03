@@ -1,4 +1,0 @@
-// ignore_for_file: type=lint
-mixin _$SettingsDaoMixin on DatabaseAccessor<AppDatabase> {
-  $SettingsTable get settings => attachedDatabase.settings;
-}

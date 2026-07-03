@@ -1,8 +1,0 @@
-{
-  "elements": {},
-  "imports": [
-    "package:drift/drift.dart",
-    "package:enough_mail/enough_mail.dart",
-    "package:easywork/core/database/app_database.dart"
-  ]
-}

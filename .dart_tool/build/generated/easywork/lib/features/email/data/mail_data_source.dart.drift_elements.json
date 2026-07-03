@@ -1,1 +1,0 @@
-{"valid_import":true,"imports":[{"uri":"package:enough_mail/enough_mail.dart","transitive":false},{"uri":"package:easywork/core/event/event_bus.dart","transitive":false},{"uri":"package:easywork/shared/events/email_events.dart","transitive":false}],"elements":[]}
