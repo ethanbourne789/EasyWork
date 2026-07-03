@@ -21,6 +21,7 @@ final emailRepositoryProvider = Provider<EmailRepository>((ref) {
     ref.watch(emailAccountsDaoProvider).requireValue,
     ref.watch(mailDataSourcesProvider.notifier),
     ref.watch(credentialStoreProvider),
+    ref.watch(mailboxFoldersDaoProvider).requireValue,
   );
 });
 
@@ -51,6 +52,7 @@ final localEmailDetailProvider =
 
 final mailboxListProvider =
     FutureProvider.family<List<Mailbox>, int>((ref, accountId) async {
+  ref.watch(mailDataSourcesProvider);
   final repo = ref.watch(emailRepositoryProvider);
   return repo.listMailboxes(accountId);
 });

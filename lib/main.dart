@@ -116,6 +116,8 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
             smtpUseSsl: account.smtpUseSsl,
           );
           debugPrint('Account ${account.email} connected successfully');
+          final repo = ref.read(emailRepositoryProvider);
+          await repo.syncMailboxes(account.id);
         } catch (e) {
           debugPrint('Failed to connect account ${account.email}: $e');
         }

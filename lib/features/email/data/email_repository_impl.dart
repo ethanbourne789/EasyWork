@@ -3,6 +3,7 @@ import 'package:drift/drift.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables/emails_dao.dart';
 import '../../../core/database/tables/email_accounts_dao.dart';
+import '../../../core/database/tables/mailbox_folders_dao.dart';
 import '../../../core/security/credential_store.dart';
 import 'mail_data_sources_notifier.dart';
 import 'email_repository.dart';
@@ -13,12 +14,14 @@ class EmailRepositoryImpl implements EmailRepository {
   final EmailAccountsDao _accountsDao;
   final MailDataSourcesNotifier _dataSources;
   final CredentialStore _credentialStore;
+  final MailboxFoldersDao _mailboxFoldersDao;
 
   EmailRepositoryImpl(
     this._emailsDao,
     this._accountsDao,
     this._dataSources,
     this._credentialStore,
+    this._mailboxFoldersDao,
   );
 
   @override
@@ -220,6 +223,18 @@ class EmailRepositoryImpl implements EmailRepository {
     final ds = _dataSources.get(accountId);
     if (ds == null) return [];
     return ds.listMailboxes();
+  }
+
+  @override
+  Future<void> syncMailboxes(int accountId) async {
+    final ds = _dataSources.get(accountId);
+    if (ds == null) return;
+    try {
+      final mailboxes = await ds.listMailboxes();
+      await _mailboxFoldersDao.upsertMailboxes(accountId, mailboxes);
+    } catch (_) {
+      // Logged upstream; sync failures should not crash
+    }
   }
 
   @override

@@ -40,6 +40,7 @@ abstract class EmailRepository {
 
   // --- Mailbox management ---
   Future<List<Mailbox>> listMailboxes(int accountId);
+  Future<void> syncMailboxes(int accountId);
   Future<void> selectMailbox(int accountId, Mailbox mailbox);
   Future<void> createMailbox(int accountId, String mailboxPath);
   Future<void> deleteMailbox(int accountId, String mailboxPath);
