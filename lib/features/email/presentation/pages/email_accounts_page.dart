@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../domain/email_account_entity.dart';
 import '../../providers/email_providers.dart';
 import 'email_account_form_page.dart';
 
@@ -58,14 +59,25 @@ class EmailAccountsPage extends ConsumerWidget {
                 ),
                 title: Text(account.displayName),
                 subtitle: Text(account.email),
-                trailing: Switch(
-                  value: account.isActive,
-                  onChanged: (value) {
-                    ref.read(emailRepositoryProvider).updateAccount(
-                      account.copyWith(isActive: value),
-                    );
-                    ref.invalidate(emailAccountListProvider);
-                  },
+                trailing: Row(
+                  mainAxisSize: MainAxisSize.min,
+                  children: [
+                    IconButton(
+                      icon: const Icon(Icons.edit, size: 20),
+                      tooltip: '编辑',
+                      onPressed: () => Navigator.push<Widget>(
+                        context,
+                        MaterialPageRoute<Widget>(
+                          builder: (_) => EmailAccountFormPage(account: account),
+                        ),
+                      ),
+                    ),
+                    IconButton(
+                      icon: const Icon(Icons.delete, size: 20),
+                      tooltip: '删除',
+                      onPressed: () => _confirmDelete(context, ref, account),
+                    ),
+                  ],
                 ),
                 onTap: () => Navigator.push<Widget>(
                   context,
@@ -81,5 +93,38 @@ class EmailAccountsPage extends ConsumerWidget {
         error: (e, st) => Center(child: Text('加载失败: $e')),
       ),
     );
+  }
+
+  Future<void> _confirmDelete(
+      BuildContext context, WidgetRef ref, EmailAccountEntity account) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (ctx) => AlertDialog(
+        title: const Text('确认删除'),
+        content: Text('确定要删除邮箱账户「${account.displayName}」吗？'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, false),
+            child: const Text('取消'),
+          ),
+          TextButton(
+            onPressed: () => Navigator.pop(ctx, true),
+            style: TextButton.styleFrom(foregroundColor: Colors.red),
+            child: const Text('删除'),
+          ),
+        ],
+      ),
+    );
+
+    if (confirmed == true && account.id != null) {
+      final repo = ref.read(emailRepositoryProvider);
+      await repo.deleteAccount(account.id!);
+      ref.invalidate(emailAccountListProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(content: Text('账户已删除')),
+        );
+      }
+    }
   }
 }
