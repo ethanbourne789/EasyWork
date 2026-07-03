@@ -1,0 +1,2006 @@
+
+---
+events:
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineSystem.cmake:212 (message)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      The system is: Windows - 10.0.28000 - AMD64
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCXXCompilerId.cpp.in"
+    candidate_directories:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/"
+    found: "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeCXXCompilerId.cpp.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:125 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the CXX compiler identification source file "CMakeCXXCompilerId.cpp" succeeded.
+      Compiler:  
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      閫傜敤浜?.NET Framework MSBuild 鐗堟湰 18.7.8+1ac568fee
+      鐢熸垚鍚姩鏃堕棿涓?2026/7/3 8:50:41銆?
+      
+      鑺傜偣 1 涓婄殑椤圭洰鈥淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\4.3.1-msvc1\\CompilerIdCXX\\CompilerIdCXX.vcxproj鈥?榛樿鐩爣)銆?
+      PrepareForBuild:
+        姝ｅ湪鍒涘缓鐩綍鈥淒ebug\\鈥濄€?
+        宸插惎鐢ㄧ粨鏋勫寲杈撳嚭銆傜紪璇戝櫒璇婃柇鐨勬牸寮忚缃皢鍙嶆槧閿欒灞傛缁撴瀯銆傛湁鍏宠缁嗕俊鎭紝璇峰弬闃?https://aka.ms/cpp/structured-output銆?
+        姝ｅ湪鍒涘缓鐩綍鈥淒ebug\\CompilerIdCXX.tlog\\鈥濄€?
+      InitializeBuildStatus:
+        姝ｅ湪鍒涘缓鈥淒ebug\\CompilerIdCXX.tlog\\unsuccessfulbuild鈥濓紝鍥犱负宸叉寚瀹氣€淎lwaysCreate鈥濄€?
+        姝ｅ湪瀵光€淒ebug\\CompilerIdCXX.tlog\\unsuccessfulbuild鈥濇墽琛?Touch 浠诲姟銆?
+      ClCompile:
+        d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\\\" /Fd"Debug\\vc145.pdb" /external:W0 /Gd /TP /FC /errorReport:queue CMakeCXXCompilerId.cpp
+        CMakeCXXCompilerId.cpp
+      Link:
+        d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdCXX.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdCXX.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdCXX.lib" /MACHINE:X64 Debug\\CMakeCXXCompilerId.obj
+        CompilerIdCXX.vcxproj -> E:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\4.3.1-msvc1\\CompilerIdCXX\\CompilerIdCXX.exe
+      PostBuildEvent:
+        for %%i in (cl.exe) do @echo CMAKE_CXX_COMPILER=%%~$PATH:i
+        :VCEnd
+        CMAKE_CXX_COMPILER=d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe
+      FinalizeBuildStatus:
+        姝ｅ湪鍒犻櫎鏂囦欢鈥淒ebug\\CompilerIdCXX.tlog\\unsuccessfulbuild鈥濄€?
+        姝ｅ湪瀵光€淒ebug\\CompilerIdCXX.tlog\\CompilerIdCXX.lastbuildstate鈥濇墽琛?Touch 浠诲姟銆?
+      宸插畬鎴愮敓鎴愰」鐩€淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\4.3.1-msvc1\\CompilerIdCXX\\CompilerIdCXX.vcxproj鈥?榛樿鐩爣)鐨勬搷浣溿€?
+      
+      宸叉垚鍔熺敓鎴愩€?
+          0 涓鍛?
+          0 涓敊璇?
+      
+      宸茬敤鏃堕棿 00:00:03.66
+      
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.exe"
+      
+      Compilation of the CXX compiler identification source "CMakeCXXCompilerId.cpp" produced "CompilerIdCXX.vcxproj"
+      
+      The CXX compiler identification is MSVC, found in:
+        E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/4.3.1-msvc1/CompilerIdCXX/CompilerIdCXX.exe
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:103 (__resolve_linker_path)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "link"
+    candidate_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+    searched_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/link.com"
+    found: "D:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:104 (__resolve_linker_path)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lld-link"
+    candidate_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+    searched_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lld-link.com"
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lld-link.exe"
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lld-link"
+      - "C:/Windows/System32/lld-link.com"
+      - "C:/Windows/System32/lld-link.exe"
+      - "C:/Windows/System32/lld-link"
+      - "C:/Windows/lld-link.com"
+      - "C:/Windows/lld-link.exe"
+      - "C:/Windows/lld-link"
+      - "C:/Windows/System32/wbem/lld-link.com"
+      - "C:/Windows/System32/wbem/lld-link.exe"
+      - "C:/Windows/System32/wbem/lld-link"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/lld-link.com"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/lld-link"
+      - "C:/Windows/System32/OpenSSH/lld-link.com"
+      - "C:/Windows/System32/OpenSSH/lld-link.exe"
+      - "C:/Windows/System32/OpenSSH/lld-link"
+      - "C:/Program Files/Git/cmd/lld-link.com"
+      - "C:/Program Files/Git/cmd/lld-link.exe"
+      - "C:/Program Files/Git/cmd/lld-link"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/lld-link.com"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/lld-link.exe"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/lld-link"
+      - "C:/Program Files/nodejs/lld-link.com"
+      - "C:/Program Files/nodejs/lld-link.exe"
+      - "C:/Program Files/nodejs/lld-link"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/lld-link.com"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/lld-link"
+      - "D:/Microsoft VS Code/bin/lld-link.com"
+      - "D:/Microsoft VS Code/bin/lld-link.exe"
+      - "D:/Microsoft VS Code/bin/lld-link"
+      - "C:/Users/Ethan/AppData/Roaming/npm/lld-link.com"
+      - "C:/Users/Ethan/AppData/Roaming/npm/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Roaming/npm/lld-link"
+      - "D:/WINDOWS/lld-link.com"
+      - "D:/WINDOWS/lld-link.exe"
+      - "D:/WINDOWS/lld-link"
+      - "D:/WINDOWS/system32/lld-link.com"
+      - "D:/WINDOWS/system32/lld-link.exe"
+      - "D:/WINDOWS/system32/lld-link"
+      - "D:/WINDOWS/System32/Wbem/lld-link.com"
+      - "D:/WINDOWS/System32/Wbem/lld-link.exe"
+      - "D:/WINDOWS/System32/Wbem/lld-link"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/lld-link"
+      - "D:/WINDOWS/System32/OpenSSH/lld-link.com"
+      - "D:/WINDOWS/System32/OpenSSH/lld-link.exe"
+      - "D:/WINDOWS/System32/OpenSSH/lld-link"
+      - "C:/Program Files/dotnet/lld-link.com"
+      - "C:/Program Files/dotnet/lld-link.exe"
+      - "C:/Program Files/dotnet/lld-link"
+      - "D:/SiYuan/resources/kernel/lld-link.com"
+      - "D:/SiYuan/resources/kernel/lld-link.exe"
+      - "D:/SiYuan/resources/kernel/lld-link"
+      - "D:/flutter/bin/lld-link.com"
+      - "D:/flutter/bin/lld-link.exe"
+      - "D:/flutter/bin/lld-link"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/lld-link.com"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/lld-link"
+      - "C:/Users/Ethan/.dotnet/tools/lld-link.com"
+      - "C:/Users/Ethan/.dotnet/tools/lld-link.exe"
+      - "C:/Users/Ethan/.dotnet/tools/lld-link"
+      - "C:/nuget/lld-link.com"
+      - "C:/nuget/lld-link.exe"
+      - "C:/nuget/lld-link"
+      - "D:/flutter/bin/mingit/cmd/lld-link.com"
+      - "D:/flutter/bin/mingit/cmd/lld-link.exe"
+      - "D:/flutter/bin/mingit/cmd/lld-link"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_LINKER"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "link"
+    candidate_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+    searched_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/link.com"
+    found: "D:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/link.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_MT"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "mt"
+    candidate_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+    searched_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/mt.com"
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/mt.exe"
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/mt"
+      - "C:/Windows/System32/mt.com"
+      - "C:/Windows/System32/mt.exe"
+      - "C:/Windows/System32/mt"
+      - "C:/Windows/mt.com"
+      - "C:/Windows/mt.exe"
+      - "C:/Windows/mt"
+      - "C:/Windows/System32/wbem/mt.com"
+      - "C:/Windows/System32/wbem/mt.exe"
+      - "C:/Windows/System32/wbem/mt"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/mt.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/mt.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/mt"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/mt.com"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/mt.exe"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/mt"
+      - "C:/Windows/System32/OpenSSH/mt.com"
+      - "C:/Windows/System32/OpenSSH/mt.exe"
+      - "C:/Windows/System32/OpenSSH/mt"
+      - "C:/Program Files/Git/cmd/mt.com"
+      - "C:/Program Files/Git/cmd/mt.exe"
+      - "C:/Program Files/Git/cmd/mt"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/mt.com"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/mt.exe"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/mt"
+      - "C:/Program Files/nodejs/mt.com"
+      - "C:/Program Files/nodejs/mt.exe"
+      - "C:/Program Files/nodejs/mt"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/mt.com"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/mt.exe"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/mt"
+      - "D:/Microsoft VS Code/bin/mt.com"
+      - "D:/Microsoft VS Code/bin/mt.exe"
+      - "D:/Microsoft VS Code/bin/mt"
+      - "C:/Users/Ethan/AppData/Roaming/npm/mt.com"
+      - "C:/Users/Ethan/AppData/Roaming/npm/mt.exe"
+      - "C:/Users/Ethan/AppData/Roaming/npm/mt"
+      - "D:/WINDOWS/mt.com"
+      - "D:/WINDOWS/mt.exe"
+      - "D:/WINDOWS/mt"
+      - "D:/WINDOWS/system32/mt.com"
+      - "D:/WINDOWS/system32/mt.exe"
+      - "D:/WINDOWS/system32/mt"
+      - "D:/WINDOWS/System32/Wbem/mt.com"
+      - "D:/WINDOWS/System32/Wbem/mt.exe"
+      - "D:/WINDOWS/System32/Wbem/mt"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/mt.com"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/mt.exe"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/mt"
+      - "D:/WINDOWS/System32/OpenSSH/mt.com"
+      - "D:/WINDOWS/System32/OpenSSH/mt.exe"
+      - "D:/WINDOWS/System32/OpenSSH/mt"
+      - "C:/Program Files/dotnet/mt.com"
+      - "C:/Program Files/dotnet/mt.exe"
+      - "C:/Program Files/dotnet/mt"
+      - "D:/SiYuan/resources/kernel/mt.com"
+      - "D:/SiYuan/resources/kernel/mt.exe"
+      - "D:/SiYuan/resources/kernel/mt"
+      - "D:/flutter/bin/mt.com"
+      - "D:/flutter/bin/mt.exe"
+      - "D:/flutter/bin/mt"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/mt.com"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/mt.exe"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/mt"
+      - "C:/Users/Ethan/.dotnet/tools/mt.com"
+      - "C:/Users/Ethan/.dotnet/tools/mt.exe"
+      - "C:/Users/Ethan/.dotnet/tools/mt"
+      - "C:/nuget/mt.com"
+      - "C:/nuget/mt.exe"
+      - "C:/nuget/mt"
+      - "D:/flutter/bin/mingit/cmd/mt.com"
+      - "D:/flutter/bin/mingit/cmd/mt.exe"
+      - "D:/flutter/bin/mingit/cmd/mt"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:243 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCXXCompiler.cmake:206 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_AR"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lib"
+    candidate_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+    searched_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lib.com"
+    found: "D:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lib.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineRCCompiler.cmake:40 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/Platform/Windows-MSVC.cmake:596 (enable_language)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/Platform/Windows-MSVC.cmake:569 (__windows_compiler_msvc_enable_rc)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/Platform/Windows-MSVC-CXX.cmake:6 (__windows_compiler_msvc)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeCXXInformation.cmake:48 (include)"
+      - "CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "CMAKE_RC_COMPILER"
+    description: "RC compiler"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "rc"
+    candidate_directories:
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/bin/"
+      - "C:/Program Files/easy_work/sbin/"
+      - "C:/Program Files/easy_work/"
+    searched_directories:
+      - "C:/Windows/System32/rc.com"
+      - "C:/Windows/System32/rc.exe"
+      - "C:/Windows/System32/rc"
+      - "C:/Windows/rc.com"
+      - "C:/Windows/rc.exe"
+      - "C:/Windows/rc"
+      - "C:/Windows/System32/wbem/rc.com"
+      - "C:/Windows/System32/wbem/rc.exe"
+      - "C:/Windows/System32/wbem/rc"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/rc.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/rc.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/rc"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/rc.com"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/rc.exe"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/rc"
+      - "C:/Windows/System32/OpenSSH/rc.com"
+      - "C:/Windows/System32/OpenSSH/rc.exe"
+      - "C:/Windows/System32/OpenSSH/rc"
+      - "C:/Program Files/Git/cmd/rc.com"
+      - "C:/Program Files/Git/cmd/rc.exe"
+      - "C:/Program Files/Git/cmd/rc"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/rc.com"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/rc.exe"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/rc"
+      - "C:/Program Files/nodejs/rc.com"
+      - "C:/Program Files/nodejs/rc.exe"
+      - "C:/Program Files/nodejs/rc"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/rc.com"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/rc.exe"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/rc"
+      - "D:/Microsoft VS Code/bin/rc.com"
+      - "D:/Microsoft VS Code/bin/rc.exe"
+      - "D:/Microsoft VS Code/bin/rc"
+      - "C:/Users/Ethan/AppData/Roaming/npm/rc.com"
+      - "C:/Users/Ethan/AppData/Roaming/npm/rc.exe"
+      - "C:/Users/Ethan/AppData/Roaming/npm/rc"
+      - "D:/WINDOWS/rc.com"
+      - "D:/WINDOWS/rc.exe"
+      - "D:/WINDOWS/rc"
+      - "D:/WINDOWS/system32/rc.com"
+      - "D:/WINDOWS/system32/rc.exe"
+      - "D:/WINDOWS/system32/rc"
+      - "D:/WINDOWS/System32/Wbem/rc.com"
+      - "D:/WINDOWS/System32/Wbem/rc.exe"
+      - "D:/WINDOWS/System32/Wbem/rc"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/rc.com"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/rc.exe"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/rc"
+      - "D:/WINDOWS/System32/OpenSSH/rc.com"
+      - "D:/WINDOWS/System32/OpenSSH/rc.exe"
+      - "D:/WINDOWS/System32/OpenSSH/rc"
+      - "C:/Program Files/dotnet/rc.com"
+      - "C:/Program Files/dotnet/rc.exe"
+      - "C:/Program Files/dotnet/rc"
+      - "D:/SiYuan/resources/kernel/rc.com"
+      - "D:/SiYuan/resources/kernel/rc.exe"
+      - "D:/SiYuan/resources/kernel/rc"
+      - "D:/flutter/bin/rc.com"
+      - "D:/flutter/bin/rc.exe"
+      - "D:/flutter/bin/rc"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/rc.com"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/rc.exe"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/rc"
+      - "C:/Users/Ethan/.dotnet/tools/rc.com"
+      - "C:/Users/Ethan/.dotnet/tools/rc.exe"
+      - "C:/Users/Ethan/.dotnet/tools/rc"
+      - "C:/nuget/rc.com"
+      - "C:/nuget/rc.exe"
+      - "C:/nuget/rc"
+      - "D:/flutter/bin/mingit/cmd/rc.com"
+      - "D:/flutter/bin/mingit/cmd/rc.exe"
+      - "D:/flutter/bin/mingit/cmd/rc"
+      - "C:/Program Files/bin/rc.com"
+      - "C:/Program Files/bin/rc.exe"
+      - "C:/Program Files/bin/rc"
+      - "C:/Program Files/sbin/rc.com"
+      - "C:/Program Files/sbin/rc.exe"
+      - "C:/Program Files/sbin/rc"
+      - "C:/Program Files/rc.com"
+      - "C:/Program Files/rc.exe"
+      - "C:/Program Files/rc"
+      - "C:/Program Files (x86)/bin/rc.com"
+      - "C:/Program Files (x86)/bin/rc.exe"
+      - "C:/Program Files (x86)/bin/rc"
+      - "C:/Program Files (x86)/sbin/rc.com"
+      - "C:/Program Files (x86)/sbin/rc.exe"
+      - "C:/Program Files (x86)/sbin/rc"
+      - "C:/Program Files (x86)/rc.com"
+      - "C:/Program Files (x86)/rc.exe"
+      - "C:/Program Files (x86)/rc"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/rc.com"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/rc.exe"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/rc"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/rc.com"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/rc.exe"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/rc"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/rc.com"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/rc.exe"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/rc"
+      - "C:/Program Files/easy_work/bin/rc.com"
+      - "C:/Program Files/easy_work/bin/rc.exe"
+      - "C:/Program Files/easy_work/bin/rc"
+      - "C:/Program Files/easy_work/sbin/rc.com"
+      - "C:/Program Files/easy_work/sbin/rc.exe"
+      - "C:/Program Files/easy_work/sbin/rc"
+      - "C:/Program Files/easy_work/rc.com"
+      - "C:/Program Files/easy_work/rc.exe"
+      - "C:/Program Files/easy_work/rc"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting CXX compiler ABI info"
+    directories:
+      source: "E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-v1du4q"
+      binary: "E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-v1du4q"
+    cmakeVariables:
+      CMAKE_CXX_FLAGS: "/DWIN32 /D_WINDOWS /W3 /GR /EHsc"
+      CMAKE_CXX_FLAGS_DEBUG: "/MDd /Zi /Ob0 /Od /RTC1"
+      CMAKE_CXX_SCAN_FOR_MODULES: "OFF"
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_CXX_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-v1du4q'
+        
+        Run Build Command(s): "d:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_ce48b.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        閫傜敤浜?.NET Framework MSBuild 鐗堟湰 18.7.8+1ac568fee
+        鐢熸垚鍚姩鏃堕棿涓?2026/7/3 8:50:46銆?
+        
+        鑺傜偣 1 涓婄殑椤圭洰鈥淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-v1du4q\\cmTC_ce48b.vcxproj鈥?榛樿鐩爣)銆?
+        PrepareForBuild:
+          宸插惎鐢ㄧ粨鏋勫寲杈撳嚭銆傜紪璇戝櫒璇婃柇鐨勬牸寮忚缃皢鍙嶆槧閿欒灞傛缁撴瀯銆傛湁鍏宠缁嗕俊鎭紝璇峰弬闃?https://aka.ms/cpp/structured-output銆?
+          姝ｅ湪鍒涘缓鐩綍鈥淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-v1du4q\\Debug\\鈥濄€?
+          姝ｅ湪鍒涘缓鐩綍鈥渃mTC_ce48b.dir\\Debug\\cmTC_ce48b.tlog\\鈥濄€?
+        InitializeBuildStatus:
+          姝ｅ湪鍒涘缓鈥渃mTC_ce48b.dir\\Debug\\cmTC_ce48b.tlog\\unsuccessfulbuild鈥濓紝鍥犱负宸叉寚瀹氣€淎lwaysCreate鈥濄€?
+          姝ｅ湪瀵光€渃mTC_ce48b.dir\\Debug\\cmTC_ce48b.tlog\\unsuccessfulbuild鈥濇墽琛?Touch 浠诲姟銆?
+        ClCompile:
+          d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\CL.exe /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GR /Fo"cmTC_ce48b.dir\\Debug\\\\" /Fd"cmTC_ce48b.dir\\Debug\\vc145.pdb" /external:W3 /TP /errorReport:queue "D:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\share\\cmake-4.3\\Modules\\CMakeCXXCompilerABI.cpp"
+          Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36248 for x64
+          鐗堟潈鎵€鏈?C) Microsoft Corporation銆備繚鐣欐墍鏈夋潈鍒┿€?
+          cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /EHsc /RTC1 /MDd /GR /Fo"cmTC_ce48b.dir\\Debug\\\\" /Fd"cmTC_ce48b.dir\\Debug\\vc145.pdb" /external:W3 /TP /errorReport:queue "D:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\share\\cmake-4.3\\Modules\\CMakeCXXCompilerABI.cpp"
+          CMakeCXXCompilerABI.cpp
+        Link:
+          d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\link.exe /OUT:"E:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-v1du4q\\Debug\\cmTC_ce48b.exe" /INCREMENTAL /ILK:"cmTC_ce48b.dir\\Debug\\cmTC_ce48b.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-v1du4q/Debug/cmTC_ce48b.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-v1du4q/Debug/cmTC_ce48b.lib" /MACHINE:X64  /machine:x64 cmTC_ce48b.dir\\Debug\\CMakeCXXCompilerABI.obj
+          cmTC_ce48b.vcxproj -> E:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-v1du4q\\Debug\\cmTC_ce48b.exe
+        FinalizeBuildStatus:
+          姝ｅ湪鍒犻櫎鏂囦欢鈥渃mTC_ce48b.dir\\Debug\\cmTC_ce48b.tlog\\unsuccessfulbuild鈥濄€?
+          姝ｅ湪瀵光€渃mTC_ce48b.dir\\Debug\\cmTC_ce48b.tlog\\cmTC_ce48b.lastbuildstate鈥濇墽琛?Touch 浠诲姟銆?
+        宸插畬鎴愮敓鎴愰」鐩€淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-v1du4q\\cmTC_ce48b.vcxproj鈥?榛樿鐩爣)鐨勬搷浣溿€?
+        
+        宸叉垚鍔熺敓鎴愩€?
+            0 涓鍛?
+            0 涓敊璇?
+        
+        宸茬敤鏃堕棿 00:00:00.97
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Parsed CXX implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'CXX': d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/HostX64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeTestCXXCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "CMakeLists.txt:3 (project)"
+    message: |
+      Running the CXX compiler's linker: "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/HostX64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.51.36248.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "find-v1"
+    backtrace:
+      - "flutter/ephemeral/.plugin_symlinks/permission_handler_windows/windows/CMakeLists.txt:17 (find_program)"
+    mode: "program"
+    variable: "NUGET"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "nuget"
+    candidate_directories:
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/bin/"
+      - "C:/Program Files/easy_work/sbin/"
+      - "C:/Program Files/easy_work/"
+    searched_directories:
+      - "C:/Windows/System32/nuget.com"
+      - "C:/Windows/System32/nuget.exe"
+      - "C:/Windows/System32/nuget"
+      - "C:/Windows/nuget.com"
+      - "C:/Windows/nuget.exe"
+      - "C:/Windows/nuget"
+      - "C:/Windows/System32/wbem/nuget.com"
+      - "C:/Windows/System32/wbem/nuget.exe"
+      - "C:/Windows/System32/wbem/nuget"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/nuget.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/nuget.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/nuget"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/nuget.com"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/nuget.exe"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/nuget"
+      - "C:/Windows/System32/OpenSSH/nuget.com"
+      - "C:/Windows/System32/OpenSSH/nuget.exe"
+      - "C:/Windows/System32/OpenSSH/nuget"
+      - "C:/Program Files/Git/cmd/nuget.com"
+      - "C:/Program Files/Git/cmd/nuget.exe"
+      - "C:/Program Files/Git/cmd/nuget"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/nuget.com"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/nuget.exe"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/nuget"
+      - "C:/Program Files/nodejs/nuget.com"
+      - "C:/Program Files/nodejs/nuget.exe"
+      - "C:/Program Files/nodejs/nuget"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/nuget.com"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/nuget.exe"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/nuget"
+      - "D:/Microsoft VS Code/bin/nuget.com"
+      - "D:/Microsoft VS Code/bin/nuget.exe"
+      - "D:/Microsoft VS Code/bin/nuget"
+      - "C:/Users/Ethan/AppData/Roaming/npm/nuget.com"
+      - "C:/Users/Ethan/AppData/Roaming/npm/nuget.exe"
+      - "C:/Users/Ethan/AppData/Roaming/npm/nuget"
+      - "D:/WINDOWS/nuget.com"
+      - "D:/WINDOWS/nuget.exe"
+      - "D:/WINDOWS/nuget"
+      - "D:/WINDOWS/system32/nuget.com"
+      - "D:/WINDOWS/system32/nuget.exe"
+      - "D:/WINDOWS/system32/nuget"
+      - "D:/WINDOWS/System32/Wbem/nuget.com"
+      - "D:/WINDOWS/System32/Wbem/nuget.exe"
+      - "D:/WINDOWS/System32/Wbem/nuget"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/nuget.com"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/nuget.exe"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/nuget"
+      - "D:/WINDOWS/System32/OpenSSH/nuget.com"
+      - "D:/WINDOWS/System32/OpenSSH/nuget.exe"
+      - "D:/WINDOWS/System32/OpenSSH/nuget"
+      - "C:/Program Files/dotnet/nuget.com"
+      - "C:/Program Files/dotnet/nuget.exe"
+      - "C:/Program Files/dotnet/nuget"
+      - "D:/SiYuan/resources/kernel/nuget.com"
+      - "D:/SiYuan/resources/kernel/nuget.exe"
+      - "D:/SiYuan/resources/kernel/nuget"
+      - "D:/flutter/bin/nuget.com"
+      - "D:/flutter/bin/nuget.exe"
+      - "D:/flutter/bin/nuget"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/nuget.com"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/nuget.exe"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/nuget"
+      - "C:/Users/Ethan/.dotnet/tools/nuget.com"
+      - "C:/Users/Ethan/.dotnet/tools/nuget.exe"
+      - "C:/Users/Ethan/.dotnet/tools/nuget"
+      - "C:/nuget/nuget.com"
+    found: "C:/nuget/nuget.exe"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:468 (find_file)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:506 (CMAKE_DETERMINE_COMPILER_ID_WRITE)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:8 (CMAKE_DETERMINE_COMPILER_ID_BUILD)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "flutter/ephemeral/.plugin_symlinks/sqlite3_flutter_libs/windows/CMakeLists.txt:3 (project)"
+    mode: "file"
+    variable: "src_in"
+    description: "Path to a file."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "CMakeCCompilerId.c.in"
+    candidate_directories:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/"
+    found: "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeCCompilerId.c.in"
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:17 (message)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerId.cmake:64 (__determine_compiler_id_test)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:122 (CMAKE_DETERMINE_COMPILER_ID)"
+      - "flutter/ephemeral/.plugin_symlinks/sqlite3_flutter_libs/windows/CMakeLists.txt:3 (project)"
+    message: |
+      Compiling the C compiler identification source file "CMakeCCompilerId.c" succeeded.
+      Compiler:  
+      Build flags: 
+      Id flags:  
+      
+      The output was:
+      0
+      閫傜敤浜?.NET Framework MSBuild 鐗堟湰 18.7.8+1ac568fee
+      鐢熸垚鍚姩鏃堕棿涓?2026/7/3 8:50:54銆?
+      
+      鑺傜偣 1 涓婄殑椤圭洰鈥淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\4.3.1-msvc1\\CompilerIdC\\CompilerIdC.vcxproj鈥?榛樿鐩爣)銆?
+      PrepareForBuild:
+        姝ｅ湪鍒涘缓鐩綍鈥淒ebug\\鈥濄€?
+        宸插惎鐢ㄧ粨鏋勫寲杈撳嚭銆傜紪璇戝櫒璇婃柇鐨勬牸寮忚缃皢鍙嶆槧閿欒灞傛缁撴瀯銆傛湁鍏宠缁嗕俊鎭紝璇峰弬闃?https://aka.ms/cpp/structured-output銆?
+        姝ｅ湪鍒涘缓鐩綍鈥淒ebug\\CompilerIdC.tlog\\鈥濄€?
+      InitializeBuildStatus:
+        姝ｅ湪鍒涘缓鈥淒ebug\\CompilerIdC.tlog\\unsuccessfulbuild鈥濓紝鍥犱负宸叉寚瀹氣€淎lwaysCreate鈥濄€?
+        姝ｅ湪瀵光€淒ebug\\CompilerIdC.tlog\\unsuccessfulbuild鈥濇墽琛?Touch 浠诲姟銆?
+      ClCompile:
+        d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\CL.exe /c /nologo /W0 /WX- /diagnostics:column /Od /D _MBCS /Gm- /EHsc /RTC1 /MDd /GS /fp:precise /Zc:wchar_t /Zc:forScope /Zc:inline /Fo"Debug\\\\" /Fd"Debug\\vc145.pdb" /external:W0 /Gd /TC /FC /errorReport:queue CMakeCCompilerId.c
+        CMakeCCompilerId.c
+      Link:
+        d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\link.exe /ERRORREPORT:QUEUE /OUT:".\\CompilerIdC.exe" /INCREMENTAL:NO /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib comdlg32.lib advapi32.lib shell32.lib ole32.lib oleaut32.lib uuid.lib odbc32.lib odbccp32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /PDB:".\\CompilerIdC.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /DYNAMICBASE /NXCOMPAT /IMPLIB:".\\CompilerIdC.lib" /MACHINE:X64 Debug\\CMakeCCompilerId.obj
+        CompilerIdC.vcxproj -> E:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\4.3.1-msvc1\\CompilerIdC\\CompilerIdC.exe
+      PostBuildEvent:
+        for %%i in (cl.exe) do @echo CMAKE_C_COMPILER=%%~$PATH:i
+        :VCEnd
+        CMAKE_C_COMPILER=d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\Hostx64\\x64\\cl.exe
+      FinalizeBuildStatus:
+        姝ｅ湪鍒犻櫎鏂囦欢鈥淒ebug\\CompilerIdC.tlog\\unsuccessfulbuild鈥濄€?
+        姝ｅ湪瀵光€淒ebug\\CompilerIdC.tlog\\CompilerIdC.lastbuildstate鈥濇墽琛?Touch 浠诲姟銆?
+      宸插畬鎴愮敓鎴愰」鐩€淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\4.3.1-msvc1\\CompilerIdC\\CompilerIdC.vcxproj鈥?榛樿鐩爣)鐨勬搷浣溿€?
+      
+      宸叉垚鍔熺敓鎴愩€?
+          0 涓鍛?
+          0 涓敊璇?
+      
+      宸茬敤鏃堕棿 00:00:01.23
+      
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.exe"
+      
+      Compilation of the C compiler identification source "CMakeCCompilerId.c" produced "CompilerIdC.vcxproj"
+      
+      The C compiler identification is MSVC, found in:
+        E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/4.3.1-msvc1/CompilerIdC/CompilerIdC.exe
+      
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:37 (find_program)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:65 (__resolve_tool_path)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeFindBinUtils.cmake:104 (__resolve_linker_path)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCCompiler.cmake:200 (include)"
+      - "flutter/ephemeral/.plugin_symlinks/sqlite3_flutter_libs/windows/CMakeLists.txt:3 (project)"
+    mode: "program"
+    variable: "_CMAKE_TOOL_WITH_PATH"
+    description: "Path to a program."
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: false
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: false
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "lld-link"
+    candidate_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/"
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/bin/"
+      - "C:/Program Files/sbin/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/bin/"
+      - "C:/Program Files (x86)/sbin/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/bin/"
+      - "C:/Program Files/easy_work/sbin/"
+      - "C:/Program Files/easy_work/"
+    searched_directories:
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lld-link.com"
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lld-link.exe"
+      - "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/Hostx64/x64/lld-link"
+      - "C:/Windows/System32/lld-link.com"
+      - "C:/Windows/System32/lld-link.exe"
+      - "C:/Windows/System32/lld-link"
+      - "C:/Windows/lld-link.com"
+      - "C:/Windows/lld-link.exe"
+      - "C:/Windows/lld-link"
+      - "C:/Windows/System32/wbem/lld-link.com"
+      - "C:/Windows/System32/wbem/lld-link.exe"
+      - "C:/Windows/System32/wbem/lld-link"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/lld-link"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/lld-link.com"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/lld-link"
+      - "C:/Windows/System32/OpenSSH/lld-link.com"
+      - "C:/Windows/System32/OpenSSH/lld-link.exe"
+      - "C:/Windows/System32/OpenSSH/lld-link"
+      - "C:/Program Files/Git/cmd/lld-link.com"
+      - "C:/Program Files/Git/cmd/lld-link.exe"
+      - "C:/Program Files/Git/cmd/lld-link"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/lld-link.com"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/lld-link.exe"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/lld-link"
+      - "C:/Program Files/nodejs/lld-link.com"
+      - "C:/Program Files/nodejs/lld-link.exe"
+      - "C:/Program Files/nodejs/lld-link"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/lld-link.com"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/lld-link"
+      - "D:/Microsoft VS Code/bin/lld-link.com"
+      - "D:/Microsoft VS Code/bin/lld-link.exe"
+      - "D:/Microsoft VS Code/bin/lld-link"
+      - "C:/Users/Ethan/AppData/Roaming/npm/lld-link.com"
+      - "C:/Users/Ethan/AppData/Roaming/npm/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Roaming/npm/lld-link"
+      - "D:/WINDOWS/lld-link.com"
+      - "D:/WINDOWS/lld-link.exe"
+      - "D:/WINDOWS/lld-link"
+      - "D:/WINDOWS/system32/lld-link.com"
+      - "D:/WINDOWS/system32/lld-link.exe"
+      - "D:/WINDOWS/system32/lld-link"
+      - "D:/WINDOWS/System32/Wbem/lld-link.com"
+      - "D:/WINDOWS/System32/Wbem/lld-link.exe"
+      - "D:/WINDOWS/System32/Wbem/lld-link"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/lld-link.com"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/lld-link.exe"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/lld-link"
+      - "D:/WINDOWS/System32/OpenSSH/lld-link.com"
+      - "D:/WINDOWS/System32/OpenSSH/lld-link.exe"
+      - "D:/WINDOWS/System32/OpenSSH/lld-link"
+      - "C:/Program Files/dotnet/lld-link.com"
+      - "C:/Program Files/dotnet/lld-link.exe"
+      - "C:/Program Files/dotnet/lld-link"
+      - "D:/SiYuan/resources/kernel/lld-link.com"
+      - "D:/SiYuan/resources/kernel/lld-link.exe"
+      - "D:/SiYuan/resources/kernel/lld-link"
+      - "D:/flutter/bin/lld-link.com"
+      - "D:/flutter/bin/lld-link.exe"
+      - "D:/flutter/bin/lld-link"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/lld-link.com"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/lld-link.exe"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/lld-link"
+      - "C:/Users/Ethan/.dotnet/tools/lld-link.com"
+      - "C:/Users/Ethan/.dotnet/tools/lld-link.exe"
+      - "C:/Users/Ethan/.dotnet/tools/lld-link"
+      - "C:/nuget/lld-link.com"
+      - "C:/nuget/lld-link.exe"
+      - "C:/nuget/lld-link"
+      - "D:/flutter/bin/mingit/cmd/lld-link.com"
+      - "D:/flutter/bin/mingit/cmd/lld-link.exe"
+      - "D:/flutter/bin/mingit/cmd/lld-link"
+      - "C:/Program Files/bin/lld-link.com"
+      - "C:/Program Files/bin/lld-link.exe"
+      - "C:/Program Files/bin/lld-link"
+      - "C:/Program Files/sbin/lld-link.com"
+      - "C:/Program Files/sbin/lld-link.exe"
+      - "C:/Program Files/sbin/lld-link"
+      - "C:/Program Files/lld-link.com"
+      - "C:/Program Files/lld-link.exe"
+      - "C:/Program Files/lld-link"
+      - "C:/Program Files (x86)/bin/lld-link.com"
+      - "C:/Program Files (x86)/bin/lld-link.exe"
+      - "C:/Program Files (x86)/bin/lld-link"
+      - "C:/Program Files (x86)/sbin/lld-link.com"
+      - "C:/Program Files (x86)/sbin/lld-link.exe"
+      - "C:/Program Files (x86)/sbin/lld-link"
+      - "C:/Program Files (x86)/lld-link.com"
+      - "C:/Program Files (x86)/lld-link.exe"
+      - "C:/Program Files (x86)/lld-link"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/lld-link.com"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/lld-link.exe"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/lld-link"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/lld-link.com"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/lld-link.exe"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/sbin/lld-link"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/lld-link.com"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/lld-link.exe"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/lld-link"
+      - "C:/Program Files/easy_work/bin/lld-link.com"
+      - "C:/Program Files/easy_work/bin/lld-link.exe"
+      - "C:/Program Files/easy_work/bin/lld-link"
+      - "C:/Program Files/easy_work/sbin/lld-link.com"
+      - "C:/Program Files/easy_work/sbin/lld-link.exe"
+      - "C:/Program Files/easy_work/sbin/lld-link"
+      - "C:/Program Files/easy_work/lld-link.com"
+      - "C:/Program Files/easy_work/lld-link.exe"
+      - "C:/Program Files/easy_work/lld-link"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+  -
+    kind: "try_compile-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:83 (try_compile)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "flutter/ephemeral/.plugin_symlinks/sqlite3_flutter_libs/windows/CMakeLists.txt:3 (project)"
+    checks:
+      - "Detecting C compiler ABI info"
+    directories:
+      source: "E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-84t6hs"
+      binary: "E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-84t6hs"
+    cmakeVariables:
+      CMAKE_CXX_STDLIB_MODULES_JSON: ""
+      CMAKE_C_FLAGS: "/DWIN32 /D_WINDOWS /W3"
+      CMAKE_C_FLAGS_DEBUG: "/MDd /Zi /Ob0 /Od /RTC1"
+      CMAKE_EXE_LINKER_FLAGS: "/machine:x64"
+    buildResult:
+      variable: "CMAKE_C_ABI_COMPILED"
+      cached: true
+      stdout: |
+        Change Dir: 'E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-84t6hs'
+        
+        Run Build Command(s): "d:/Program Files/Microsoft Visual Studio/18/Community/MSBuild/Current/Bin/amd64/MSBuild.exe" cmTC_04a78.vcxproj /p:Configuration=Debug /p:Platform=x64 /p:VisualStudioVersion=18.0 /v:n
+        閫傜敤浜?.NET Framework MSBuild 鐗堟湰 18.7.8+1ac568fee
+        鐢熸垚鍚姩鏃堕棿涓?2026/7/3 8:50:56銆?
+        
+        鑺傜偣 1 涓婄殑椤圭洰鈥淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-84t6hs\\cmTC_04a78.vcxproj鈥?榛樿鐩爣)銆?
+        PrepareForBuild:
+          宸插惎鐢ㄧ粨鏋勫寲杈撳嚭銆傜紪璇戝櫒璇婃柇鐨勬牸寮忚缃皢鍙嶆槧閿欒灞傛缁撴瀯銆傛湁鍏宠缁嗕俊鎭紝璇峰弬闃?https://aka.ms/cpp/structured-output銆?
+          姝ｅ湪鍒涘缓鐩綍鈥淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-84t6hs\\Debug\\鈥濄€?
+          姝ｅ湪鍒涘缓鐩綍鈥渃mTC_04a78.dir\\Debug\\cmTC_04a78.tlog\\鈥濄€?
+        InitializeBuildStatus:
+          姝ｅ湪鍒涘缓鈥渃mTC_04a78.dir\\Debug\\cmTC_04a78.tlog\\unsuccessfulbuild鈥濓紝鍥犱负宸叉寚瀹氣€淎lwaysCreate鈥濄€?
+          姝ｅ湪瀵光€渃mTC_04a78.dir\\Debug\\cmTC_04a78.tlog\\unsuccessfulbuild鈥濇墽琛?Touch 浠诲姟銆?
+        ClCompile:
+          d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\CL.exe /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_04a78.dir\\Debug\\\\" /Fd"cmTC_04a78.dir\\Debug\\vc145.pdb" /external:W3 /TC /errorReport:queue "D:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\share\\cmake-4.3\\Modules\\CMakeCCompilerABI.c"
+          Microsoft (R) C/C++ Optimizing Compiler Version 19.51.36248 for x64
+          鐗堟潈鎵€鏈?C) Microsoft Corporation銆備繚鐣欐墍鏈夋潈鍒┿€?
+          cl /c /Zi /W3 /WX- /diagnostics:column /Od /Ob0 /D _MBCS /D WIN32 /D _WINDOWS /D _MBCS /D "CMAKE_INTDIR=\\"Debug\\"" /RTC1 /MDd /Fo"cmTC_04a78.dir\\Debug\\\\" /Fd"cmTC_04a78.dir\\Debug\\vc145.pdb" /external:W3 /TC /errorReport:queue "D:\\Program Files\\Microsoft Visual Studio\\18\\Community\\Common7\\IDE\\CommonExtensions\\Microsoft\\CMake\\CMake\\share\\cmake-4.3\\Modules\\CMakeCCompilerABI.c"
+          CMakeCCompilerABI.c
+        Link:
+          d:\\Program Files\\Microsoft Visual Studio\\18\\Community\\VC\\Tools\\MSVC\\14.51.36231\\bin\\HostX64\\x64\\link.exe /OUT:"E:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-84t6hs\\Debug\\cmTC_04a78.exe" /INCREMENTAL /ILK:"cmTC_04a78.dir\\Debug\\cmTC_04a78.ilk" /NOLOGO kernel32.lib user32.lib gdi32.lib winspool.lib shell32.lib ole32.lib oleaut32.lib uuid.lib comdlg32.lib advapi32.lib /MANIFEST /MANIFESTUAC:"level='asInvoker' uiAccess='false'" /manifest:embed /DEBUG /PDB:"E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-84t6hs/Debug/cmTC_04a78.pdb" /SUBSYSTEM:CONSOLE /TLBID:1 /IMPLIB:"E:/Dev/EasyWork070101/build/windows/x64/CMakeFiles/CMakeScratch/TryCompile-84t6hs/Debug/cmTC_04a78.lib" /MACHINE:X64  /machine:x64 cmTC_04a78.dir\\Debug\\CMakeCCompilerABI.obj
+          cmTC_04a78.vcxproj -> E:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-84t6hs\\Debug\\cmTC_04a78.exe
+        FinalizeBuildStatus:
+          姝ｅ湪鍒犻櫎鏂囦欢鈥渃mTC_04a78.dir\\Debug\\cmTC_04a78.tlog\\unsuccessfulbuild鈥濄€?
+          姝ｅ湪瀵光€渃mTC_04a78.dir\\Debug\\cmTC_04a78.tlog\\cmTC_04a78.lastbuildstate鈥濇墽琛?Touch 浠诲姟銆?
+        宸插畬鎴愮敓鎴愰」鐩€淓:\\Dev\\EasyWork070101\\build\\windows\\x64\\CMakeFiles\\CMakeScratch\\TryCompile-84t6hs\\cmTC_04a78.vcxproj鈥?榛樿鐩爣)鐨勬搷浣溿€?
+        
+        宸叉垚鍔熺敓鎴愩€?
+            0 涓鍛?
+            0 涓敊璇?
+        
+        宸茬敤鏃堕棿 00:00:01.68
+        
+      exitCode: 0
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:253 (message)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "flutter/ephemeral/.plugin_symlinks/sqlite3_flutter_libs/windows/CMakeLists.txt:3 (project)"
+    message: |
+      Parsed C implicit link information:
+        link line regex: [^( *|.*[/\\])(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?|CMAKE_LINK_STARTFILE-NOTFOUND|([^/\\]+-)?ld|collect2)[^/\\]*( |$)]
+        linker tool regex: [^[ 	]*(->|"|[0-9]+>[ 	-]*Build:[ 	0-9]+ ms[ 	]*)?[ 	]*(([^"]*[/\\])?(ld[0-9]*(|\\.[a-rt-z][a-z]*|\\.s[a-np-z][a-z]*|\\.so[a-z]+)|link\\.exe|lld-link(\\.exe)?))("|,| |$)]
+        linker tool for 'C': d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/HostX64/x64/link.exe
+        implicit libs: []
+        implicit objs: []
+        implicit dirs: []
+        implicit fwks: []
+      
+      
+  -
+    kind: "message-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/Internal/CMakeDetermineLinkerId.cmake:38 (message)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeDetermineCompilerABI.cmake:299 (cmake_determine_linker_id)"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/CMakeTestCCompiler.cmake:26 (CMAKE_DETERMINE_COMPILER_ABI)"
+      - "flutter/ephemeral/.plugin_symlinks/sqlite3_flutter_libs/windows/CMakeLists.txt:3 (project)"
+    message: |
+      Running the C compiler's linker: "d:/Program Files/Microsoft Visual Studio/18/Community/VC/Tools/MSVC/14.51.36231/bin/HostX64/x64/link.exe" "-v"
+      Microsoft (R) Incremental Linker Version 14.51.36248.0
+      Copyright (C) Microsoft Corporation.  All rights reserved.
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/FindJNI.cmake:538 (find_library)"
+      - "flutter/ephemeral/.plugin_symlinks/jni/src/CMakeLists.txt:20 (find_package)"
+    mode: "library"
+    variable: "JAVA_JVM_LIBRARY"
+    description: "Java Virtual Machine library"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "jvm"
+    candidate_directories:
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/lib/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/lib/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/lib/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/lib/"
+      - "C:/Program Files/easy_work/"
+      - "C:/Program Files/easy_work/bin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/"
+      - "/bin/"
+    searched_directories:
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/lib/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/lib/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/lib/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/lib/"
+      - "C:/Program Files/easy_work/"
+      - "C:/Program Files/easy_work/bin/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin/"
+      - "/bin/"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_LIBRARY_PATH:
+        - "C:/Program Files/easy_work/bin"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/bin"
+        - "/bin"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/FindJNI.cmake:566 (find_path)"
+      - "flutter/ephemeral/.plugin_symlinks/jni/src/CMakeLists.txt:20 (find_package)"
+    mode: "path"
+    variable: "JAVA_INCLUDE_PATH"
+    description: "JNI include directory"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "jni.h"
+    candidate_directories:
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/include/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/include/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/include/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/include/"
+      - "C:/Program Files/easy_work/"
+    searched_directories:
+      - "C:/Windows/System32/jni.h"
+      - "C:/Windows/jni.h"
+      - "C:/Windows/System32/wbem/jni.h"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/jni.h"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/jni.h"
+      - "C:/Windows/System32/OpenSSH/jni.h"
+      - "C:/Program Files/Git/cmd/jni.h"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/jni.h"
+      - "C:/Program Files/nodejs/jni.h"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/jni.h"
+      - "D:/Microsoft VS Code/bin/jni.h"
+      - "C:/Users/Ethan/AppData/Roaming/npm/jni.h"
+      - "D:/WINDOWS/jni.h"
+      - "D:/WINDOWS/system32/jni.h"
+      - "D:/WINDOWS/System32/Wbem/jni.h"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/jni.h"
+      - "D:/WINDOWS/System32/OpenSSH/jni.h"
+      - "C:/Program Files/dotnet/jni.h"
+      - "D:/SiYuan/resources/kernel/jni.h"
+      - "D:/flutter/bin/jni.h"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/jni.h"
+      - "C:/Users/Ethan/.dotnet/tools/jni.h"
+      - "C:/nuget/jni.h"
+      - "D:/flutter/bin/mingit/cmd/jni.h"
+      - "C:/Program Files/include/jni.h"
+      - "C:/Program Files/jni.h"
+      - "C:/Program Files (x86)/include/jni.h"
+      - "C:/Program Files (x86)/jni.h"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/include/jni.h"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/jni.h"
+      - "C:/Program Files/easy_work/include/jni.h"
+      - "C:/Program Files/easy_work/jni.h"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+  -
+    kind: "find-v1"
+    backtrace:
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/share/cmake-4.3/Modules/FindJNI.cmake:606 (find_path)"
+      - "flutter/ephemeral/.plugin_symlinks/jni/src/CMakeLists.txt:20 (find_package)"
+    mode: "path"
+    variable: "JAVA_INCLUDE_PATH2"
+    description: "jni_md.h jniport.h include directory"
+    settings:
+      SearchFramework: "NEVER"
+      SearchAppBundle: "NEVER"
+      CMAKE_FIND_USE_CMAKE_PATH: true
+      CMAKE_FIND_USE_CMAKE_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_SYSTEM_ENVIRONMENT_PATH: true
+      CMAKE_FIND_USE_CMAKE_SYSTEM_PATH: true
+      CMAKE_FIND_USE_INSTALL_PREFIX: true
+    names:
+      - "jni_md.h"
+      - "jniport.h"
+    candidate_directories:
+      - "C:/Windows/System32/"
+      - "C:/Windows/"
+      - "C:/Windows/System32/wbem/"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/"
+      - "C:/Windows/System32/OpenSSH/"
+      - "C:/Program Files/Git/cmd/"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/"
+      - "C:/Program Files/nodejs/"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/"
+      - "D:/Microsoft VS Code/bin/"
+      - "C:/Users/Ethan/AppData/Roaming/npm/"
+      - "D:/WINDOWS/"
+      - "D:/WINDOWS/system32/"
+      - "D:/WINDOWS/System32/Wbem/"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/"
+      - "D:/WINDOWS/System32/OpenSSH/"
+      - "C:/Program Files/dotnet/"
+      - "D:/SiYuan/resources/kernel/"
+      - "D:/flutter/bin/"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/"
+      - "C:/Users/Ethan/.dotnet/tools/"
+      - "C:/nuget/"
+      - "D:/flutter/bin/mingit/cmd/"
+      - "C:/Program Files/include/"
+      - "C:/Program Files/"
+      - "C:/Program Files (x86)/include/"
+      - "C:/Program Files (x86)/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/include/"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/"
+      - "C:/Program Files/easy_work/include/"
+      - "C:/Program Files/easy_work/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/darwin/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/win32/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/linux/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/freebsd/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/openbsd/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/solaris/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/hp-ux/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/alpha/"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/aix/"
+    searched_directories:
+      - "C:/Windows/System32/jni_md.h"
+      - "C:/Windows/jni_md.h"
+      - "C:/Windows/System32/wbem/jni_md.h"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/jni_md.h"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/jni_md.h"
+      - "C:/Windows/System32/OpenSSH/jni_md.h"
+      - "C:/Program Files/Git/cmd/jni_md.h"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/jni_md.h"
+      - "C:/Program Files/nodejs/jni_md.h"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/jni_md.h"
+      - "D:/Microsoft VS Code/bin/jni_md.h"
+      - "C:/Users/Ethan/AppData/Roaming/npm/jni_md.h"
+      - "D:/WINDOWS/jni_md.h"
+      - "D:/WINDOWS/system32/jni_md.h"
+      - "D:/WINDOWS/System32/Wbem/jni_md.h"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/jni_md.h"
+      - "D:/WINDOWS/System32/OpenSSH/jni_md.h"
+      - "C:/Program Files/dotnet/jni_md.h"
+      - "D:/SiYuan/resources/kernel/jni_md.h"
+      - "D:/flutter/bin/jni_md.h"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/jni_md.h"
+      - "C:/Users/Ethan/.dotnet/tools/jni_md.h"
+      - "C:/nuget/jni_md.h"
+      - "D:/flutter/bin/mingit/cmd/jni_md.h"
+      - "C:/Program Files/include/jni_md.h"
+      - "C:/Program Files/jni_md.h"
+      - "C:/Program Files (x86)/include/jni_md.h"
+      - "C:/Program Files (x86)/jni_md.h"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/include/jni_md.h"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/jni_md.h"
+      - "C:/Program Files/easy_work/include/jni_md.h"
+      - "C:/Program Files/easy_work/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/darwin/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/win32/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/linux/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/freebsd/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/openbsd/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/solaris/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/hp-ux/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/alpha/jni_md.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/aix/jni_md.h"
+      - "C:/Windows/System32/jniport.h"
+      - "C:/Windows/jniport.h"
+      - "C:/Windows/System32/wbem/jniport.h"
+      - "C:/Windows/System32/WindowsPowerShell/v1.0/jniport.h"
+      - "C:/Users/Ethan/AppData/Local/Microsoft/WindowsApps/jniport.h"
+      - "C:/Windows/System32/OpenSSH/jniport.h"
+      - "C:/Program Files/Git/cmd/jniport.h"
+      - "D:/Windows Kits/10/Windows Performance Toolkit/jniport.h"
+      - "C:/Program Files/nodejs/jniport.h"
+      - "C:/Users/Ethan/AppData/Local/Python/bin/jniport.h"
+      - "D:/Microsoft VS Code/bin/jniport.h"
+      - "C:/Users/Ethan/AppData/Roaming/npm/jniport.h"
+      - "D:/WINDOWS/jniport.h"
+      - "D:/WINDOWS/system32/jniport.h"
+      - "D:/WINDOWS/System32/Wbem/jniport.h"
+      - "D:/WINDOWS/System32/WindowsPowerShell/v1.0/jniport.h"
+      - "D:/WINDOWS/System32/OpenSSH/jniport.h"
+      - "C:/Program Files/dotnet/jniport.h"
+      - "D:/SiYuan/resources/kernel/jniport.h"
+      - "D:/flutter/bin/jniport.h"
+      - "C:/Users/Ethan/AppData/Local/Android/Sdk/jniport.h"
+      - "C:/Users/Ethan/.dotnet/tools/jniport.h"
+      - "C:/nuget/jniport.h"
+      - "D:/flutter/bin/mingit/cmd/jniport.h"
+      - "C:/Program Files/include/jniport.h"
+      - "C:/Program Files/jniport.h"
+      - "C:/Program Files (x86)/include/jniport.h"
+      - "C:/Program Files (x86)/jniport.h"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/include/jniport.h"
+      - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake/jniport.h"
+      - "C:/Program Files/easy_work/include/jniport.h"
+      - "C:/Program Files/easy_work/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/darwin/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/win32/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/linux/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/freebsd/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/openbsd/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/solaris/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/hp-ux/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/alpha/jniport.h"
+      - "E:/Dev/EasyWork070101/windows/flutter/ephemeral/.plugin_symlinks/jni/src/JAVA_INCLUDE_PATH-NOTFOUND/aix/jniport.h"
+    found: false
+    search_context:
+      ENV{PATH}:
+        - "C:\\Windows\\system32"
+        - "C:\\Windows"
+        - "C:\\Windows\\System32\\Wbem"
+        - "C:\\Windows\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\WINDOWS"
+        - "C:\\WINDOWS\\system32"
+        - "C:\\WINDOWS\\System32\\Wbem"
+        - "C:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "C:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\Git\\cmd"
+        - "D:\\Windows Kits\\10\\Windows Performance Toolkit"
+        - "C:\\Program Files\\nodejs"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\WINDOWS"
+        - "D:\\WINDOWS\\system32"
+        - "D:\\WINDOWS\\System32\\Wbem"
+        - "D:\\WINDOWS\\System32\\WindowsPowerShell\\v1.0"
+        - "D:\\WINDOWS\\System32\\OpenSSH"
+        - "C:\\Program Files\\dotnet\\"
+        - "D:\\SiYuan\\resources\\kernel"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Microsoft\\WindowsApps"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Python\\bin"
+        - "D:\\Microsoft VS Code\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Roaming\\npm"
+        - "D:\\flutter\\bin"
+        - "C:\\Users\\Ethan\\AppData\\Local\\Android\\Sdk"
+        - "C:\\Users\\Ethan\\.dotnet\\tools"
+        - "C:\\nuget"
+        - "D:\\flutter\\bin\\mingit\\cmd"
+      CMAKE_INSTALL_PREFIX: "C:/Program Files/easy_work"
+      CMAKE_SYSTEM_PREFIX_PATH:
+        - "C:/Program Files"
+        - "C:/Program Files (x86)"
+        - "D:/Program Files/Microsoft Visual Studio/18/Community/Common7/IDE/CommonExtensions/Microsoft/CMake/CMake"
+        - "C:/Program Files/easy_work"
+...

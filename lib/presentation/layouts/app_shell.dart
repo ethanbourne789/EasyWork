@@ -17,7 +17,7 @@ class NavigationItem {
 }
 
 List<NavigationItem> getNavigationItems(BuildContext context) {
-  final l10n = AppLocalizations.of(context)!;
+  final l10n = EasyWorkLocalizations.of(context)!;
   return [
     NavigationItem(
       icon: Icons.note_alt_outlined,

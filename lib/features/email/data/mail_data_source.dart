@@ -8,7 +8,7 @@ class MailDataSource {
   final int accountId;
   final MailAccount _account;
   final EventBus _appEventBus;
-  MailClient? _client;
+  late final MailClient _client;
   final List<StreamSubscription<dynamic>> _subscriptions = [];
   bool _connected = false;
   Mailbox? _selectedMailbox;
@@ -38,8 +38,8 @@ class MailDataSource {
         ),
         _appEventBus = appEventBus;
 
-  MailClient get client => _client ?? throw StateError('Not connected. Call connect() first.');
-  bool get isConnected => _client != null && _connected;
+  MailClient get client => _client;
+  bool get isConnected => _connected;
   Mailbox? get selectedMailbox => _selectedMailbox;
 
   Future<void> connect() async {

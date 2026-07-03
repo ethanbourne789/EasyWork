@@ -96,6 +96,9 @@ class EasyWorkLocalizationsEn extends EasyWorkLocalizations {
   String get nav_settings => 'Settings';
 
   @override
+  String get nav_contacts => 'Contacts';
+
+  @override
   String get nav_more => 'More';
 
   @override

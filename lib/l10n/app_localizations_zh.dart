@@ -96,6 +96,9 @@ class EasyWorkLocalizationsZh extends EasyWorkLocalizations {
   String get nav_settings => '设置';
 
   @override
+  String get nav_contacts => '通讯录';
+
+  @override
   String get nav_more => '更多';
 
   @override

@@ -273,6 +273,12 @@ abstract class EasyWorkLocalizations {
   /// **'设置'**
   String get nav_settings;
 
+  /// No description provided for @nav_contacts.
+  ///
+  /// In zh, this message translates to:
+  /// **'通讯录'**
+  String get nav_contacts;
+
   /// No description provided for @nav_more.
   ///
   /// In zh, this message translates to:

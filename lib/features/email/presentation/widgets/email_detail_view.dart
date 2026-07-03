@@ -169,7 +169,7 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
   }
 
   static final _borderPropRe = RegExp(r'border(-top|-right|-bottom|-left)?\s*:\s*[^;]+;?', caseSensitive: false);
-  static final _attrBorderRe = RegExp(r'\s+border\s*=\s*["\'][^"\']*["\']', caseSensitive: false);
+  static final _attrBorderRe = RegExp(r'''\s+border\s*=\s*["'][^"']*["']''', caseSensitive: false);
 
   String _stripTableBorders(String html) {
     var result = html.replaceAll(_borderPropRe, '');
