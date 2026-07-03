@@ -265,10 +265,15 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         smtpUseSsl: account.smtpUseSsl,
       );
 
+      final repo = ref.read(emailRepositoryProvider);
+      await repo.syncMailboxes(accountId);
+
       final syncService = ref.read(emailSyncServiceProvider);
       if (syncService != null) {
         await syncService.firstSync(accountId, count: 50);
       }
+
+      ref.invalidate(unifiedMailboxListProvider);
     } catch (e) {
       debugPrint('连接并同步失败: $e');
     }

@@ -8,6 +8,7 @@ import 'l10n/app_localizations.dart';
 import 'router/app_router.dart';
 import 'presentation/theme/app_theme.dart';
 import 'presentation/theme/theme_mode_notifier.dart';
+import 'presentation/theme/locale_notifier.dart';
 import 'core/providers/database_providers.dart';
 import 'core/security/credential_store.dart';
 import 'core/platform/system_tray_service.dart';
@@ -90,6 +91,11 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
       final credentialStore = CredentialStore();
       final dataSources = ref.read(mailDataSourcesProvider.notifier);
 
+      // Ensure DAOs are resolved before emailRepositoryProvider uses .requireValue
+      await ref.read(mailboxFoldersDaoProvider.future);
+      await ref.read(emailsDaoProvider.future);
+      await ref.read(emailAccountsDaoProvider.future);
+
       for (final account in accounts) {
         String? password;
         try {
@@ -151,6 +157,8 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
     final router = ref.watch(routerProvider);
     final themeModeAsync = ref.watch(themeModeProvider);
     final themeMode = themeModeAsync.value ?? ThemeMode.system;
+    final localeAsync = ref.watch(localeProvider);
+    final appLocale = localeAsync.valueOrNull;
 
     return MaterialApp.router(
       title: 'EasyWork',
@@ -161,6 +169,7 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
       debugShowCheckedModeBanner: false,
       localizationsDelegates: EasyWorkLocalizations.localizationsDelegates,
       supportedLocales: EasyWorkLocalizations.supportedLocales,
+      locale: appLocale,
     );
   }
 }
