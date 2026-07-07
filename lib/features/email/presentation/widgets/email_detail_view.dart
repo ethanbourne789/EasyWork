@@ -52,9 +52,14 @@ class _EmailDetailBody extends ConsumerStatefulWidget {
 class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
   Email? _email;
   MimeMessage? _mimeMessage;
+  String? _processedHtml;
   bool _loading = true;
   bool _isStarred = false;
   bool _isRead = true;
+
+  // Cache parsed MimeMessage objects to avoid re-parsing on every switch.
+  static final Map<int, MimeMessage> _mimeCache = {};
+  static final Map<int, String> _processedHtmlCache = {};
 
   @override
   void initState() {
@@ -66,6 +71,17 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
   void didUpdateWidget(covariant _EmailDetailBody oldWidget) {
     super.didUpdateWidget(oldWidget);
     if (oldWidget.emailId != widget.emailId) {
+      final cachedMime = _mimeCache[widget.emailId];
+      final cachedHtml = _processedHtmlCache[widget.emailId];
+      if (cachedMime != null && cachedHtml != null) {
+        setState(() {
+          _loading = false;
+          _mimeMessage = cachedMime;
+          _processedHtml = cachedHtml;
+        });
+        _loadEmail();
+        return;
+      }
       _loading = true;
       _load();
     }
@@ -79,10 +95,33 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
     }
     final email = await emailsDao.getEmailById(widget.emailId);
     if (email != null && mounted) {
-      final mimeMessage = MimeMessageMapper.fromOriginalMessageJson(email.originalMessageJson);
+      MimeMessage? mimeMessage;
+      if (_mimeCache.containsKey(email.id)) {
+        mimeMessage = _mimeCache[email.id];
+      } else {
+        mimeMessage = MimeMessageMapper.fromOriginalMessageJson(email.originalMessageJson);
+        if (mimeMessage != null) _mimeCache[email.id] = mimeMessage;
+      }
+
+      // Process HTML body now (not in build) to avoid jank during rendering.
+      String? processedHtml;
+      if (_processedHtmlCache.containsKey(email.id)) {
+        processedHtml = _processedHtmlCache[email.id];
+      } else if (mimeMessage != null) {
+        processedHtml = EmailHtmlProcessor.processHtml(
+          mimeMessage,
+          maxImageWidth: 800,
+        );
+        _processedHtmlCache[email.id] = processedHtml;
+      } else if (email.bodyHtml != null && email.bodyHtml!.isNotEmpty) {
+        processedHtml = EmailHtmlProcessor.processRawHtml(email.bodyHtml!);
+        _processedHtmlCache[email.id] = processedHtml;
+      }
+
       setState(() {
         _email = email;
         _mimeMessage = mimeMessage;
+        _processedHtml = processedHtml;
         _isStarred = email.isStarred;
         _isRead = email.isRead;
         _loading = false;
@@ -99,6 +138,23 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       }
     } else if (mounted) {
       setState(() => _loading = false);
+    }
+  }
+
+  /// Load only email metadata (for cache-hit path).
+  Future<void> _loadEmail() async {
+    final emailsDao = ref.read(emailsDaoProvider).valueOrNull;
+    if (emailsDao == null) return;
+    final email = await emailsDao.getEmailById(widget.emailId);
+    if (email != null && mounted) {
+      setState(() {
+        _email = email;
+        _isStarred = email.isStarred;
+        _isRead = email.isRead;
+      });
+      if (!email.isRead) {
+        await emailsDao.markAsRead(email.id);
+      }
     }
   }
 
@@ -130,7 +186,6 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
     final to = email.toList ?? '';
     final cc = email.ccList ?? '';
     final date = email.receivedAt;
-    final htmlBody = email.bodyHtml ?? msg?.decodeTextHtmlPart();
     final plainBody = email.bodyText ?? msg?.decodeTextPlainPart();
 
     return Column(
@@ -168,22 +223,30 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
               const Divider(height: 24),
               Text(subject, style: const TextStyle(fontWeight: FontWeight.bold, fontSize: 18)),
               const SizedBox(height: 16),
-              if (htmlBody != null && htmlBody.isNotEmpty)
+              if (_processedHtml != null && _processedHtml!.isNotEmpty)
                 SizedBox(
                   width: double.infinity,
                   child: Container(
                     constraints: const BoxConstraints(minHeight: 200),
-                    child: HtmlWidget(
-                      msg != null
-                          ? EmailHtmlProcessor.processHtml(_stripTableBorders(htmlBody), msg)
-                          : _stripTableBorders(htmlBody),
-                      textStyle: const TextStyle(fontSize: 15, height: 1.5),
-                      customStylesBuilder: (element) {
-                        if (element.localName == 'table') {
-                          return {'max-width': '100%', 'overflow': 'hidden'};
-                        }
-                        return null;
-                      },
+                    child: SingleChildScrollView(
+                      scrollDirection: Axis.horizontal,
+                      child: HtmlWidget(
+                        _processedHtml!,
+                        textStyle: const TextStyle(fontSize: 15, height: 1.5),
+                        customStylesBuilder: (element) {
+                          final tag = element.localName;
+                          if (tag == 'td' || tag == 'th') {
+                            return {
+                              'display': 'table-cell',
+                              'vertical-align': 'top',
+                            };
+                          }
+                          if (tag == 'table') {
+                            return {'max-width': '100%'};
+                          }
+                          return null;
+                        },
+                      ),
                     ),
                   ),
                 )
@@ -361,13 +424,13 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
               ? SnackBarAction(
                   label: '撤销',
                   onPressed: () async {
-                    if (ds != null) {
+                    if (ds != null && msg != null) {
                       try {
                         await ds.undoMove(moveResult!);
                         // Re-insert into local DB
                         if (emailsDao != null) {
                           final companion = MimeMessageMapper.toCompanion(
-                            msg!, effectiveAccountId, folder: email.folder,
+                            msg, effectiveAccountId, folder: email.folder,
                           );
                           await emailsDao.upsertEmail(companion);
                         }
@@ -412,7 +475,7 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       MaterialPageRoute<void>(
         builder: (_) => ComposePage(
           replyToMessage: mimeMsg,
-          to: mimeMsg.from?.first.email,
+          to: mimeMsg.from?.isNotEmpty == true ? mimeMsg.from!.first.email : null,
         ),
       ),
     );
@@ -451,15 +514,6 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
         builder: (_) => ComposePage(forwardMessage: mimeMsg),
       ),
     );
-  }
-
-  static final _borderPropRe = RegExp(r'border(-top|-right|-bottom|-left)?\s*:\s*[^;]+;?', caseSensitive: false);
-  static final _attrBorderRe = RegExp(r'''\s+border\s*=\s*["'][^"']*["']''', caseSensitive: false);
-
-  String _stripTableBorders(String html) {
-    var result = html.replaceAll(_borderPropRe, '');
-    result = result.replaceAll(_attrBorderRe, '');
-    return result;
   }
 
   String _formatDate(DateTime date) {
