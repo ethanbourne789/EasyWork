@@ -5,6 +5,7 @@ easy_work/
 .build/
 .flutter-plugins
 .flutter-plugins-dependencies
+build/
 
 # Generated code (drift/build_runner)
 *.g.dart
