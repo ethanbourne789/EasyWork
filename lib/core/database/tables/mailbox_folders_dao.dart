@@ -59,6 +59,9 @@ class MailboxFoldersDao extends DatabaseAccessor<AppDatabase>
   /// Get all mailboxes across all accounts.
   Future<List<MailboxFolder>> getAll() => select(mailboxFolders).get();
 
+  /// Watch all mailboxes across all accounts.
+  Stream<List<MailboxFolder>> watchAll() => select(mailboxFolders).watch();
+
   /// Delete all mailboxes for an account (used on account removal).
   Future<void> deleteByAccount(int accountId) =>
       (delete(mailboxFolders)

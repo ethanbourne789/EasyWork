@@ -29,12 +29,24 @@ class AttachmentService {
   /// Extract attachment metadata from a MimeMessage
   List<AttachmentInfo> extractAttachments(MimeMessage message) {
     final contentInfos = message.findContentInfo(disposition: ContentDisposition.attachment);
-    return contentInfos.map((info) => AttachmentInfo(
-      fileName: info.fileName ?? '',
-      contentType: info.mediaType?.text ?? 'application/octet-stream',
-      size: 0,
-      path: '',
-    )).where((a) => a.fileName.isNotEmpty).toList();
+    return contentInfos.map((info) {
+      // Extract size from ContentInfo if available, otherwise decode to measure.
+      int size = info.contentDisposition?.size ?? 0;
+      if (size <= 0) {
+        try {
+          final data = info.fetchId != null
+              ? message.getPart(info.fetchId!)?.decodeContentBinary()
+              : null;
+          if (data != null) size = data.length;
+        } catch (_) {}
+      }
+      return AttachmentInfo(
+        fileName: info.fileName ?? '',
+        contentType: info.mediaType?.text ?? 'application/octet-stream',
+        size: size,
+        path: '',
+      );
+    }).where((a) => a.fileName.isNotEmpty).toList();
   }
 
   /// Download and save an attachment from a message

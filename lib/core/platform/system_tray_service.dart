@@ -18,6 +18,7 @@ class SystemTrayService {
   int _flashCount = 0;
   late String _iconPath;
   late String _iconHighlightPath;
+  StreamSubscription<dynamic>? _emailSubscription;
 
   SystemTrayService(this._ref);
 
@@ -111,7 +112,7 @@ class SystemTrayService {
 
   void _listenToEmailEvents() {
     final eventBus = _ref.read(eventBusProvider);
-    eventBus.on<NewEmailReceivedEvent>().listen((event) {
+    _emailSubscription = eventBus.on<NewEmailReceivedEvent>().listen((event) {
       showNotification(
         title: '新邮件',
         body: '${event.fromAddress} - ${event.subject}',
@@ -148,6 +149,7 @@ class SystemTrayService {
   }
 
   void dispose() {
+    _emailSubscription?.cancel();
     _flashTimer?.cancel();
     _systemTray.destroy();
   }

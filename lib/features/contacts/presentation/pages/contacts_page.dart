@@ -1,8 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:file_picker/file_picker.dart';
+import 'package:path_provider/path_provider.dart';
 import '../../../../l10n/app_localizations.dart';
 import '../../data/contact_repository.dart';
 import '../../data/contact_repository_impl.dart';
+import '../../data/vcard_service.dart';
 import '../../domain/contact_entity.dart';
 import '../../../../core/providers/database_providers.dart';
 
@@ -26,6 +31,18 @@ class ContactsPage extends ConsumerWidget {
     return Scaffold(
       appBar: AppBar(
         title: Text(loc.contact_list),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.upload),
+            tooltip: '导入 vCard',
+            onPressed: () => _importVCard(context, ref),
+          ),
+          IconButton(
+            icon: const Icon(Icons.download),
+            tooltip: '导出 vCard',
+            onPressed: () => _exportVCard(context, ref),
+          ),
+        ],
       ),
       floatingActionButton: FloatingActionButton(
         onPressed: () => _showAddContactDialog(context, ref),
@@ -51,13 +68,15 @@ class ContactsPage extends ConsumerWidget {
             itemCount: contacts.length,
             itemBuilder: (context, index) {
               final contact = contacts[index];
-              return ListTile(
-                leading: CircleAvatar(
-                  child: Text(contact.displayName.isNotEmpty ? contact.displayName[0] : '?'),
+              return RepaintBoundary(
+                child: ListTile(
+                  leading: CircleAvatar(
+                    child: Text(contact.displayName.isNotEmpty ? contact.displayName[0] : '?'),
+                  ),
+                  title: Text(contact.displayName),
+                  subtitle: Text(contact.emailAddresses.isNotEmpty ? contact.emailAddresses : '(无邮箱)'),
+                  onTap: () => _showEditContactDialog(context, ref, contact),
                 ),
-                title: Text(contact.displayName),
-                subtitle: Text(contact.emailAddresses.isNotEmpty ? contact.emailAddresses : '(无邮箱)'),
-                onTap: () => _showEditContactDialog(context, ref, contact),
               );
             },
           );
@@ -66,6 +85,82 @@ class ContactsPage extends ConsumerWidget {
         error: (e, st) => Center(child: Text('加载失败: $e')),
       ),
     );
+  }
+
+  Future<void> _exportVCard(BuildContext context, WidgetRef ref) async {
+    try {
+      final contacts = await ref.read(contactListProvider.future);
+      if (contacts.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('没有可导出的联系人')),
+          );
+        }
+        return;
+      }
+      final vcard = VCardService().exportContacts(contacts);
+      final dir = await getApplicationDocumentsDirectory();
+      final fileName = 'contacts_${DateTime.now().millisecondsSinceEpoch}.vcf';
+      final file = File('${dir.path}/$fileName');
+      await file.writeAsString(vcard);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导出 ${contacts.length} 个联系人到:\n${file.path}')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导出失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
+  }
+
+  Future<void> _importVCard(BuildContext context, WidgetRef ref) async {
+    try {
+      final result = await FilePicker.platform.pickFiles(
+        type: FileType.custom,
+        allowedExtensions: ['vcf', 'vcard'],
+      );
+      if (result == null || result.files.single.path == null) return;
+      final file = File(result.files.single.path!);
+      final content = await file.readAsString();
+      final parsed = VCardService().parseVCard(content);
+      if (parsed.isEmpty) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('未找到有效的 vCard 联系人')),
+          );
+        }
+        return;
+      }
+
+      final repo = ref.read(contactRepositoryProvider);
+      final existing = await repo.getAllContacts();
+      int imported = 0;
+      for (final c in parsed) {
+        final duplicate = existing.any(
+          (e) => e.displayName == c.displayName && e.emailAddresses == c.emailAddresses,
+        );
+        if (!duplicate) {
+          await repo.createContact(c);
+          imported++;
+        }
+      }
+      ref.invalidate(contactListProvider);
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('已导入 $imported 个联系人')),
+        );
+      }
+    } catch (e) {
+      if (context.mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(content: Text('导入失败: $e'), backgroundColor: Colors.red),
+        );
+      }
+    }
   }
 
   void _showAddContactDialog(BuildContext context, WidgetRef ref) {

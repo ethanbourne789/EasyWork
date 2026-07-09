@@ -24,6 +24,7 @@ class MailDataSource {
     required String smtpHost,
     int smtpPort = 465,
     bool smtpUseSsl = true,
+    bool smtpStartTls = false,
     required EventBus appEventBus,
   })  : _account = MailAccount.fromManualSettings(
           name: displayName,
@@ -33,7 +34,9 @@ class MailDataSource {
           incomingSocketType: imapUseSsl ? SocketType.ssl : SocketType.plain,
           outgoingHost: smtpHost,
           outgoingPort: smtpPort,
-          outgoingSocketType: smtpUseSsl ? SocketType.ssl : SocketType.plain,
+          outgoingSocketType: smtpUseSsl
+              ? SocketType.ssl
+              : (smtpStartTls ? SocketType.starttls : SocketType.plain),
           password: password,
         ),
         _appEventBus = appEventBus;
@@ -41,6 +44,7 @@ class MailDataSource {
   MailClient get client => _client;
   bool get isConnected => _connected;
   Mailbox? get selectedMailbox => _selectedMailbox;
+  bool get supportsIdle => _connected && _client.account.incoming.supports('IDLE');
 
   Future<void> connect() async {
     _client = MailClient(_account, isLogEnabled: false, downloadSizeLimit: 100 * 1024);
@@ -332,6 +336,40 @@ class MailDataSource {
   }) =>
       _client.store(sequence, flags, action: action);
 
+  // --- UID-based operations ---
+
+  Future<void> markSeenByUid(int uid) =>
+      _client.store(MessageSequence.fromId(uid, isUid: true), ['\\Seen'], action: StoreAction.add);
+
+  Future<void> markUnseenByUid(int uid) =>
+      _client.store(MessageSequence.fromId(uid, isUid: true), ['\\Seen'], action: StoreAction.remove);
+
+  Future<void> markFlaggedByUid(int uid) =>
+      _client.store(MessageSequence.fromId(uid, isUid: true), ['\\Flagged'], action: StoreAction.add);
+
+  Future<void> markUnflaggedByUid(int uid) =>
+      _client.store(MessageSequence.fromId(uid, isUid: true), ['\\Flagged'], action: StoreAction.remove);
+
+  Future<MoveResult> moveToTrashByUid(int uid) =>
+      _client.moveMessagesToFlag(MessageSequence.fromId(uid, isUid: true), MailboxFlag.trash);
+
+  Future<MoveResult> moveFromTrashByUid(int uid) =>
+      _client.moveMessagesToInbox(MessageSequence.fromId(uid, isUid: true));
+
+  Future<MimePart> fetchAttachmentPart(int uid, String fetchId) {
+    final message = MimeMessage()..uid = uid;
+    return _client.fetchMessagePart(message, fetchId);
+  }
+
+  Future<void> markAnsweredByUid(int uid) =>
+      _client.store(MessageSequence.fromId(uid, isUid: true), ['\\Answered'], action: StoreAction.add);
+
+  Future<void> markForwardedByUid(int uid) =>
+      _client.store(MessageSequence.fromId(uid, isUid: true), ['\\Forwarded'], action: StoreAction.add);
+
+  Future<DeleteResult> deleteMessageByUid(int uid) =>
+      _client.deleteMessages(MessageSequence.fromId(uid, isUid: true), expunge: false);
+
   bool supportsFlagging() => _client.supportsFlagging();
 
   Future<bool> supports8BitEncoding() => _client.supports8BitEncoding();
@@ -443,6 +481,7 @@ DiscoverResult? parseDiscoverConfig(ClientConfig config, String email) {
     final smtpHost = smtpServer?.hostname ?? '';
     final smtpPort = smtpServer?.port ?? 465;
     final smtpSsl = smtpServer?.socketType == SocketType.ssl;
+    final smtpStartTls = smtpServer?.socketType == SocketType.starttls;
 
     return DiscoverResult(
       imapHost: imapHost,
@@ -451,6 +490,7 @@ DiscoverResult? parseDiscoverConfig(ClientConfig config, String email) {
       smtpHost: smtpHost,
       smtpPort: smtpPort,
       smtpUseSsl: smtpSsl,
+      smtpStartTls: smtpStartTls,
     );
   } catch (e) {
     return null;
@@ -464,6 +504,7 @@ class DiscoverResult {
   final String smtpHost;
   final int smtpPort;
   final bool smtpUseSsl;
+  final bool smtpStartTls;
 
   const DiscoverResult({
     required this.imapHost,
@@ -472,6 +513,7 @@ class DiscoverResult {
     required this.smtpHost,
     required this.smtpPort,
     required this.smtpUseSsl,
+    this.smtpStartTls = false,
   });
 }
 
@@ -485,6 +527,7 @@ Future<ConnectionTestResult> testConnection({
   required String smtpHost,
   int smtpPort = 465,
   bool smtpUseSsl = true,
+  bool smtpStartTls = false,
 }) async {
   final account = MailAccount.fromManualSettings(
     name: 'Test',
@@ -494,7 +537,9 @@ Future<ConnectionTestResult> testConnection({
     incomingSocketType: imapUseSsl ? SocketType.ssl : SocketType.plain,
     outgoingHost: smtpHost,
     outgoingPort: smtpPort,
-    outgoingSocketType: smtpUseSsl ? SocketType.ssl : SocketType.plain,
+    outgoingSocketType: smtpUseSsl
+        ? SocketType.ssl
+        : (smtpStartTls ? SocketType.starttls : SocketType.plain),
     password: password,
   );
 
@@ -510,6 +555,7 @@ Future<ConnectionTestResult> testConnection({
       success: true,
       imapFolders: folderCount,
       supportsIdle: supportsIdle,
+      supportsQuota: false,
     );
   } on MailException catch (e) {
     return ConnectionTestResult(
@@ -546,12 +592,14 @@ class ConnectionTestResult {
   final bool success;
   final int imapFolders;
   final bool supportsIdle;
+  final bool supportsQuota;
   final String? errorMessage;
 
   const ConnectionTestResult({
     required this.success,
     this.imapFolders = 0,
     this.supportsIdle = false,
+    this.supportsQuota = false,
     this.errorMessage,
   });
 }

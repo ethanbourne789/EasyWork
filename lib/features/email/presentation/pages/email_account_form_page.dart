@@ -2,7 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../core/utils/validators.dart';
 import '../../../../l10n/app_localizations.dart';
-import '../../../../core/security/credential_store.dart';
+import '../../../../core/providers/event_providers.dart';
 import '../../domain/email_account_entity.dart';
 import '../../providers/email_providers.dart';
 import '../../data/mail_data_source.dart' as ds;
@@ -28,8 +28,12 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
   final _smtpPortController = TextEditingController(text: '465');
   final _passwordController = TextEditingController();
   final _syncIntervalController = TextEditingController(text: '5');
+  final _dkimDomainController = TextEditingController();
+  final _dkimSelectorController = TextEditingController();
+  final _dkimPrivateKeyController = TextEditingController();
   bool _imapUseSsl = true;
   bool _smtpUseSsl = true;
+  bool _smtpStartTls = false;
   bool _isTesting = false;
   bool _isSaving = false;
   String? _testResult;
@@ -51,8 +55,12 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
       _smtpPortController.text = widget.account!.smtpPort.toString();
       _imapUseSsl = widget.account!.imapUseSsl;
       _smtpUseSsl = widget.account!.smtpUseSsl;
+      _smtpStartTls = widget.account!.smtpStartTls;
       _syncPeriod = widget.account!.syncPeriod;
       _syncIntervalController.text = widget.account!.syncInterval.toString();
+      _dkimDomainController.text = widget.account!.dkimDomain ?? '';
+      _dkimSelectorController.text = widget.account!.dkimSelector ?? '';
+      _dkimPrivateKeyController.text = widget.account!.dkimPrivateKey ?? '';
     }
   }
 
@@ -68,6 +76,9 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
     _smtpPortController.dispose();
     _passwordController.dispose();
     _syncIntervalController.dispose();
+    _dkimDomainController.dispose();
+    _dkimSelectorController.dispose();
+    _dkimPrivateKeyController.dispose();
     super.dispose();
   }
 
@@ -93,6 +104,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
           _smtpHostController.text = config.smtpHost;
           _smtpPortController.text = config.smtpPort.toString();
           _smtpUseSsl = config.smtpUseSsl;
+          _smtpStartTls = config.smtpStartTls;
         }
         final username = extractUsername(email);
         if (_displayNameController.text.isEmpty) {
@@ -101,10 +113,12 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
       });
 
       if (mounted) {
+        final hint = config.setupHint;
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(
-            content: Text('已识别邮箱服务商: ${extractDomain(email)}'),
-            duration: const Duration(seconds: 1),
+            content: Text(hint ?? '已识别邮箱服务商: ${extractDomain(email)}'),
+            duration: Duration(seconds: hint != null ? 5 : 1),
+            backgroundColor: hint != null ? Colors.orange : null,
           ),
         );
       }
@@ -137,6 +151,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
             _smtpHostController.text = result.smtpHost;
             _smtpPortController.text = result.smtpPort.toString();
             _smtpUseSsl = result.smtpUseSsl;
+            _smtpStartTls = result.smtpStartTls;
             _testResult = '自动发现成功: IMAP ${result.imapHost}:${result.imapPort}, SMTP ${result.smtpHost}:${result.smtpPort}';
           });
         } else {
@@ -162,7 +177,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         );
       }
     } finally {
-      setState(() => _isTesting = false);
+      if (mounted) setState(() => _isTesting = false);
     }
   }
 
@@ -184,6 +199,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         smtpHost: _smtpHostController.text.trim(),
         smtpPort: int.tryParse(_smtpPortController.text) ?? 465,
         smtpUseSsl: _smtpUseSsl,
+        smtpStartTls: _smtpStartTls,
       );
 
       if (mounted) {
@@ -191,6 +207,8 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         setState(() {
           _testResult = result.success
               ? '连接成功！发现 ${result.imapFolders} 个文件夹'
+                  '${result.supportsIdle ? ' · 支持 IDLE 推送' : ''}'
+                  '${result.supportsQuota ? ' · 支持 QUOTA' : ''}'
               : result.errorMessage ?? '连接失败';
         });
       }
@@ -199,7 +217,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         setState(() => _testResult = '连接失败: $e');
       }
     } finally {
-      setState(() => _isTesting = false);
+      if (mounted) setState(() => _isTesting = false);
     }
   }
 
@@ -210,39 +228,63 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
     try {
       final repo = ref.read(emailRepositoryProvider);
       if (repo == null) return;
+
+      // When editing, preserve the existing password if the field is left empty.
+      String? password = _passwordController.text.isNotEmpty
+          ? _passwordController.text
+          : null;
+      if (widget.account != null && password == null) {
+        // Retrieve existing password from secure storage to avoid losing it.
+        try {
+          password = await ref.read(credentialStoreProvider).getPassword(widget.account!.id!);
+        } catch (_) {}
+      }
+
       final account = EmailAccountEntity(
         id: widget.account?.id,
         displayName: _displayNameController.text.trim(),
         email: _emailController.text.trim(),
-        password: _passwordController.text.isNotEmpty ? _passwordController.text : null,
+        password: password,
         imapHost: _imapHostController.text.trim(),
         imapPort: int.tryParse(_imapPortController.text) ?? 993,
         imapUseSsl: _imapUseSsl,
         smtpHost: _smtpHostController.text.trim(),
         smtpPort: int.tryParse(_smtpPortController.text) ?? 465,
         smtpUseSsl: _smtpUseSsl,
+        smtpStartTls: _smtpStartTls,
         syncPeriod: _syncPeriod,
         syncInterval: int.tryParse(_syncIntervalController.text) ?? 5,
         supportsIdle: _lastTestResult?.supportsIdle ?? false,
+        dkimDomain: _dkimDomainController.text.trim().isEmpty ? null : _dkimDomainController.text.trim(),
+        dkimSelector: _dkimSelectorController.text.trim().isEmpty ? null : _dkimSelectorController.text.trim(),
+        dkimPrivateKey: _dkimPrivateKeyController.text.trim().isEmpty ? null : _dkimPrivateKeyController.text.trim(),
       );
 
+      int accountId;
       if (widget.account != null) {
         await repo.updateAccount(account);
+        accountId = account.id!;
         if (account.password != null && account.password!.isNotEmpty) {
-          await CredentialStore().savePassword(account.id!, account.password!);
+          await ref.read(credentialStoreProvider).savePassword(accountId, account.password!);
         }
         final dataSources = ref.read(mailDataSourcesProvider.notifier);
-        dataSources.removeAccount(account.id!);
-        await _connectAndSync(account.id!, account);
+        dataSources.removeAccount(accountId);
       } else {
-        final accountId = await repo.createAccount(account);
+        accountId = await repo.createAccount(account);
         if (account.password != null && account.password!.isNotEmpty) {
-          await CredentialStore().savePassword(accountId, account.password!);
+          await ref.read(credentialStoreProvider).savePassword(accountId, account.password!);
         }
-        await _connectAndSync(accountId, account);
       }
 
       ref.invalidate(emailAccountListProvider);
+
+      // BUG-34: await _connectAndSync so the widget stays mounted while the
+      // connection attempt runs. Previously this was fire-and-forget, which
+      // meant the SnackBar in the catch block was never shown (mounted was
+      // false by the time the async error arrived) — making the BUG-30 fix
+      // completely ineffective.
+      await _connectAndSync(accountId, account);
+
       if (mounted) {
         Navigator.of(context).popUntil((route) => route.isFirst);
       }
@@ -253,7 +295,9 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         );
       }
     } finally {
-      setState(() => _isSaving = false);
+      if (mounted) {
+        setState(() => _isSaving = false);
+      }
     }
   }
 
@@ -273,6 +317,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
         smtpHost: account.smtpHost,
         smtpPort: account.smtpPort,
         smtpUseSsl: account.smtpUseSsl,
+        smtpStartTls: account.smtpStartTls,
       );
 
       final repo = ref.read(emailRepositoryProvider);
@@ -281,14 +326,53 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
 
       final syncService = ref.read(emailSyncServiceProvider);
       if (syncService != null) {
-        await syncService.firstSync(accountId, count: 50);
+        await syncService.firstSync(accountId, count: 200);
         await syncService.refetchEmptyBodyMessages(accountId);
-        await syncService.connectAndSync(accountId);
+        await syncService.connectAndSync(accountId, syncIntervalMinutes: account.syncInterval);
       }
 
       ref.invalidate(unifiedMailboxListProvider);
     } catch (e) {
+      // BUG-30: Previously the connection failure was silently swallowed with
+      // debugPrint, so the user saw "saved successfully" even though the
+      // account was never connected. Now show a visible warning.
       debugPrint('连接并同步失败: $e');
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          SnackBar(
+            content: Text('账户已保存，但连接服务器失败：$e\n请检查服务器配置和网络后重试。'),
+            backgroundColor: Colors.orange,
+            duration: const Duration(seconds: 6),
+            action: SnackBarAction(
+              label: '编辑',
+              onPressed: () {
+                Navigator.push<Widget>(
+                  context,
+                  MaterialPageRoute<Widget>(
+                    builder: (_) => EmailAccountFormPage(
+                      account: EmailAccountEntity(
+                        id: accountId,
+                        displayName: account.displayName,
+                        email: account.email,
+                        imapHost: account.imapHost,
+                        imapPort: account.imapPort,
+                        imapUseSsl: account.imapUseSsl,
+                        smtpHost: account.smtpHost,
+                        smtpPort: account.smtpPort,
+                        smtpUseSsl: account.smtpUseSsl,
+                        smtpStartTls: account.smtpStartTls,
+                        syncPeriod: account.syncPeriod,
+                        syncInterval: account.syncInterval,
+                        supportsIdle: account.supportsIdle,
+                      ),
+                    ),
+                  ),
+                );
+              },
+            ),
+          ),
+        );
+      }
     }
   }
 
@@ -404,7 +488,7 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
               children: [
                 Expanded(
                   child: DropdownButtonFormField<String>(
-                    initialValue: _syncPeriod,
+                    value: _syncPeriod,
                     decoration: const InputDecoration(labelText: '同步周期'),
                     items: const [
                       DropdownMenuItem(value: '1w', child: Text('近1周')),
@@ -439,6 +523,47 @@ class _EmailAccountFormPageState extends ConsumerState<EmailAccountFormPage> {
                   ),
                 ),
               ],
+            ),
+            const SizedBox(height: 24),
+            Text('DKIM 签名 (可选)', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 4),
+            Text(
+              '配置 DKIM 后，发送的邮件将添加数字签名，提升邮件可信度。私钥仅存储在本地安全存储中。',
+              style: TextStyle(color: Colors.grey[600], fontSize: 12),
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Expanded(
+                  child: TextFormField(
+                    controller: _dkimDomainController,
+                    decoration: const InputDecoration(
+                      labelText: 'DKIM 域名',
+                      hintText: '例如：example.com',
+                    ),
+                  ),
+                ),
+                const SizedBox(width: 16),
+                Expanded(
+                  child: TextFormField(
+                    controller: _dkimSelectorController,
+                    decoration: const InputDecoration(
+                      labelText: '选择器',
+                      hintText: '例如：default',
+                    ),
+                  ),
+                ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            TextFormField(
+              controller: _dkimPrivateKeyController,
+              decoration: const InputDecoration(
+                labelText: 'DKIM 私钥 (PEM 格式)',
+                hintText: '-----BEGIN RSA PRIVATE KEY-----\n...',
+              ),
+              maxLines: 3,
+              style: const TextStyle(fontFamily: 'monospace', fontSize: 12),
             ),
             const SizedBox(height: 24),
             if (_testResult != null) ...[

@@ -2,7 +2,6 @@ import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables/mailbox_folders_dao.dart';
-import '../../../core/database/tables/mailbox_folders_table.dart';
 
 enum UnifiedFolderType {
   inbox,
@@ -160,6 +159,28 @@ class MailboxMerger {
   static String _mergeKey(MailboxFolder folder, UnifiedFolderType type) {
     if (type != UnifiedFolderType.custom) return type.name;
     return folder.name;
+  }
+
+  /// Classify a folder path into a [UnifiedFolderType].
+  /// Used by list views to filter emails by folder type when mailbox
+  /// flags are not available (e.g. when only the email's [folder] column
+  /// is known).
+  static UnifiedFolderType classifyFolderPath(String path) {
+    // Try exact path mapping first.
+    final type = _pathMapping[path];
+    if (type != null) return type;
+
+    // Fuzzy matching on lowercased path.
+    final lowerPath = path.toLowerCase();
+    if (lowerPath == 'inbox') return UnifiedFolderType.inbox;
+    if (lowerPath.contains('sent')) return UnifiedFolderType.sent;
+    if (lowerPath.contains('draft')) return UnifiedFolderType.drafts;
+    if (lowerPath.contains('junk') || lowerPath.contains('spam')) return UnifiedFolderType.junk;
+    if (lowerPath.contains('trash') || lowerPath.contains('deleted')) return UnifiedFolderType.trash;
+    if (lowerPath.contains('star')) return UnifiedFolderType.flagged;
+    if (lowerPath.contains('archive')) return UnifiedFolderType.archive;
+    if (lowerPath.contains('all mail')) return UnifiedFolderType.all;
+    return UnifiedFolderType.custom;
   }
 
   static List<UnifiedFolder> merge(List<MailboxFolder> folders) {

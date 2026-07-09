@@ -1,4 +1,5 @@
 import 'package:flutter/material.dart';
+import '../../l10n/app_localizations.dart';
 
 class AppErrorWidget extends StatelessWidget {
   final String message;
@@ -12,6 +13,7 @@ class AppErrorWidget extends StatelessWidget {
 
   @override
   Widget build(BuildContext context) {
+    final loc = EasyWorkLocalizations.of(context)!;
     return Center(
       child: Column(
         mainAxisAlignment: MainAxisAlignment.center,
@@ -33,7 +35,7 @@ class AppErrorWidget extends StatelessWidget {
             const SizedBox(height: 16),
             ElevatedButton(
               onPressed: onRetry,
-              child: const Text('重试'),
+              child: Text(loc.common_retry),
             ),
           ],
         ],

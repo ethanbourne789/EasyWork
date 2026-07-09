@@ -96,6 +96,8 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
       await ref.read(emailsDaoProvider.future);
       await ref.read(emailAccountsDaoProvider.future);
 
+      // Connect accounts sequentially but yield to event loop between each
+      // to avoid blocking the UI during startup.
       for (final account in accounts) {
         String? password;
         try {
@@ -103,12 +105,15 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
         } catch (e) {
           debugPrint('CredentialStore read failed for ${account.email}: $e');
         }
-        if (password == null) {
-          password = account.password;
+        if (password == null || password.isEmpty) {
+          debugPrint('Skipping account ${account.email}: no password available');
+          continue;
         }
-        if (password == null || password.isEmpty) continue;
 
         try {
+          // Use Future.microtask to yield to the event loop before each
+          // potentially slow IMAP connection.
+          await Future.microtask(() {});
           await dataSources.addAccount(
             accountId: account.id,
             displayName: account.displayName ?? '',
@@ -123,18 +128,25 @@ class _EasyWorkAppState extends ConsumerState<EasyWorkApp> {
           );
           debugPrint('Account ${account.email} connected successfully');
           final repo = ref.read(emailRepositoryProvider);
-          await repo.syncMailboxes(account.id);
+          if (repo != null) {
+            await repo.syncMailboxes(account.id);
+          }
         } catch (e) {
           debugPrint('Failed to connect account ${account.email}: $e');
         }
       }
 
-      // Start sync in background for all accounts
+      // Start sync in background for all accounts — fire and forget,
+      // do NOT await. Each sync runs independently.
       for (final account in accounts) {
         try {
           final syncService = ref.read(emailSyncServiceProvider);
           if (syncService != null) {
-            syncService.firstSync(account.id).catchError((e) {
+            // Fire and forget — sync runs in background without blocking UI.
+            syncService.firstSync(account.id).then((_) async {
+              await syncService.refetchEmptyBodyMessages(account.id);
+              await syncService.connectAndSync(account.id, syncIntervalMinutes: account.syncInterval);
+            }).catchError((Object e) {
               debugPrint('Sync failed for ${account.email}: $e');
             });
           }

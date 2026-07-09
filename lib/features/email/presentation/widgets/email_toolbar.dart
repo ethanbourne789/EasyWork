@@ -1,16 +1,20 @@
+import 'dart:developer' as dev;
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../../l10n/app_localizations.dart';
-import '../../data/mailbox_merger.dart';
 import '../../data/email_sync_service.dart';
 import '../../providers/email_providers.dart';
 import '../pages/compose_page.dart';
 import '../pages/email_accounts_page.dart';
+import '../../../contacts/presentation/pages/contacts_page.dart';
 
 class EmailToolbar extends ConsumerWidget {
-  final int accountId;
+  // BUG-40: Changed from `int accountId` (required, with -1 sentinel) to
+  // `int? accountId` (optional). This parameter was never actually used
+  // in the build method, but keeping it optional for future use.
+  final int? accountId;
 
-  const EmailToolbar({super.key, required this.accountId});
+  const EmailToolbar({super.key, this.accountId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -48,7 +52,9 @@ class EmailToolbar extends ConsumerWidget {
                             try {
                               await ds.selectMailboxByPath(info.mailboxPath);
                               await syncService.syncFolder(info.accountId, ds.selectedMailbox!, count: 20);
-                            } catch (_) {}
+                            } catch (e) {
+    dev.log('选择邮箱文件夹失败: $e', name: 'EmailToolbar');
+  }
                           }
                         }
                       }
@@ -96,7 +102,13 @@ class EmailToolbar extends ConsumerWidget {
               _ToolbarIcon(
                 icon: Icons.contacts,
                 label: loc.contact_list,
-                onTap: () {},
+                onTap: () {
+                  // BUG-08: the contacts button was an empty no-op. Navigate.
+                  Navigator.push<void>(
+                    context,
+                    MaterialPageRoute<void>(builder: (_) => const ContactsPage()),
+                  );
+                },
               ),
               if (accountsAsync.valueOrNull != null &&
                   accountsAsync.valueOrNull!.isNotEmpty)

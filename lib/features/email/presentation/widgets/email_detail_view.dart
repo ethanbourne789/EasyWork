@@ -1,9 +1,12 @@
+import 'dart:developer' as dev;
+import 'package:flutter/foundation.dart';
 import 'package:flutter/material.dart';
 import 'package:enough_mail/enough_mail.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:flutter_widget_from_html_core/flutter_widget_from_html_core.dart';
 import '../../data/mime_message_mapper.dart';
 import '../../data/email_html_processor.dart';
+import '../../data/mailbox_merger.dart';
 import '../../providers/email_providers.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/providers/database_providers.dart';
@@ -14,9 +17,11 @@ import 'email_to_task_dialog.dart';
 /// Unified email detail content widget — no Scaffold, no AppBar.
 /// Used by both the wide-layout embedded view and the narrow-layout page.
 class EmailDetailView extends ConsumerWidget {
-  final int accountId;
+  // BUG-40: Changed from `int accountId` (required, with -1 sentinel) to
+  // `int? accountId` (optional, null means "derive from the selected email").
+  final int? accountId;
 
-  const EmailDetailView({super.key, required this.accountId});
+  const EmailDetailView({super.key, this.accountId});
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
@@ -40,7 +45,7 @@ class EmailDetailView extends ConsumerWidget {
 }
 
 class _EmailDetailBody extends ConsumerStatefulWidget {
-  final int accountId;
+  final int? accountId;
   final int emailId;
 
   const _EmailDetailBody({required this.accountId, required this.emailId});
@@ -58,9 +63,20 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
   bool _isRead = true;
 
   // Cache parsed MimeMessage objects to avoid re-parsing on every switch.
+  // BUG-20: Use a size-limited LRU cache to prevent unbounded memory growth.
+  static const int _maxCacheSize = 20;
   static final Map<int, MimeMessage> _mimeCache = {};
   static final Map<int, String> _processedHtmlCache = {};
 
+  /// Evict oldest entries when cache exceeds [_maxCacheSize].
+  static void _evictIfNeeded() {
+    while (_mimeCache.length > _maxCacheSize) {
+      _mimeCache.remove(_mimeCache.keys.first);
+    }
+    while (_processedHtmlCache.length > _maxCacheSize) {
+      _processedHtmlCache.remove(_processedHtmlCache.keys.first);
+    }
+  }
   @override
   void initState() {
     super.initState();
@@ -100,22 +116,45 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
         mimeMessage = _mimeCache[email.id];
       } else {
         mimeMessage = MimeMessageMapper.fromOriginalMessageJson(email.originalMessageJson);
-        if (mimeMessage != null) _mimeCache[email.id] = mimeMessage;
+        if (mimeMessage != null) {
+          _mimeCache[email.id] = mimeMessage;
+          _evictIfNeeded();
+        }
       }
 
-      // Process HTML body now (not in build) to avoid jank during rendering.
+      // Process HTML body in a background isolate to avoid jank.
       String? processedHtml;
       if (_processedHtmlCache.containsKey(email.id)) {
         processedHtml = _processedHtmlCache[email.id];
-      } else if (mimeMessage != null) {
-        processedHtml = EmailHtmlProcessor.processHtml(
-          mimeMessage,
-          maxImageWidth: 800,
+      } else if (email.originalMessageJson != null &&
+          email.originalMessageJson!.isNotEmpty) {
+        // Move CPU-intensive MIME parse + HTML transform to a background
+        // isolate via compute(). This avoids blocking the UI thread for
+        // 100-300ms on large HTML emails.
+        final rawMime = email.originalMessageJson!;
+        final result = await compute(
+          _processHtmlInBackground,
+          _HtmlProcessInput(rawMime: rawMime, maxImageWidth: 800),
         );
-        _processedHtmlCache[email.id] = processedHtml;
+        if (result.isEmpty) {
+          processedHtml = null;
+        } else {
+          processedHtml = result;
+          _processedHtmlCache[email.id] = result;
+          _evictIfNeeded();
+        }
       } else if (email.bodyHtml != null && email.bodyHtml!.isNotEmpty) {
-        processedHtml = EmailHtmlProcessor.processRawHtml(email.bodyHtml!);
-        _processedHtmlCache[email.id] = processedHtml;
+        final result = await compute(
+          _processHtmlInBackground,
+          _HtmlProcessInput(rawHtml: email.bodyHtml),
+        );
+        if (result.isEmpty) {
+          processedHtml = null;
+        } else {
+          processedHtml = result;
+          _processedHtmlCache[email.id] = result;
+          _evictIfNeeded();
+        }
       }
 
       setState(() {
@@ -128,12 +167,16 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       });
       if (!email.isRead) {
         await emailsDao.markAsRead(email.id);
-        final effectiveAccountId = widget.accountId == -1 ? email.accountId : widget.accountId;
+        final effectiveAccountId = widget.accountId ?? email.accountId;
         final ds = ref.read(mailDataSourcesProvider)[effectiveAccountId];
-        if (ds != null && mimeMessage != null) {
+        // Use the stored UID (reconstructed MimeMessage has no uid) so the
+        // server flag is actually applied (BUG-06).
+        if (ds != null && email.uid != null) {
           try {
-            await ds.markAsRead(mimeMessage);
-          } catch (_) {}
+            await ds.markSeenByUid(email.uid!);
+          } catch (e) {
+            dev.log('标记已读(服务端)失败: $e', name: 'EmailDetailView');
+          }
         }
       }
     } else if (mounted) {
@@ -228,25 +271,22 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
                   width: double.infinity,
                   child: Container(
                     constraints: const BoxConstraints(minHeight: 200),
-                    child: SingleChildScrollView(
-                      scrollDirection: Axis.horizontal,
-                      child: HtmlWidget(
-                        _processedHtml!,
-                        textStyle: const TextStyle(fontSize: 15, height: 1.5),
-                        customStylesBuilder: (element) {
-                          final tag = element.localName;
-                          if (tag == 'td' || tag == 'th') {
-                            return {
-                              'display': 'table-cell',
-                              'vertical-align': 'top',
-                            };
-                          }
-                          if (tag == 'table') {
-                            return {'max-width': '100%'};
-                          }
-                          return null;
-                        },
-                      ),
+                    child: HtmlWidget(
+                      _processedHtml!,
+                      textStyle: const TextStyle(fontSize: 15, height: 1.5),
+                      customStylesBuilder: (element) {
+                        final tag = element.localName;
+                        if (tag == 'td' || tag == 'th') {
+                          return {
+                            'display': 'table-cell',
+                            'vertical-align': 'top',
+                          };
+                        }
+                        if (tag == 'table') {
+                          return {'max-width': '100%'};
+                        }
+                        return null;
+                      },
                     ),
                   ),
                 )
@@ -256,7 +296,11 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
                 const Text('(无内容)', style: TextStyle(color: Colors.grey)),
               if (msg != null) ...[
                 const SizedBox(height: 16),
-                AttachmentListWidget(message: msg),
+                AttachmentListWidget(
+                  message: msg,
+                  accountId: email.accountId,
+                  uid: email.uid,
+                ),
               ],
             ],
           ),
@@ -291,6 +335,19 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
               PopupMenuButton<String>(
                 onSelected: (value) => _handleMenuAction(context, value, email, msg),
                 itemBuilder: (context) => [
+                  // BUG-24: Show 'edit draft' option for draft emails.
+                  if (MailboxMerger.classifyFolderPath(email.folder) ==
+                      UnifiedFolderType.drafts)
+                    const PopupMenuItem(
+                      value: 'edit_draft',
+                      child: Row(
+                        children: [
+                          Icon(Icons.edit, size: 20),
+                          SizedBox(width: 8),
+                          Text('编辑草稿'),
+                        ],
+                      ),
+                    ),
                   PopupMenuItem(
                     value: 'unread',
                     child: Row(
@@ -341,16 +398,18 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       await emailsDao.toggleStar(email.id);
     }
 
-    final effectiveAccountId = widget.accountId == -1 ? email.accountId : widget.accountId;
+    final effectiveAccountId = widget.accountId ?? email.accountId;
     final ds = ref.read(mailDataSourcesProvider)[effectiveAccountId];
-    if (ds != null && _mimeMessage != null) {
+    if (ds != null && email.uid != null) {
       try {
         if (newStarred) {
-          await ds.markAsFlagged(_mimeMessage!);
+          await ds.markFlaggedByUid(email.uid!);
         } else {
-          await ds.markAsUnflagged(_mimeMessage!);
+          await ds.markUnflaggedByUid(email.uid!);
         }
-      } catch (_) {}
+      } catch (e) {
+        dev.log('标记星标(服务端)失败: $e', name: 'EmailDetailView');
+      }
     }
   }
 
@@ -369,21 +428,32 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       }
     }
 
-    final effectiveAccountId = widget.accountId == -1 ? email.accountId : widget.accountId;
+    final effectiveAccountId = widget.accountId ?? email.accountId;
     final ds = ref.read(mailDataSourcesProvider)[effectiveAccountId];
-    if (ds != null && _mimeMessage != null) {
+    if (ds != null && email.uid != null) {
       try {
         if (newRead) {
-          await ds.markAsRead(_mimeMessage!);
+          await ds.markSeenByUid(email.uid!);
         } else {
-          await ds.markAsUnread(_mimeMessage!);
+          await ds.markUnseenByUid(email.uid!);
         }
-      } catch (_) {}
+      } catch (e) {
+        dev.log('标记已读(服务端)失败: $e', name: 'EmailDetailView');
+      }
     }
   }
 
   void _handleMenuAction(BuildContext context, String action, Email email, MimeMessage? msg) {
     switch (action) {
+      case 'edit_draft':
+        // BUG-24: Open the compose page with the draft loaded for editing.
+        Navigator.push<void>(
+          context,
+          MaterialPageRoute<void>(
+            builder: (_) => ComposePage(draftEmail: email),
+          ),
+        );
+        break;
       case 'unread':
         _toggleRead();
         break;
@@ -399,20 +469,36 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
   }
 
   Future<void> _deleteEmail(Email email, MimeMessage? msg) async {
-    // Delete from local DB
+    final effectiveAccountId = widget.accountId ?? email.accountId;
+    final ds = ref.read(mailDataSourcesProvider)[effectiveAccountId];
     final emailsDao = ref.read(emailsDaoProvider).valueOrNull;
-    if (emailsDao != null) {
-      await emailsDao.deleteEmail(email.id);
+
+    // Server-first (BUG-05): move to trash by UID, then remove the local row
+    // only after the server move succeeds. Previously the local row was deleted
+    // first, so a server failure made the mail "disappear".
+    MoveResult? moveResult;
+    if (ds != null && email.uid != null) {
+      try {
+        moveResult = await ds.moveToTrashByUid(email.uid!);
+      } catch (e) {
+        dev.log('移动到回收站(服务端)失败: $e', name: 'EmailDetailView');
+      }
     }
 
-    // Move to trash on server and capture result for undo
-    MoveResult? moveResult;
-    final effectiveAccountId = widget.accountId == -1 ? email.accountId : widget.accountId;
-    final ds = ref.read(mailDataSourcesProvider)[effectiveAccountId];
-    if (ds != null && msg != null) {
-      try {
-        moveResult = await ds.moveToTrash(msg);
-      } catch (_) {}
+    if (moveResult == null) {
+      if (mounted) {
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('删除失败：无法连接服务器，邮件已保留'),
+            backgroundColor: Colors.orange,
+          ),
+        );
+      }
+      return;
+    }
+
+    if (emailsDao != null) {
+      await emailsDao.deleteEmail(email.id);
     }
 
     if (mounted) {
@@ -420,25 +506,31 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       ScaffoldMessenger.of(context).showSnackBar(
         SnackBar(
           content: const Text('已移至回收站'),
-          action: moveResult != null
-              ? SnackBarAction(
-                  label: '撤销',
-                  onPressed: () async {
-                    if (ds != null && msg != null) {
-                      try {
-                        await ds.undoMove(moveResult!);
-                        // Re-insert into local DB
-                        if (emailsDao != null) {
-                          final companion = MimeMessageMapper.toCompanion(
-                            msg, effectiveAccountId, folder: email.folder,
-                          );
-                          await emailsDao.upsertEmail(companion);
-                        }
-                      } catch (_) {}
-                    }
-                  },
-                )
-              : null,
+          action: SnackBarAction(
+            label: '撤销',
+            onPressed: () async {
+              // Restore the local copy (reliable), and best-effort move the
+              // message back from trash on the server. The UID changes after a
+              // move, so the server restore may fail — the local row is the
+              // source of truth for undo.
+              if (emailsDao != null) {
+                final restored = MimeMessageMapper.fromOriginalMessageJson(email.originalMessageJson);
+                if (restored != null) {
+                  final companion = MimeMessageMapper.toCompanion(
+                    restored, effectiveAccountId, folder: email.folder,
+                  );
+                  await emailsDao.upsertEmail(companion);
+                }
+              }
+              if (ds != null && email.uid != null) {
+                try {
+                  await ds.moveFromTrashByUid(email.uid!);
+                } catch (e) {
+                  dev.log('从回收站恢复(服务端)失败: $e', name: 'EmailDetailView');
+                }
+              }
+            },
+          ),
         ),
       );
     }
@@ -475,6 +567,9 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       MaterialPageRoute<void>(
         builder: (_) => ComposePage(
           replyToMessage: mimeMsg,
+          isReplyAll: false,
+          originalUid: email.uid,
+          originalLocalId: email.id,
           to: mimeMsg.from?.isNotEmpty == true ? mimeMsg.from!.first.email : null,
         ),
       ),
@@ -499,6 +594,9 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
       MaterialPageRoute<void>(
         builder: (_) => ComposePage(
           replyToMessage: mimeMsg,
+          isReplyAll: true,
+          originalUid: email.uid,
+          originalLocalId: email.id,
           to: allRecipients.join(', '),
         ),
       ),
@@ -511,7 +609,11 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
     Navigator.push<void>(
       context,
       MaterialPageRoute<void>(
-        builder: (_) => ComposePage(forwardMessage: mimeMsg),
+        builder: (_) => ComposePage(
+          forwardMessage: mimeMsg,
+          originalUid: email.uid,
+          originalLocalId: email.id,
+        ),
       ),
     );
   }
@@ -524,4 +626,27 @@ class _EmailDetailBodyState extends ConsumerState<_EmailDetailBody> {
     return '${date.month.toString().padLeft(2, '0')}-${date.day.toString().padLeft(2, '0')} '
         '${date.hour.toString().padLeft(2, '0')}:${date.minute.toString().padLeft(2, '0')}';
   }
+}
+
+/// Input for [_processHtmlInBackground] — must be a simple class that can
+/// be transferred to a background isolate.
+class _HtmlProcessInput {
+  final String? rawMime;
+  final String? rawHtml;
+  final int? maxImageWidth;
+  const _HtmlProcessInput({this.rawMime, this.rawHtml, this.maxImageWidth});
+}
+
+/// Top-level function for [compute] — processes HTML from raw MIME or raw
+/// HTML in a background isolate to avoid blocking the UI thread.
+String _processHtmlInBackground(_HtmlProcessInput input) {
+  if (input.rawMime != null && input.rawMime!.isNotEmpty) {
+    return EmailHtmlProcessor.processHtmlFromRawMime(
+      input.rawMime!,
+      maxImageWidth: input.maxImageWidth,
+    );
+  } else if (input.rawHtml != null && input.rawHtml!.isNotEmpty) {
+    return EmailHtmlProcessor.processRawHtml(input.rawHtml!);
+  }
+  return '';
 }

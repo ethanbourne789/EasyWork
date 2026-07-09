@@ -34,6 +34,8 @@ class MimeMessageMapper {
       hasAttachments: Value(message.hasAttachments()),
       isRead: Value(message.isSeen),
       isStarred: Value(message.isFlagged),
+      isAnswered: Value(message.isAnswered),
+      isForwarded: Value(message.isForwarded),
       folder: Value(folder ?? 'INBOX'),
       inReplyTo: Value(inReplyTo),
       references: Value(references),

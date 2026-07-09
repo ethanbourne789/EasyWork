@@ -14,4 +14,6 @@ class PendingEmails extends Table {
   DateTimeColumn get createdAt => dateTime()();
   TextColumn get status => text().withDefault(const Constant('pending'))();
   TextColumn get errorMessage => text().nullable()();
+  IntColumn get retryCount => integer().withDefault(const Constant(0))();
+  DateTimeColumn get lastRetryAt => dateTime().nullable()();
 }

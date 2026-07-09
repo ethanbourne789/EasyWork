@@ -119,15 +119,29 @@ class EmailAccountsPage extends ConsumerWidget {
     );
 
     if (confirmed == true && account.id != null) {
-      final repo = ref.read(emailRepositoryProvider);
-      if (repo != null) {
+      try {
+        final repo = ref.read(emailRepositoryProvider);
+        if (repo == null) {
+          if (context.mounted) {
+            ScaffoldMessenger.of(context).showSnackBar(
+              const SnackBar(content: Text('删除失败: 账户仓库未初始化'), backgroundColor: Colors.red),
+            );
+          }
+          return;
+        }
         await repo.deleteAccount(account.id!);
-      }
-      ref.invalidate(emailAccountListProvider);
-      if (context.mounted) {
-        ScaffoldMessenger.of(context).showSnackBar(
-          const SnackBar(content: Text('账户已删除')),
-        );
+        ref.invalidate(emailAccountListProvider);
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('账户已删除')),
+          );
+        }
+      } catch (e) {
+        if (context.mounted) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            SnackBar(content: Text('删除失败: $e'), backgroundColor: Colors.red),
+          );
+        }
       }
     }
   }

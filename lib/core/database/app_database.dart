@@ -1,3 +1,4 @@
+import 'dart:convert';
 import 'dart:io';
 
 import 'package:drift/drift.dart';
@@ -66,7 +67,7 @@ class AppDatabase extends _$AppDatabase {
   AppDatabase.forTesting(super.e);
 
   @override
-  int get schemaVersion => 8;
+  int get schemaVersion => 13;
 
   @override
   MigrationStrategy get migration => MigrationStrategy(
@@ -97,13 +98,13 @@ class AppDatabase extends _$AppDatabase {
         await m.createTable(calendarEvents);
         break;
       case 4:
-        await m.addColumn(emailAccounts, emailAccounts.password);
-        await m.addColumn(emailAccounts, emailAccounts.syncPeriod);
-        await m.addColumn(emailAccounts, emailAccounts.syncInterval);
+        await _safeAddColumn(m, emailAccounts, emailAccounts.password);
+        await _safeAddColumn(m, emailAccounts, emailAccounts.syncPeriod);
+        await _safeAddColumn(m, emailAccounts, emailAccounts.syncInterval);
         break;
       case 5:
         await m.createTable(mailboxFolders);
-        await m.addColumn(emailAccounts, emailAccounts.accentColor);
+        await _safeAddColumn(m, emailAccounts, emailAccounts.accentColor);
         break;
       case 6:
         await customStatement('''
@@ -119,13 +120,84 @@ class AppDatabase extends _$AppDatabase {
         ''');
         break;
       case 7:
-        await m.addColumn(emails, emails.uid);
+        await _safeAddColumn(m, emails, emails.uid);
         break;
       case 8:
-        await m.addColumn(emails, emails.inReplyTo);
-        await m.addColumn(emails, emails.references);
-        await m.addColumn(emails, emails.replyTo);
+        await _safeAddColumn(m, emails, emails.inReplyTo);
+        await _safeAddColumn(m, emails, emails.references);
+        await _safeAddColumn(m, emails, emails.replyTo);
         break;
+      case 9:
+        await _safeAddColumn(m, emails, emails.isAnswered);
+        await _safeAddColumn(m, emails, emails.isForwarded);
+        break;
+      case 10:
+        await _safeAddColumn(m, emailAccounts, emailAccounts.smtpStartTls);
+        break;
+      case 11:
+        // Security migration: clear plaintext passwords from DB.
+        // Passwords are now stored exclusively in flutter_secure_storage.
+        await customStatement(
+          "UPDATE email_accounts SET password = '' WHERE password IS NOT NULL AND password != ''",
+        );
+        // Strip passwords from mailAccountJson to prevent credential leakage.
+        await _sanitizeMailAccountJsonColumn();
+        break;
+      case 12:
+        // Add retry tracking fields to pending_emails.
+        await customStatement(
+          "ALTER TABLE pending_emails ADD COLUMN retry_count INTEGER NOT NULL DEFAULT 0",
+        );
+        await customStatement(
+          "ALTER TABLE pending_emails ADD COLUMN last_retry_at INTEGER",
+        );
+        break;
+      case 13:
+        // DKIM signing: add domain and selector columns. The private key is
+        // stored in flutter_secure_storage, not in the database.
+        await _safeAddColumn(m, emailAccounts, emailAccounts.dkimDomain);
+        await _safeAddColumn(m, emailAccounts, emailAccounts.dkimSelector);
+        break;
+    }
+  }
+
+  Future<void> _safeAddColumn(
+    Migrator m,
+    TableInfo<Table, dynamic> table,
+    GeneratedColumn<Object> column,
+  ) async {
+    try {
+      await m.addColumn(table, column);
+    } catch (_) {
+      // Column may already exist from a previous partial migration
+    }
+  }
+
+  /// Strip password fields from all mailAccountJson rows in email_accounts.
+  Future<void> _sanitizeMailAccountJsonColumn() async {
+    final rows = await customSelect(
+      'SELECT id, mail_account_json FROM email_accounts WHERE mail_account_json IS NOT NULL AND mail_account_json != \'\'',
+    ).get();
+    for (final row in rows) {
+      final id = row.read<int>('id');
+      final jsonStr = row.read<String>('mail_account_json');
+      if (jsonStr.isEmpty) continue;
+      try {
+        final Map<String, dynamic> json = jsonDecode(jsonStr) as Map<String, dynamic>;
+        if (json.containsKey('password')) {
+          json.remove('password');
+          await customStatement(
+            'UPDATE email_accounts SET mail_account_json = ? WHERE id = ?',
+            [jsonEncode(json), id],
+          );
+        }
+      } catch (_) {
+        // Malformed JSON; clear it to avoid storing garbage.
+        await customStatement(
+          'UPDATE email_accounts SET mail_account_json = \'\' WHERE id = ?',
+          [id],
+        );
+      }
     }
   }
 

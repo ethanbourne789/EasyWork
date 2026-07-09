@@ -66,14 +66,18 @@ class AppShell extends StatelessWidget {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      body: Row(
-        children: [
-          if (MediaQuery.of(context).size.width > 600)
-            const _NavigationRail(),
-          Expanded(child: child),
-        ],
+      body: LayoutBuilder(
+        builder: (context, constraints) {
+          final isWide = constraints.maxWidth > 600;
+          return Row(
+            children: [
+              if (isWide) const _NavigationRail(),
+              Expanded(child: child),
+            ],
+          );
+        },
       ),
-      drawer: MediaQuery.of(context).size.width <= 600
+      drawer: MediaQuery.sizeOf(context).width <= 600
           ? const _NavigationDrawer()
           : null,
     );
@@ -88,6 +92,7 @@ class _NavigationRail extends StatelessWidget {
     final location = GoRouterState.of(context).uri.path;
     final navigationItems = getNavigationItems(context);
     final selectedIndex = _getSelectedIndex(location, navigationItems);
+    final l10n = EasyWorkLocalizations.of(context)!;
 
     return SafeArea(
       child: NavigationRail(
@@ -105,9 +110,20 @@ class _NavigationRail extends StatelessWidget {
             alignment: Alignment.bottomCenter,
             child: Padding(
               padding: const EdgeInsets.only(bottom: 16),
-              child: IconButton(
-                icon: const Icon(Icons.settings_outlined),
-                onPressed: () => context.go('/settings'),
+              child: Column(
+                mainAxisSize: MainAxisSize.min,
+                children: [
+                  IconButton(
+                    icon: const Icon(Icons.description_outlined),
+                    onPressed: () => context.go('/logs'),
+                    tooltip: l10n.nav_log,
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.settings_outlined),
+                    onPressed: () => context.go('/settings'),
+                    tooltip: l10n.nav_settings,
+                  ),
+                ],
               ),
             ),
           ),
@@ -131,6 +147,7 @@ class _NavigationDrawer extends StatelessWidget {
   Widget build(BuildContext context) {
     final location = GoRouterState.of(context).uri.path;
     final navigationItems = getNavigationItems(context);
+    final l10n = EasyWorkLocalizations.of(context)!;
 
     return Drawer(
       child: SafeArea(
@@ -166,9 +183,17 @@ class _NavigationDrawer extends StatelessWidget {
               context,
               icon: Icons.settings_outlined,
               selectedIcon: Icons.settings,
-              label: '设置',
+              label: l10n.nav_settings,
               route: '/settings',
               isSelected: location.startsWith('/settings'),
+            ),
+            _buildDrawerItem(
+              context,
+              icon: Icons.description_outlined,
+              selectedIcon: Icons.description,
+              label: l10n.nav_log,
+              route: '/logs',
+              isSelected: location.startsWith('/logs'),
             ),
           ],
         ),

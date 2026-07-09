@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'package:enough_mail/enough_mail.dart';
 import '../../../core/database/app_database.dart';
 import '../../../core/database/tables/emails_dao.dart';
@@ -11,17 +12,19 @@ class EmailSearchService {
   EmailSearchService(this._emailsDao, this._dataSources);
 
   /// Search emails locally using FTS5 (fast, offline-capable).
-  Future<List<Email>> searchLocal(String query, {int accountId = 0}) async {
+  /// [accountId] is required — caller must specify which account to search.
+  Future<List<Email>> searchLocal(String query, {required int accountId}) async {
     if (query.trim().isEmpty) return [];
 
     try {
       final results = await _emailsDao.searchEmails(query);
-      if (accountId > 0) {
-        return results.where((e) => e.accountId == accountId).toList();
-      }
-      return results;
+      return results.where((e) => e.accountId == accountId).toList();
     } catch (e) {
-      return _emailsDao.searchEmailsLike(query);
+      dev.log('FTS5 search failed, falling back to LIKE: $e', name: 'EmailSearchService');
+      // BUG-33: The LIKE fallback must also filter by accountId — otherwise
+      // results from other accounts leak into the search.
+      final likeResults = await _emailsDao.searchEmailsLike(query);
+      return likeResults.where((e) => e.accountId == accountId).toList();
     }
   }
 
@@ -36,7 +39,8 @@ class EmailSearchService {
       final search = MailSearch(query, SearchQueryType.allTextHeaders);
       final result = await ds.searchMessages(search);
       return result.messages;
-    } catch (_) {
+    } catch (e) {
+      dev.log('IMAP search failed for account $accountId: $e', name: 'EmailSearchService');
       return [];
     }
   }

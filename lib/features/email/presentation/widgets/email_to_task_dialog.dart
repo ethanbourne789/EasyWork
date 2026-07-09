@@ -2,8 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import 'package:enough_mail/enough_mail.dart';
 import '../../../../core/utils/validators.dart';
-import '../../data/email_to_task_service.dart';
-import '../../../../core/providers/event_providers.dart';
+import '../../providers/email_providers.dart';
 
 class EmailToTaskDialog extends ConsumerStatefulWidget {
   final MimeMessage email;
@@ -68,7 +67,7 @@ class _EmailToTaskDialogState extends ConsumerState<EmailToTaskDialog> {
             ),
             const SizedBox(height: 12),
             DropdownButtonFormField<String>(
-              initialValue: _priority,
+              value: _priority,
               decoration: const InputDecoration(labelText: '优先级'),
               items: const [
                 DropdownMenuItem(value: 'high', child: Text('高')),
@@ -103,8 +102,7 @@ class _EmailToTaskDialogState extends ConsumerState<EmailToTaskDialog> {
         TextButton(
           onPressed: () async {
             if (_formKey.currentState!.validate()) {
-              final eventBus = ref.read(eventBusProvider);
-              final service = EmailToTaskService(eventBus: eventBus);
+              final service = ref.read(emailToTaskServiceProvider);
               await service.convertEmailToTask(
                 emailId: widget.emailId,
                 email: widget.email,

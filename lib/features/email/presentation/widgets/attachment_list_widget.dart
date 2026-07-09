@@ -1,23 +1,39 @@
-import 'package:flutter/material.dart';
-import 'package:enough_mail/enough_mail.dart';
-import 'package:url_launcher/url_launcher.dart';
+import 'dart:developer' as dev;
 import 'dart:io';
+import 'package:flutter/material.dart';
+import 'package:flutter/services.dart';
+import 'package:flutter_riverpod/flutter_riverpod.dart';
+import 'package:enough_mail/enough_mail.dart';
 import 'package:path_provider/path_provider.dart';
 import 'package:path/path.dart' as p;
+import 'package:url_launcher/url_launcher.dart';
+import '../../../../core/providers/database_providers.dart';
+import '../../../../features/email/providers/email_providers.dart';
 
-class AttachmentListWidget extends StatefulWidget {
+class AttachmentListWidget extends ConsumerStatefulWidget {
   final MimeMessage message;
+  /// Real account id and stored server UID of the message. Required for
+  /// on-demand attachment fetching when the body was not fully downloaded
+  /// (see [MailDataSource.fetchAttachmentPart], BUG-03).
+  final int? accountId;
+  final int? uid;
 
-  const AttachmentListWidget({super.key, required this.message});
+  const AttachmentListWidget({
+    super.key,
+    required this.message,
+    this.accountId,
+    this.uid,
+  });
 
   @override
-  State<AttachmentListWidget> createState() => _AttachmentListWidgetState();
+  ConsumerState<AttachmentListWidget> createState() => _AttachmentListWidgetState();
 }
 
-class _AttachmentListWidgetState extends State<AttachmentListWidget> {
+class _AttachmentListWidgetState extends ConsumerState<AttachmentListWidget> {
   List<_AttachmentInfo> _attachments = [];
   final Map<String, String> _savedPaths = {};
   final Set<String> _downloading = {};
+  final Map<String, bool> _cancelRequested = {};
   bool _loading = true;
 
   @override
@@ -30,11 +46,28 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
     final attachments = <_AttachmentInfo>[];
 
     void processPart(MimePart part) {
+      // Skip inline parts (embedded images referenced by CID).
+      // Inline parts have Content-Disposition: inline or a Content-ID header.
+      final dispositionHeader = part.getHeaderContentDisposition();
+      final isInline = dispositionHeader?.disposition == ContentDisposition.inline;
+      final hasContentId = part.hasHeader('content-id');
+      if (isInline || hasContentId) {
+        // Still process children in case they have attachment sub-parts
+        final childParts = part.parts;
+        if (childParts != null) {
+          for (final child in childParts) {
+            processPart(child);
+          }
+        }
+        return;
+      }
+
       final fileName = part.decodeFileName();
       if (fileName != null && fileName.isNotEmpty) {
         final contentType = part.mediaType.text;
-        final data = part.decodeContentBinary();
-        final size = data?.length ?? 0;
+        // Prefer the declared size; fall back to the decoded bytes length.
+        final disp = part.getHeaderContentDisposition();
+        final size = disp?.size ?? part.decodeContentBinary()?.length ?? 0;
         attachments.add(_AttachmentInfo(
           fileName: fileName,
           contentType: contentType,
@@ -65,21 +98,66 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
 
   Future<void> _saveAttachment(_AttachmentInfo info) async {
     if (_downloading.contains(info.fileName)) return;
-    setState(() => _downloading.add(info.fileName));
+    setState(() {
+      _downloading.add(info.fileName);
+      _cancelRequested[info.fileName] = false;
+    });
     try {
+      if (_cancelRequested[info.fileName] == true) return;
+
       final appDir = await getApplicationDocumentsDirectory();
-      final attachDir = Directory(p.join(appDir.path, 'attachments'));
+      final messageId = widget.message.decodeHeaderValue('message-id') ?? 'unknown';
+      final safeMessageId = messageId.replaceAll(RegExp(r'[<>:"/\\|?*]'), '_');
+      final attachDir = Directory(p.join(appDir.path, 'attachments', safeMessageId));
       if (!await attachDir.exists()) {
         await attachDir.create(recursive: true);
       }
 
+      if (_cancelRequested[info.fileName] == true) {
+        setState(() {
+          _downloading.remove(info.fileName);
+          _cancelRequested.remove(info.fileName);
+        });
+        return;
+      }
+
       final file = File(p.join(attachDir.path, info.fileName));
-      final data = info.part.decodeContentBinary();
-      if (data != null && mounted) {
-        await file.writeAsBytes(data);
+
+      // Try the in-memory part first (works for messages downloaded in full).
+      Uint8List? bytes = info.part.decodeContentBinary();
+
+      // BUG-03 fix: large messages are only partially downloaded, so the part
+      // binary is null. Fetch the individual attachment part on demand using
+      // the stored server UID (reconstructed messages have no MimeMessage uid).
+      if (bytes == null && widget.accountId != null && widget.uid != null) {
+        final ds = ref.read(mailDataSourcesProvider)[widget.accountId!];
+        // Use the part's fetchId if available for on-demand fetching.
+        // fetchId is defined on BodyPart (a subclass of MimePart).
+        final fetchId = (info.part is BodyPart) ? (info.part as BodyPart).fetchId : null;
+        if (ds != null && fetchId != null) {
+          try {
+            final fetchedPart = await ds.fetchAttachmentPart(widget.uid!, fetchId);
+            bytes = fetchedPart.decodeContentBinary();
+          } catch (e) {
+            dev.log('按需拉取附件失败: $e', name: 'AttachmentListWidget');
+          }
+        }
+      }
+
+      if (bytes != null && mounted) {
+        await file.writeAsBytes(bytes);
+        if (_cancelRequested[info.fileName] == true) {
+          if (await file.exists()) await file.delete();
+          setState(() {
+            _downloading.remove(info.fileName);
+            _cancelRequested.remove(info.fileName);
+          });
+          return;
+        }
         setState(() {
           _savedPaths[info.fileName] = file.path;
           _downloading.remove(info.fileName);
+          _cancelRequested.remove(info.fileName);
         });
 
         if (mounted) {
@@ -88,16 +166,32 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
           );
         }
       } else if (mounted) {
-        setState(() => _downloading.remove(info.fileName));
+        setState(() {
+          _downloading.remove(info.fileName);
+          _cancelRequested.remove(info.fileName);
+        });
+        ScaffoldMessenger.of(context).showSnackBar(
+          const SnackBar(
+            content: Text('附件数据未下载，已尝试重新获取但仍失败，请检查网络连接后重试'),
+            backgroundColor: Colors.orange,
+          ),
+        );
       }
     } catch (e) {
       if (mounted) {
-        setState(() => _downloading.remove(info.fileName));
+        setState(() {
+          _downloading.remove(info.fileName);
+          _cancelRequested.remove(info.fileName);
+        });
         ScaffoldMessenger.of(context).showSnackBar(
           SnackBar(content: Text('保存失败: $e'), backgroundColor: Colors.red),
         );
       }
     }
+  }
+
+  void _cancelDownload(String fileName) {
+    _cancelRequested[fileName] = true;
   }
 
   Future<void> _openAttachment(_AttachmentInfo info) async {
@@ -218,13 +312,19 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
                 mainAxisSize: MainAxisSize.min,
                 children: [
                   if (_downloading.contains(info.fileName))
-                    const SizedBox(
-                      width: 32,
-                      height: 32,
-                      child: Padding(
-                        padding: EdgeInsets.all(6),
-                        child: CircularProgressIndicator(strokeWidth: 2),
+                    IconButton(
+                      icon: const SizedBox(
+                        width: 32,
+                        height: 32,
+                        child: Padding(
+                          padding: EdgeInsets.all(6),
+                          child: CircularProgressIndicator(strokeWidth: 2),
+                        ),
                       ),
+                      tooltip: '取消下载',
+                      onPressed: () => _cancelDownload(info.fileName),
+                      padding: const EdgeInsets.all(4),
+                      constraints: const BoxConstraints(minWidth: 32, minHeight: 32),
                     )
                   else
                     IconButton(
@@ -281,11 +381,21 @@ class _AttachmentListWidgetState extends State<AttachmentListWidget> {
               },
             ),
             ListTile(
-              leading: const Icon(Icons.share),
-              title: const Text('分享'),
+              leading: const Icon(Icons.copy),
+              title: const Text('复制文件路径'),
               onTap: () {
                 Navigator.pop(context);
-                // TODO: Share file
+                final path = _savedPaths[info.fileName];
+                if (path != null) {
+                  Clipboard.setData(ClipboardData(text: path));
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('已复制文件路径')),
+                  );
+                } else {
+                  ScaffoldMessenger.of(context).showSnackBar(
+                    const SnackBar(content: Text('请先下载附件')),
+                  );
+                }
               },
             ),
           ],

@@ -1,14 +1,17 @@
 import 'package:flutter/material.dart';
 import 'package:flutter_riverpod/flutter_riverpod.dart';
+import '../../../../l10n/app_localizations.dart';
 import '../../providers/email_providers.dart';
 import '../../data/email_sync_service.dart';
+import '../../data/mailbox_merger.dart';
+import '../../presentation/pages/compose_page.dart';
 import '../../../../core/database/app_database.dart';
 import '../../../../core/utils/date_util.dart';
 
 class EmailListView extends ConsumerStatefulWidget {
-  final int accountId;
-
-  const EmailListView({super.key, required this.accountId});
+  // BUG-39: accountId was a leftover parameter that was never used in
+  // build() or any method. Removed to keep the API clean.
+  const EmailListView({super.key});
 
   @override
   ConsumerState<EmailListView> createState() => _EmailListViewState();
@@ -59,6 +62,7 @@ class _EmailListViewState extends ConsumerState<EmailListView> {
   Widget build(BuildContext context) {
     final selectedFolder = ref.watch(selectedFolderProvider);
     final emailsAsync = ref.watch(unifiedEmailListProvider(selectedFolder));
+    final loc = EasyWorkLocalizations.of(context)!;
 
     return emailsAsync.when(
       data: (emails) {
@@ -69,7 +73,7 @@ class _EmailListViewState extends ConsumerState<EmailListView> {
               children: [
                 Icon(Icons.inbox, size: 64, color: Colors.grey[400]),
                 const SizedBox(height: 16),
-                Text('暂无邮件', style: TextStyle(color: Colors.grey[600])),
+                Text(loc.email_empty, style: TextStyle(color: Colors.grey[600])),
               ],
             ),
           );
@@ -98,51 +102,83 @@ class _EmailListViewState extends ConsumerState<EmailListView> {
                 );
               }
               final email = emails[index];
-              final subject = email.subject ?? '(无主题)';
-              final from = email.fromName ?? email.fromAddress;
-              final date = email.receivedAt;
-              final isRead = email.isRead;
-              final isSelected = ref.watch(selectedEmailIdProvider) == email.id;
-
-              return ListTile(
-                selected: isSelected,
-                selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
-                leading: CircleAvatar(
-                  child: Text(from.isNotEmpty ? from[0].toUpperCase() : '?'),
-                ),
-                title: Text(
-                  subject,
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                  style: TextStyle(
-                    fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
-                  ),
-                ),
-                subtitle: Text(
-                  '$from${date != null ? ' · ${DateUtil.formatRelativeDate(date)}' : ''}',
-                  maxLines: 1,
-                  overflow: TextOverflow.ellipsis,
-                ),
-                trailing: !isRead
-                    ? Container(
-                        width: 8,
-                        height: 8,
-                        decoration: const BoxDecoration(
-                          color: Color(0xFF1A73E8),
-                          shape: BoxShape.circle,
-                        ),
-                      )
-                    : null,
-                onTap: () {
-                  ref.read(selectedEmailIdProvider.notifier).state = email.id;
-                },
+              return _EmailListTile(
+                email: email,
+                selectedFolder: selectedFolder,
               );
             },
           ),
         );
       },
       loading: () => const Center(child: CircularProgressIndicator()),
-      error: (e, st) => Center(child: Text('加载失败: $e')),
+      error: (e, st) => Center(child: Text('${loc.common_error}: $e')),
+    );
+  }
+}
+
+/// Individual email list item as a separate ConsumerWidget.
+/// This ensures that only the old and new selected items rebuild when
+/// [selectedEmailIdProvider] changes, instead of every visible item.
+class _EmailListTile extends ConsumerWidget {
+  final Email email;
+  final String selectedFolder;
+
+  const _EmailListTile({required this.email, required this.selectedFolder});
+
+  @override
+  Widget build(BuildContext context, WidgetRef ref) {
+    final subject = email.subject ?? '(无主题)';
+    final from = email.fromName ?? email.fromAddress;
+    final date = email.receivedAt;
+    final isRead = email.isRead;
+    final isSelected = ref.watch(selectedEmailIdProvider) == email.id;
+
+    return RepaintBoundary(
+      child: ListTile(
+        selected: isSelected,
+        selectedTileColor: Theme.of(context).colorScheme.primaryContainer.withValues(alpha: 0.3),
+        leading: CircleAvatar(
+          child: Text(from.isNotEmpty ? from[0].toUpperCase() : '?'),
+        ),
+        title: Text(
+          subject,
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+          style: TextStyle(
+            fontWeight: isRead ? FontWeight.normal : FontWeight.bold,
+          ),
+        ),
+        subtitle: Text(
+          '$from${date != null ? ' · ${DateUtil.formatRelativeDate(date)}' : ''}',
+          maxLines: 1,
+          overflow: TextOverflow.ellipsis,
+        ),
+        trailing: !isRead
+            ? Container(
+                width: 8,
+                height: 8,
+                decoration: const BoxDecoration(
+                  color: Color(0xFF1A73E8),
+                  shape: BoxShape.circle,
+                ),
+              )
+            : null,
+        onTap: () {
+          // BUG-24: If the email is a draft, open compose page for editing.
+          final isDraft = MailboxMerger.classifyFolderPath(email.folder) ==
+              UnifiedFolderType.drafts;
+          if (isDraft) {
+            Navigator.push<Widget>(
+              context,
+              MaterialPageRoute<Widget>(
+                builder: (_) => ComposePage(draftEmail: email),
+              ),
+            ).then((_) => ref.invalidate(unifiedEmailListProvider(selectedFolder)));
+            return;
+          }
+          ref.read(selectedEmailIdProvider.notifier).state = email.id;
+        },
+      ),
     );
   }
 }

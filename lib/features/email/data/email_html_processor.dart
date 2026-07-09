@@ -29,6 +29,18 @@ class EmailHtmlProcessor {
     return _stripTableBorders(html);
   }
 
+  /// Parse a raw MIME string and process its HTML body in one step.
+  /// Designed to be called from a background isolate via [compute].
+  /// Returns the processed HTML string, or empty string if parsing fails.
+  static String processHtmlFromRawMime(String rawMime, {int? maxImageWidth}) {
+    try {
+      final mime = MimeMessage.parseFromText(rawMime);
+      return processHtml(mime, maxImageWidth: maxImageWidth);
+    } catch (_) {
+      return '';
+    }
+  }
+
   static String _stripTableBorders(String html) {
     var result = html.replaceAll(_borderPropRe, '');
     result = result.replaceAll(_attrBorderRe, '');

@@ -1,3 +1,4 @@
+import 'dart:developer' as dev;
 import 'package:flutter_riverpod/flutter_riverpod.dart';
 import '../../../core/providers/event_providers.dart';
 import 'mail_data_source.dart';
@@ -18,6 +19,7 @@ class MailDataSourcesNotifier extends StateNotifier<Map<int, MailDataSource>> {
     required String smtpHost,
     int smtpPort = 465,
     bool smtpUseSsl = true,
+    bool smtpStartTls = false,
   }) async {
     final eventBus = _ref.read(eventBusProvider);
     final ds = MailDataSource(
@@ -31,6 +33,7 @@ class MailDataSourcesNotifier extends StateNotifier<Map<int, MailDataSource>> {
       smtpHost: smtpHost,
       smtpPort: smtpPort,
       smtpUseSsl: smtpUseSsl,
+      smtpStartTls: smtpStartTls,
       appEventBus: eventBus,
     );
     await ds.connect();
@@ -49,13 +52,16 @@ class MailDataSourcesNotifier extends StateNotifier<Map<int, MailDataSource>> {
 
   @override
   void dispose() {
-    // Snapshot data sources before clearing state so close() can run.
-    // StateNotifier.dispose() is synchronous — we cannot await, but we
-    // must fire the close futures so IMAP/SMTP connections are torn down.
     final dataSources = state.values.toList();
     state = {};
-    for (final ds in dataSources) {
-      ds.close(); // ignore: unawaited_futures — dispose is sync
+    // StateNotifier.dispose() must return synchronously, so we cannot await the
+    // async close() here. We still kick off the teardown (cancel subscriptions,
+    // stop polling, disconnect) and surface any failure via the logger instead
+    // of silently swallowing it (previous `.catchError((_) {})` hid all errors).
+    if (dataSources.isNotEmpty) {
+      Future.wait(dataSources.map((ds) => ds.close())).catchError((e) {
+        dev.log('关闭数据源时发生错误: $e', name: 'MailDataSourcesNotifier');
+      });
     }
     super.dispose();
   }

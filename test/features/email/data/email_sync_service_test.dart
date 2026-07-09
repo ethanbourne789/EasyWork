@@ -11,6 +11,8 @@ class MockEventBus extends Mock implements EventBus {}
 
 class MockMailDataSourcesNotifier extends Mock implements MailDataSourcesNotifier {}
 
+class MockEmailSyncLogger extends Mock implements EmailSyncLogger {}
+
 void main() {
   late EmailSyncService syncService;
   late MockEmailsDao mockEmailsDao;
@@ -26,6 +28,7 @@ void main() {
       emailsDao: mockEmailsDao,
       eventBus: mockEventBus,
       dataSources: mockDataSources,
+      logger: MockEmailSyncLogger(),
     );
   });
 

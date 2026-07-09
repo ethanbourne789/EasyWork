@@ -1,4 +1,7 @@
+import 'package:drift/drift.dart';
 import 'package:enough_mail/enough_mail.dart';
+import '../../../core/database/app_database.dart';
+import '../../../core/database/tables/tasks_dao.dart';
 import '../../../core/event/event_bus.dart';
 import '../../../shared/events/email_events.dart';
 
@@ -14,15 +17,16 @@ class EmailToTaskResult {
   });
 }
 
-/// Service to convert an email into a task
 class EmailToTaskService {
   final EventBus _eventBus;
+  final TasksDao _tasksDao;
 
   EmailToTaskService({
     required EventBus eventBus,
-  }) : _eventBus = eventBus;
+    required TasksDao tasksDao,
+  })  : _eventBus = eventBus,
+        _tasksDao = tasksDao;
 
-  /// Convert an email to a task description
   Future<EmailToTaskResult> convertEmailToTask({
     required int emailId,
     required MimeMessage email,
@@ -45,8 +49,15 @@ class EmailToTaskService {
       if (body.isNotEmpty) '\n邮件内容:\n$body',
     ].join('\n');
 
-    // TODO: Integrate with task module when available
-    final taskId = DateTime.now().millisecondsSinceEpoch;
+    final now = DateTime.now();
+    final taskId = await _tasksDao.insertTask(TasksCompanion.insert(
+      title: title,
+      description: Value(fullDescription),
+      priority: Value(priority),
+      dueDate: Value(dueDate),
+      createdAt: now,
+      updatedAt: now,
+    ));
 
     _eventBus.publish(EmailConvertedToTaskEvent(
       emailId: emailId,

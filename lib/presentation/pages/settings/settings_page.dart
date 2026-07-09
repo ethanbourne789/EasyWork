@@ -7,6 +7,9 @@ import '../../layouts/responsive_scaffold.dart';
 import '../../../core/providers/database_providers.dart';
 import '../../../core/platform/auto_start_service.dart';
 import '../../theme/theme_mode_notifier.dart';
+import '../../theme/locale_notifier.dart';
+import '../../../l10n/app_localizations.dart';
+import '../../../features/signatures/presentation/pages/signatures_page.dart';
 
 class SettingsPage extends ConsumerStatefulWidget {
   const SettingsPage({super.key});
@@ -52,19 +55,21 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   Future<void> _loadSettings() async {
     try {
       final dao = await ref.read(settingsDaoProvider.future);
+      // Batch-load all settings in a single DB query instead of 12+ serial queries.
+      final settings = await dao.getAllSettings();
 
-      _language = (await dao.getSetting(_languageKey))?.value ?? 'zh';
-      _autoStart = (await dao.getSetting(_autoStartKey))?.value == 'true';
-      _closeToTray = (await dao.getSetting(_closeToTrayKey))?.value != 'false';
-      _newEmailNotification = (await dao.getSetting(_newEmailNotificationKey))?.value == 'true';
-      _emailSyncMode = (await dao.getSetting(_emailSyncModeKey))?.value ?? 'idle';
-      _emailPollInterval = int.tryParse((await dao.getSetting(_emailPollIntervalKey))?.value ?? '5') ?? 5;
-      _emailSyncDays = int.tryParse((await dao.getSetting(_emailSyncDaysKey))?.value ?? '30') ?? 30;
-      _emailSyncLimit = int.tryParse((await dao.getSetting(_emailSyncLimitKey))?.value ?? '200') ?? 200;
-      _emailBlockExternalImages = (await dao.getSetting(_emailBlockExternalImagesKey))?.value == 'true';
-      _taskDueNotification = (await dao.getSetting(_taskDueNotificationKey))?.value == 'true';
-      _exerciseNotification = (await dao.getSetting(_exerciseNotificationKey))?.value == 'true';
-      _autoBackup = (await dao.getSetting(_autoBackupKey))?.value == 'true';
+      _language = settings[_languageKey] ?? 'zh';
+      _autoStart = settings[_autoStartKey] == 'true';
+      _closeToTray = settings[_closeToTrayKey] != 'false';
+      _newEmailNotification = settings[_newEmailNotificationKey] == 'true';
+      _emailSyncMode = settings[_emailSyncModeKey] ?? 'idle';
+      _emailPollInterval = int.tryParse(settings[_emailPollIntervalKey] ?? '5') ?? 5;
+      _emailSyncDays = int.tryParse(settings[_emailSyncDaysKey] ?? '30') ?? 30;
+      _emailSyncLimit = int.tryParse(settings[_emailSyncLimitKey] ?? '200') ?? 200;
+      _emailBlockExternalImages = settings[_emailBlockExternalImagesKey] == 'true';
+      _taskDueNotification = settings[_taskDueNotificationKey] == 'true';
+      _exerciseNotification = settings[_exerciseNotificationKey] == 'true';
+      _autoBackup = settings[_autoBackupKey] == 'true';
 
       setState(() => _isLoading = false);
     } catch (e) {
@@ -83,15 +88,17 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   @override
   Widget build(BuildContext context) {
+    final loc = EasyWorkLocalizations.of(context)!;
+
     if (_isLoading) {
-      return const ResponsiveScaffold(
-        title: '设置',
-        body: Center(child: CircularProgressIndicator()),
+      return ResponsiveScaffold(
+        title: loc.nav_settings,
+        body: const Center(child: CircularProgressIndicator()),
       );
     }
 
     return ResponsiveScaffold(
-      title: '设置',
+      title: loc.nav_settings,
       body: ListView(
         children: [
           _buildSectionHeader('通用'),
@@ -107,6 +114,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           _buildEmailSyncDaysTile(),
           _buildEmailSyncLimitTile(),
           _buildEmailBlockExternalImagesTile(),
+          _buildSignatureManagementTile(),
           _buildSectionHeader('通知'),
           _buildTaskDueNotificationTile(),
           _buildExerciseNotificationTile(),
@@ -134,8 +142,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildLanguageTile() {
+    final loc = EasyWorkLocalizations.of(context)!;
     return ListTile(
-      title: const Text('语言'),
+      title: Text(loc.settings_language),
       subtitle: Text(_language == 'zh' ? '中文' : 'English'),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => _showLanguageDialog(),
@@ -143,8 +152,9 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
   }
 
   Widget _buildThemeTile() {
+    final loc = EasyWorkLocalizations.of(context)!;
     return ListTile(
-      title: const Text('主题模式'),
+      title: Text(loc.settings_theme),
       subtitle: Text(_getThemeModeText()),
       trailing: const Icon(Icons.chevron_right),
       onTap: () => _showThemeDialog(),
@@ -270,6 +280,23 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
     );
   }
 
+  Widget _buildSignatureManagementTile() {
+    return ListTile(
+      leading: const Icon(Icons.edit_note),
+      title: const Text('邮件签名'),
+      subtitle: const Text('管理发件签名'),
+      trailing: const Icon(Icons.chevron_right),
+      onTap: () {
+        Navigator.push<Widget>(
+          context,
+          MaterialPageRoute<Widget>(
+            builder: (_) => const SignaturesPage(),
+          ),
+        );
+      },
+    );
+  }
+
   Widget _buildTaskDueNotificationTile() {
     return SwitchListTile(
       title: const Text('任务到期通知'),
@@ -338,11 +365,19 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
           ],
         ),
       ),
-    ).then((value) {
+    ).then((value) async {
       if (value != null && value != _language) {
         setState(() => _language = value);
-        _updateSetting(_languageKey, value);
-        _showRestartSnackBar();
+        await _updateSetting(_languageKey, value);
+        try {
+          await ref.read(localeProvider.notifier).setLocaleCode(value);
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('Language updated')),
+          );
+        } catch (e) {
+          debugPrint('Failed to apply locale immediately: $e');
+          _showRestartSnackBar();
+        }
       }
     });
   }
@@ -365,7 +400,7 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
 
   void _showThemeDialog() {
     final currentTheme = ref.read(themeModeProvider).valueOrNull ?? ThemeMode.system;
-
+    final loc = EasyWorkLocalizations.of(context)!;
     showDialog<ThemeMode>(
       context: context,
       builder: (context) => AlertDialog(
@@ -376,11 +411,11 @@ class _SettingsPageState extends ConsumerState<SettingsPage> {
             String label;
             switch (mode) {
               case ThemeMode.light:
-                label = '浅色';
+                label = loc.settings_theme_light;
               case ThemeMode.dark:
-                label = '深色';
+                label = loc.settings_theme_dark;
               case ThemeMode.system:
-                label = '跟随系统';
+                label = loc.settings_theme_system;
             }
             return RadioListTile<ThemeMode>(
               title: Text(label),

@@ -1,0 +1,1 @@
+ e:\\Dev\\EasyWork070101\\lib\\l10n\\app_localizations_en.dart e:\\Dev\\EasyWork070101\\lib\\l10n\\app_localizations_zh.dart e:\\Dev\\EasyWork070101\\lib\\l10n\\app_localizations.dart:  e:\\Dev\\EasyWork070101\\l10n.yaml e:\\Dev\\EasyWork070101\\lib\\l10n\\app_en.arb e:\\Dev\\EasyWork070101\\lib\\l10n\\app_zh.arb

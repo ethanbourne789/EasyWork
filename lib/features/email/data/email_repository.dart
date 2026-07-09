@@ -16,6 +16,10 @@ abstract class EmailRepository {
   Future<void> sendEmailBuilder(int accountId, MessageBuilder messageBuilder);
   Future<int> getUnreadCount(int accountId);
 
+  // --- Pending emails (offline sending queue) ---
+  /// Retry sending all pending emails. Returns the number successfully sent.
+  Future<int> retryPendingEmails();
+
   // --- Pagination ---
   Future<List<MimeMessage>> fetchNextPage(int accountId, PagedMessageResult pagedResult);
   Future<List<MimeMessage>> fetchMessagesNextPage(int accountId, PagedMessageSequence pagedSequence);

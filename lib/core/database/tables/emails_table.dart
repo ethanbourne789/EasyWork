@@ -18,6 +18,8 @@ class Emails extends Table {
   DateTimeColumn get receivedAt => dateTime()();
   BoolColumn get isRead => boolean().withDefault(const Constant(false))();
   BoolColumn get isStarred => boolean().withDefault(const Constant(false))();
+  BoolColumn get isAnswered => boolean().withDefault(const Constant(false))();
+  BoolColumn get isForwarded => boolean().withDefault(const Constant(false))();
   TextColumn get folder => text().withDefault(const Constant('inbox'))();
   TextColumn get threadId => text().nullable()();
   TextColumn get inReplyTo => text().nullable()();

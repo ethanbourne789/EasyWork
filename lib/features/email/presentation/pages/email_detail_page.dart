@@ -22,38 +22,59 @@ class EmailDetailPage extends ConsumerWidget {
 
   @override
   Widget build(BuildContext context, WidgetRef ref) {
-    final effectiveAccountId = accountId ?? -1;
-
+    // BUG-40: Pass accountId through as nullable instead of using -1 sentinel.
     return Scaffold(
       appBar: _EmailDetailAppBar(
         localEmailId: localEmailId,
-        effectiveAccountId: effectiveAccountId,
+        effectiveAccountId: accountId,
       ),
-      body: EmailDetailView(accountId: effectiveAccountId),
+      body: EmailDetailView(accountId: accountId),
     );
   }
 }
 
-class _EmailDetailAppBar extends ConsumerWidget implements PreferredSizeWidget {
+/// Stateful AppBar that caches the DB lookup Future so it is not re-issued
+/// on every build (e.g. when [selectedEmailIdProvider] changes for other
+/// reasons). The Future is only re-created when [displayId] actually changes.
+class _EmailDetailAppBar extends ConsumerStatefulWidget
+    implements PreferredSizeWidget {
   final int? localEmailId;
-  final int effectiveAccountId;
+  final int? effectiveAccountId;
 
-  const _EmailDetailAppBar({this.localEmailId, required this.effectiveAccountId});
+  const _EmailDetailAppBar({this.localEmailId, this.effectiveAccountId});
 
   @override
   Size get preferredSize => const Size.fromHeight(kToolbarHeight);
 
   @override
-  Widget build(BuildContext context, WidgetRef ref) {
-    final selectedId = ref.watch(selectedEmailIdProvider);
-    final displayId = selectedId ?? localEmailId;
+  ConsumerState<_EmailDetailAppBar> createState() => _EmailDetailAppBarState();
+}
 
-    final title = '邮件详情';
+class _EmailDetailAppBarState extends ConsumerState<_EmailDetailAppBar> {
+  int? _cachedDisplayId;
+  Future<Email?>? _cachedFuture;
+
+  Future<Email?>? _getFuture(int displayId) {
+    if (_cachedDisplayId == displayId && _cachedFuture != null) {
+      return _cachedFuture;
+    }
+    final emailsDao = ref.read(emailsDaoProvider).valueOrNull;
+    if (emailsDao == null) return null;
+    _cachedDisplayId = displayId;
+    _cachedFuture = emailsDao.getEmailById(displayId);
+    return _cachedFuture;
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final selectedId = ref.watch(selectedEmailIdProvider);
+    final displayId = selectedId ?? widget.localEmailId;
+
     if (displayId != null) {
-      final emailsDao = ref.read(emailsDaoProvider).valueOrNull;
-      if (emailsDao != null) {
+      final future = _getFuture(displayId);
+      if (future != null) {
         return FutureBuilder<Email?>(
-          future: emailsDao.getEmailById(displayId),
+          future: future,
           builder: (context, snapshot) {
             final email = snapshot.data;
             final subject = email?.subject ?? '邮件详情';
@@ -63,6 +84,6 @@ class _EmailDetailAppBar extends ConsumerWidget implements PreferredSizeWidget {
       }
     }
 
-    return AppBar(title: Text(title));
+    return AppBar(title: const Text('邮件详情'));
   }
 }

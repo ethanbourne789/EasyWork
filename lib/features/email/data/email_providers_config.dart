@@ -5,6 +5,8 @@ class EmailProviderConfig {
   final String smtpHost;
   final int smtpPort;
   final bool smtpUseSsl;
+  final bool smtpStartTls;
+  final String? setupHint;
 
   const EmailProviderConfig({
     required this.imapHost,
@@ -13,6 +15,8 @@ class EmailProviderConfig {
     required this.smtpHost,
     required this.smtpPort,
     required this.smtpUseSsl,
+    this.smtpStartTls = false,
+    this.setupHint,
   });
 }
 
@@ -88,6 +92,7 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpHost: 'smtp.office365.com',
     smtpPort: 587,
     smtpUseSsl: false,
+    smtpStartTls: true,
   ),
   'hotmail.com': EmailProviderConfig(
     imapHost: 'outlook.office365.com',
@@ -96,6 +101,7 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpHost: 'smtp.office365.com',
     smtpPort: 587,
     smtpUseSsl: false,
+    smtpStartTls: true,
   ),
   'live.com': EmailProviderConfig(
     imapHost: 'outlook.office365.com',
@@ -104,6 +110,7 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpHost: 'smtp.office365.com',
     smtpPort: 587,
     smtpUseSsl: false,
+    smtpStartTls: true,
   ),
   'msn.com': EmailProviderConfig(
     imapHost: 'outlook.office365.com',
@@ -112,6 +119,7 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpHost: 'smtp.office365.com',
     smtpPort: 587,
     smtpUseSsl: false,
+    smtpStartTls: true,
   ),
   'yahoo.com': EmailProviderConfig(
     imapHost: 'imap.mail.yahoo.com',
@@ -136,6 +144,7 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpHost: 'smtp.mail.me.com',
     smtpPort: 587,
     smtpUseSsl: false,
+    smtpStartTls: true,
   ),
   'me.com': EmailProviderConfig(
     imapHost: 'imap.mail.me.com',
@@ -144,6 +153,7 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpHost: 'smtp.mail.me.com',
     smtpPort: 587,
     smtpUseSsl: false,
+    smtpStartTls: true,
   ),
   'aol.com': EmailProviderConfig(
     imapHost: 'imap.aol.com',
@@ -186,20 +196,22 @@ const emailProvidersConfig = <String, EmailProviderConfig>{
     smtpUseSsl: true,
   ),
   'protonmail.com': EmailProviderConfig(
-    imapHost: 'imap.protonmail.com',
-    imapPort: 993,
-    imapUseSsl: true,
-    smtpHost: 'smtp.protonmail.com',
-    smtpPort: 587,
+    imapHost: '127.0.0.1',
+    imapPort: 1143,
+    imapUseSsl: false,
+    smtpHost: '127.0.0.1',
+    smtpPort: 1025,
     smtpUseSsl: false,
+    setupHint: 'ProtonMail 需要安装 Proton Bridge 才能使用邮件客户端，请先配置 Bridge 后重试',
   ),
   'proton.me': EmailProviderConfig(
-    imapHost: 'imap.protonmail.com',
-    imapPort: 993,
-    imapUseSsl: true,
-    smtpHost: 'smtp.protonmail.com',
-    smtpPort: 587,
+    imapHost: '127.0.0.1',
+    imapPort: 1143,
+    imapUseSsl: false,
+    smtpHost: '127.0.0.1',
+    smtpPort: 1025,
     smtpUseSsl: false,
+    setupHint: 'Proton 需要安装 Proton Bridge 才能使用邮件客户端，请先配置 Bridge 后重试',
   ),
   '139.com': EmailProviderConfig(
     imapHost: 'imap.139.com',

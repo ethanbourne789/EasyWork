@@ -8,6 +8,7 @@ import '../presentation/pages/accounting/accounting_page.dart';
 import '../presentation/pages/exercise/exercise_page.dart';
 import '../presentation/pages/contacts/contacts_page.dart';
 import '../presentation/pages/settings/settings_page.dart';
+import '../presentation/pages/logs/logs_page.dart';
 import '../presentation/pages/error_page.dart';
 import '../features/email/presentation/pages/compose_page.dart';
 import '../features/email/presentation/pages/email_detail_page.dart';
@@ -88,6 +89,12 @@ final routerProvider = Provider<GoRouter>((ref) {
             path: '/settings',
             pageBuilder: (context, state) => const NoTransitionPage(
               child: SettingsPage(),
+            ),
+          ),
+          GoRoute(
+            path: '/logs',
+            pageBuilder: (context, state) => const NoTransitionPage(
+              child: LogsPage(),
             ),
           ),
         ],
