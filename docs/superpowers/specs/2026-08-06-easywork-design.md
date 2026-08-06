@@ -1,7 +1,7 @@
 # EasyWork 个人效率工具 - 设计规格
 
 - **日期**：2026-08-06
-- **状态**：已批准，待实施计划
+- **状态**：已补充模块详细设计
 - **项目目录**：`e:\Dev\EasyWork0807`
 
 ## 1. 项目定位
@@ -46,6 +46,23 @@
 - 邮件正文/附件缓存进 Postgres + Storage。
 - 离线时前端用 TanStack Query 缓存兜底，恢复联网后 Realtime 自动对齐（不追求复杂离线写入合并）。
 - 邮件收件：Rust 端 IMAP 轮询（前台实时）+ Edge Function 定时拉取（后台兜底）两者结合。
+
+### 数据库迁移编号约定
+
+迁移文件按实施顺序编号，存于 `supabase/migrations/`：
+
+- `0001_init_profiles.sql` — profiles（Dashboard 骨架）
+- `0002_tasks.sql` — 任务管理
+- `0003_finance.sql` — 记账
+- `0004_notes.sql` — 笔记
+- `0005_email.sql` — 邮箱
+
+所有业务表统一约定：
+- 主键 `id uuid primary key default gen_random_uuid()`
+- 外键 `user_id uuid not null references auth.users(id) on delete cascade`
+- 时间戳 `created_at timestamptz not null default now()`、`updated_at timestamptz not null default now()`
+- 启用 RLS，策略统一 `using (auth.uid() = user_id)`，写策略 `with check (auth.uid() = user_id)`
+- `updated_at` 由触发器自动更新
 
 ## 4. 技术栈与依赖（2026 稳定版）
 
@@ -159,7 +176,405 @@
 - 数据导出：JSON/CSV（数据可移植性兜底）
 - i18n：MVP 中文，预留 i18n 结构
 
-## 7. 响应式多端 UI 策略
+## 7. 各模块详细设计
+
+### 7.1 任务管理详细设计
+
+#### 数据库表结构（`0002_tasks.sql`）
+
+**`tasks` 表** — 任务主表
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | 主键 |
+| user_id | uuid | 所有者 |
+| title | text not null | 标题 |
+| description | text | 描述 |
+| status | text not null default 'todo' | `todo` / `in_progress` / `done` / `cancelled` |
+| priority | text not null default 'medium' | `low` / `medium` / `high` / `urgent` |
+| due_date | timestamptz | 截止时间 |
+| recurrence_rule | jsonb | 重复规则，null 表示不重复 |
+| recurrence_next | timestamptz | 下次生成时间，用于 Edge Function 扫描 |
+| sort_order | int not null default 0 | 看板列内排序 |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+约束：`status` check in (todo, in_progress, done, cancelled)；`priority` check in (low, medium, high, urgent)。
+
+**`subtasks` 表** — 子任务
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| task_id | uuid references tasks on delete cascade | 父任务 |
+| user_id | uuid | |
+| title | text not null | |
+| done | boolean not null default false | |
+| sort_order | int not null default 0 | |
+| created_at | timestamptz | |
+
+**`tags` 表** — 标签
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| name | text not null | |
+| color | text | 颜色值 |
+| created_at | timestamptz | |
+
+唯一约束：`(user_id, name)`。
+
+**`task_tags` 表** — 任务-标签关联
+
+| 字段 | 类型 |
+|---|---|
+| task_id | uuid references tasks on delete cascade |
+| tag_id | uuid references tags on delete cascade |
+| 主键 | (task_id, tag_id) |
+
+#### 重复规则 JSONB 结构
+
+```json
+{
+  "frequency": "daily" | "weekly" | "monthly",
+  "interval": 1,
+  "end_date": "2026-12-31T00:00:00Z" | null
+}
+```
+
+**生成逻辑**：任务被标记为 `done` 时，若 `recurrence_rule` 非空：
+1. 触发器/Edge Function 计算 `recurrence_next = due_date + interval`
+2. 若未超过 `end_date`，克隆当前任务为新任务（status='todo'，新 due_date，相同 recurrence_rule），并清空当前任务的 recurrence_rule（避免再次重复）
+
+#### 状态流转
+
+```
+todo ──► in_progress ──► done
+  │           │
+  └───────────┴──► cancelled
+
+done/cancelled 可恢复为 todo
+```
+
+#### 到期提醒
+
+- 本地：Tauri `plugin-notification`，前端定时扫描 due_date 即将到期任务。
+- 邮件：Edge Function + Database Webhook，任务创建/更新时若 due_date 在未来，调度提醒邮件（通过 Supabase Edge Function + Resend/SMTP）。
+
+#### Realtime
+
+启用 `tasks`、`subtasks` 表 Realtime，前端订阅 `user_id` 过滤的变更。
+
+#### 组件拆分
+
+- `TaskListView` / `TaskBoardView` / `TaskCalendarView` — 三视图（路由内切换）
+- `TaskCard` / `TaskRow` — 单任务卡片
+- `TaskDetailDrawer` — 详情抽屉
+- `TaskForm` — 创建/编辑表单
+- `SubtaskList` — 子任务列表
+- `TagManager` — 标签管理
+- `useTasks` — TanStack Query hook（列表/筛选/CRUD）
+
+---
+
+### 7.2 记账详细设计
+
+#### 数据库表结构（`0003_finance.sql`）
+
+**`accounts` 表** — 账户
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| name | text not null | 账户名 |
+| type | text not null | `cash` / `bank` / `credit` |
+| initial_balance | numeric(12,2) not null default 0 | 初始余额 |
+| currency | text not null default 'CNY' | |
+| sort_order | int not null default 0 | |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+**`categories` 表** — 分类
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| name | text not null | |
+| type | text not null | `income` / `expense` |
+| icon | text | 图标标识 |
+| parent_id | uuid references categories | 父分类（支持二级），null 为一级 |
+| sort_order | int not null default 0 | |
+
+**`transactions` 表** — 流水
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| type | text not null | `income` / `expense` / `transfer` |
+| amount | numeric(12,2) not null | 金额（正数） |
+| account_id | uuid references accounts | 源账户 |
+| to_account_id | uuid references accounts | 转账目标账户（仅 transfer） |
+| category_id | uuid references categories | 分类（transfer 时为 null） |
+| date | date not null | 发生日期 |
+| note | text | 备注 |
+| receipt_url | text | 票据照片 Storage 路径 |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+约束：`type` check in (income, expense, transfer)；转账时 `to_account_id` 非空、`category_id` 为空。
+
+**`budgets` 表** — 预算
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| category_id | uuid references categories | 按分类设预算 |
+| amount | numeric(12,2) not null | 月度预算上限 |
+| year_month | int not null | 如 202608 |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+唯一约束：`(user_id, category_id, year_month)`。
+
+#### 账户余额计算
+
+```
+balance = initial_balance
+        + SUM(income.amount)  where account_id = this
+        - SUM(expense.amount) where account_id = this
+        + SUM(transfer.amount) where to_account_id = this
+        - SUM(transfer.amount) where account_id = this
+```
+
+用 Postgres 视图 `account_balances` 聚合，或前端按账户分组计算。超支预警：前端比较 `本月支出 vs budget.amount`。
+
+#### 票据照片 Storage
+
+- bucket: `receipt-photos`，路径 `user_id/transaction_id/filename`
+- RLS：Storage policy 按 `auth.uid()` 匹配路径首段。
+
+#### 组件拆分
+
+- `TransactionList` — 流水列表（按日期分组）
+- `TransactionForm` — 记账表单（收入/支出/转账切换）
+- `AccountList` / `AccountCard` — 账户列表与余额
+- `BudgetList` / `BudgetProgress` — 预算列表与进度条
+- `FinanceReport` — 报表（月度收支柱状图、分类占比饼图、趋势折线图，Recharts）
+- `useTransactions` / `useAccounts` / `useBudgets` — TanStack Query hooks
+
+---
+
+### 7.3 笔记详细设计
+
+#### 数据库表结构（`0004_notes.sql`）
+
+**`note_folders` 表** — 文件夹
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| name | text not null | |
+| parent_id | uuid references note_folders | 父文件夹（嵌套），null 为根 |
+| sort_order | int not null default 0 | |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+**`notes` 表** — 笔记
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| folder_id | uuid references note_folders on delete set null | |
+| title | text not null default '无标题' | |
+| content | jsonb not null default '{}'::jsonb | Tiptap JSON 文档 |
+| content_text | text | 纯文本（由触发器从 content 提取，用于全文搜索） |
+| search_vector | tsvector | 全文搜索向量（generated column） |
+| is_pinned | boolean not null default false | 收藏 |
+| cover_url | text | 封面图 |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+**`note_tags` 表** + **`note_note_tags` 关联表**（结构同任务标签）。
+
+#### 全文搜索
+
+```sql
+-- content_text 由触发器从 Tiptap JSON 提取纯文本
+-- search_vector 为 generated column
+alter table notes add column search_vector tsvector
+  generated always as (to_tsvector('chinese', coalesce(title,'') || ' ' || coalesce(content_text,''))) stored;
+
+create index notes_search_idx on notes using gin(search_vector);
+
+-- 查询
+select * from notes where search_vector @@ to_tsquery('chinese', '关键词');
+```
+
+触发器函数：遍历 Tiptap JSON 的 text 节点拼接为 content_text。
+
+#### 图片存储
+
+- bucket: `note-images`，路径 `user_id/note_id/uuid.ext`
+- 粘贴/拖拽图片 → 上传 Storage → 返回 public_url → Tiptap 插入 image 节点
+- Storage policy：用户只能读写自己路径前缀下的对象。
+
+#### pgvector 语义搜索（可选，非 MVP）
+
+- `notes` 增列 `content_embedding vector(1536)`
+- Edge Function 在 note 更新时调用 embedding API 生成向量
+- 查询：`order by content_embedding <=> query_embedding limit 10`
+
+#### 组件拆分
+
+- `NoteSidebar` — 文件夹树
+- `NoteList` — 笔记列表（标题 + 摘要 + 时间）
+- `NoteEditor` — Tiptap 编辑器（工具栏 + 内容区）
+- `TiptapToolbar` — 富文本工具栏
+- `NoteSearch` — 搜索框 + 结果
+- `useNotes` / `useFolders` — TanStack Query hooks
+
+---
+
+### 7.4 邮箱详细设计
+
+#### 数据库表结构（`0005_email.sql`）
+
+**`email_accounts` 表** — 邮箱账号元数据（凭证存 keychain，不进库）
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| user_id | uuid | |
+| email | text not null | 邮箱地址 |
+| display_name | text | 发件人显示名 |
+| imap_host | text not null | |
+| imap_port | int not null | 通常 993 |
+| smtp_host | text not null | |
+| smtp_port | int not null | 通常 465/587 |
+| use_ssl | boolean not null default true | |
+| last_synced_uid | int | 已同步的最大 IMAP UID |
+| last_synced_at | timestamptz | |
+| created_at | timestamptz | |
+| updated_at | timestamptz | |
+
+唯一约束：`(user_id, email)`。
+
+> 凭证（密码或 OAuth token）通过 Tauri keychain 插件存储，key 为 `easywork:email:{account_id}`，不写入数据库。
+
+**`email_folders` 表** — 文件夹
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| email_account_id | uuid references email_accounts on delete cascade | |
+| user_id | uuid | |
+| name | text not null | 显示名（收件箱/已发送...） |
+| imap_path | text not null | IMAP 路径（INBOX, Sent, 等） |
+| unread_count | int not null default 0 | |
+| sort_order | int not null default 0 | |
+
+**`emails` 表** — 邮件缓存
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| email_account_id | uuid references email_accounts on delete cascade | |
+| user_id | uuid | |
+| folder_id | uuid references email_folders | |
+| message_id | text | IMAP Message-ID 头 |
+| uid | int | IMAP UID |
+| from_address | text | |
+| to_addresses | text[] | |
+| cc_addresses | text[] | |
+| subject | text | |
+| preview_text | text | 前 200 字 |
+| body_html | text | |
+| body_text | text | |
+| has_attachments | boolean default false | |
+| is_read | boolean default false | |
+| is_starred | boolean default false | |
+| received_at | timestamptz | |
+| created_at | timestamptz | |
+
+唯一约束：`(email_account_id, message_id)` 用于去重。
+
+**`email_attachments` 表** — 附件
+
+| 字段 | 类型 | 说明 |
+|---|---|---|
+| id | uuid pk | |
+| email_id | uuid references emails on delete cascade | |
+| user_id | uuid | |
+| filename | text | |
+| mime_type | text | |
+| size | int | 字节 |
+| storage_path | text | Storage 路径 |
+| created_at | timestamptz | |
+
+#### 收件流程
+
+```
+1. Rust 前台实时拉取（应用打开时）：
+   Tauri command `fetch_emails(account_id)`
+   → keychain 取凭证
+   → IMAP 连接，FETCH (last_synced_uid, MAX] 的邮件
+   → 写入 emails 表 + 附件存 Storage
+   → 更新 last_synced_uid / last_synced_at
+   → Realtime 自动推送新邮件到前端
+
+2. Edge Function 后台兜底（应用未打开时）：
+   Supabase cron 每 5 分钟
+   → 查询所有 email_accounts
+   → 用 Deno imap 库连接（凭证：因 keychain 不可用，后台模式要求账号密码也存库的加密列，或限制后台仅支持 OAuth refresh token）
+   → 拉取新邮件写库
+```
+
+> 后台凭证方案需在实现时确定：MVP 可先只做 Rust 前台拉取，Edge Function 后台作为增强项。
+
+#### 发件流程
+
+```
+1. 前端 MailComposer 撰写 → 调 Tauri command `send_email(account_id, to[], cc[], subject, body_html, attachments[])`
+2. Rust：keychain 取凭证 → lettre SMTP 发送
+3. 成功后：IMAP APPEND 到"已发送"文件夹 + 写入 emails 表（folder=已发送）
+4. 失败：返回错误，前端 Toast 提示
+```
+
+#### 附件 Storage
+
+- bucket: `email-attachments`，路径 `user_id/account_id/email_id/filename`
+- 收件附件：Rust 拉取时存入；发件附件：发送前上传。
+
+#### 搜索
+
+- `subject` + `body_text` + `from_address` 全文检索（tsvector）。
+- 支持按文件夹、是否未读、是否星标筛选。
+
+#### Rust 侧模块
+
+- `src-tauri/src/mail/mod.rs` — 邮件模块入口
+- `src-tauri/src/mail/imap.rs` — IMAP 收件逻辑
+- `src-tauri/src/mail/smtp.rs` — SMTP 发件逻辑
+- `src-tauri/src/mail/storage.rs` — 附件 Storage 上传/下载
+- Tauri commands：`fetch_emails`、`send_email`、`test_account_connection`、`save_account_credentials`
+
+#### 前端组件拆分
+
+- `MailAccountTree` — 账号 + 文件夹树（左栏）
+- `MailList` — 邮件列表（中栏，含筛选/搜索）
+- `MailReader` — 阅读区（右栏，HTML 渲染 + 附件列表）
+- `MailComposer` — 撰写弹窗（收件人/主题/正文/附件）
+- `MailAccountSettings` — 账号配置（IMAP/SMTP 表单 + 测试连接）
+- `useEmails` / `useFolders` / `useEmailAccounts` — TanStack Query hooks
+
+## 8. 响应式多端 UI 策略
 
 ### 断点
 
@@ -180,7 +595,7 @@
 
 亮/暗双主题，shadcn/ui 原生支持。
 
-## 8. 已确认的关键决策
+## 9. 已确认的关键决策
 
 | 事项 | 决策 |
 |---|---|
@@ -202,7 +617,7 @@
 | Supabase 部署 | Cloud 托管 |
 | i18n | MVP 中文，预留结构 |
 
-## 9. 实施顺序
+## 10. 实施顺序
 
 按子系统拆分，每个子系统独立走 spec → plan → 实现循环：
 
@@ -212,6 +627,6 @@
 4. **笔记**
 5. **邮箱**（最复杂，放最后）
 
-## 10. 范围说明
+## 11. 范围说明
 
-本规格覆盖整体地基与五个模块的功能边界。每个模块的详细实现计划由后续 `writing-plans` 阶段按实施顺序逐个生成，避免单一计划过大。
+本规格覆盖整体地基与五个模块的功能边界及详细设计（表结构、RLS、状态机、组件拆分）。每个模块的详细实现计划由 `writing-plans` 阶段按实施顺序逐个生成，避免单一计划过大。
