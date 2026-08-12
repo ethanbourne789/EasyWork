@@ -7,3 +7,31 @@ src-tauri/target
 .vite
 coverage
 .DS_Store
+
+# Supabase Secrets（含真实密钥，切勿提交）
+supabase/.env.secrets
+# tsc -b 配置项目产物（已由 tsconfig.node.json noEmit 抑制，双重保险）
+vite.config.js
+vite.config.d.ts
+*.timestamp-*.mjs
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
+*.tsbuildinfo
+
+# Brainstorm visual companion（本地临时 mockup）
+.superpowers/
+
+# Build artifacts
+gradle-*.zip
+android-*.log
+android-build*.log
+build-green.log
+cargo-build.log
+pnpm-install.log
+_tmp_*
+android-release/
+release-green/
+src-tauri/gen/schemas/
+src-tauri/build-green.log
+*.apk
+*.apk.idsig
