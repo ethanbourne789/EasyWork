@@ -6,6 +6,7 @@ pub struct EmailAccount {
     pub email: String,
     pub display_name: Option<String>,
     pub username: Option<String>,
+    pub credential_ref: String,
     pub imap_host: String,
     pub imap_port: i64,
     pub smtp_host: String,
