@@ -977,6 +977,7 @@ dependencies = [
  "ammonia",
  "async-imap",
  "chrono",
+ "futures",
  "keyring",
  "lettre",
  "mail-parser",

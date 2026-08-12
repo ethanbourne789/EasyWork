@@ -1,8 +1,9 @@
 // 邮件模块（Tauri 2 + Rust 原生实现）
-// 后续任务会逐步添加：imap, smtp, service, scheduler, events
+// 后续任务会逐步添加：smtp, service, scheduler, events
 pub mod creds;
 pub mod db;
 pub mod db_queries;
 pub mod error;
+pub mod imap;
 pub mod mime;
 pub mod types;

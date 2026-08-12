@@ -18,6 +18,7 @@ tauri-plugin-notification = "2"
 tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "fs", "io-util"] }
 
 async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
+futures = "0.3"
 lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname", "pool"] }
 mail-parser = "0.11"
 
