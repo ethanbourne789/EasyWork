@@ -1,0 +1,162 @@
+use rusqlite::Connection;
+use std::path::Path;
+use std::sync::Arc;
+use tokio::sync::Mutex;
+use tauri::AppHandle;
+use crate::mail::creds::CredentialStore;
+use crate::mail::db_queries;
+use crate::mail::events::emit_progress;
+use crate::mail::imap::{ImapAdapter, calc_fetch_range};
+use crate::mail::mime::{parse_message, infer_folder_type, folder_display_name, sanitize_html};
+use crate::mail::types::*;
+use crate::mail::error::{MailError, MailResult};
+
+pub struct MailService {
+    pub db: Arc<Mutex<Connection>>,
+    pub attachments_dir: Box<Path>,
+    pub locks: Arc<Mutex<std::collections::HashMap<String, bool>>>,
+}
+
+impl MailService {
+    pub async fn sync_account(&self, app: &AppHandle, account_id: &str) -> MailResult<SyncResult> {
+        let lock_key = account_id.to_string();
+        {
+            let mut locks = self.locks.lock().await;
+            if locks.get(&lock_key).copied().unwrap_or(false) {
+                return Ok(SyncResult { fetched: 0, inserted: 0, folders: 0, error: Some("同步进行中".into()) });
+            }
+            locks.insert(lock_key.clone(), true);
+        }
+
+        let result = self.do_sync(app, account_id).await;
+
+        {
+            let mut locks = self.locks.lock().await;
+            locks.insert(lock_key, false);
+        }
+        result
+    }
+
+    async fn do_sync(&self, app: &AppHandle, account_id: &str) -> MailResult<SyncResult> {
+        emit_progress(app, SyncProgress::Connecting { account_id: account_id.into() });
+
+        let account = {
+            let db = self.db.lock().await;
+            db_queries::get_account(&db, account_id)?
+        };
+        let password = CredentialStore::get_password(account_id)?;
+        let username = account.username.as_deref().unwrap_or(&account.email);
+
+        let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
+
+        let folders = imap.list_folders().await?;
+        let mut fetched = 0i64;
+        let mut inserted = 0i64;
+
+        for (path, flags) in &folders {
+            let folder_type = infer_folder_type(path, flags);
+            let display_name = folder_display_name(path, folder_type);
+
+            let folder_id = {
+                let db = self.db.lock().await;
+                ensure_folder(&db, account_id, path, &display_name, folder_type)?
+            };
+
+            if let Ok((uid_next, uid_validity)) = imap.select_folder(path).await {
+                let last_uid = {
+                    let db = self.db.lock().await;
+                    get_folder_last_uid(&db, &folder_id)?
+                };
+                let (start, end) = calc_fetch_range(last_uid, uid_next);
+
+                if start <= end {
+                    let messages = imap.fetch_range(start, end).await?;
+                    let total = messages.len() as i64;
+                    let mut done = 0i64;
+
+                    for (uid, body, msg_flags) in messages {
+                        let parsed = parse_message(&body)?;
+                        let is_read = msg_flags.iter().any(|f| f.contains("Seen"));
+                        let is_starred = msg_flags.iter().any(|f| f.contains("Flagged"));
+
+                        let email = Email {
+                            id: uuid::Uuid::new_v4().to_string(),
+                            account_id: account_id.into(),
+                            folder_id: Some(folder_id.clone()),
+                            message_id: parsed.message_id.clone(),
+                            uid: Some(uid as i64),
+                            from_address: parsed.from_address.clone(),
+                            to_addresses: Some(serde_json::to_string(&parsed.to_addresses).unwrap_or_default()),
+                            cc_addresses: Some(serde_json::to_string(&parsed.cc_addresses).unwrap_or_default()),
+                            subject: parsed.subject.clone(),
+                            preview_text: parsed.preview_text.clone(),
+                            body_text: parsed.body_text.clone(),
+                            body_html: parsed.body_html.as_ref().map(|h| sanitize_html(h)),
+                            has_attachments: parsed.has_attachments,
+                            is_read, is_starred,
+                            received_at: Some(chrono::Utc::now().to_rfc3339()),
+                            created_at: chrono::Utc::now().to_rfc3339(),
+                            account_email: Some(account.email.clone()),
+                            account_name: account.display_name.clone(),
+                        };
+
+                        let db = self.db.lock().await;
+                        db_queries::upsert_email(&db, &email)?;
+                        inserted += 1;
+                        fetched += 1;
+                        done += 1;
+                        emit_progress(app, SyncProgress::Folder {
+                            account_id: account_id.into(), path: path.clone(), done, total
+                        });
+                    }
+
+                    {
+                        let db = self.db.lock().await;
+                        update_folder_cursor(&db, account_id, &folder_id, end, uid_validity)?;
+                    }
+                }
+            }
+        }
+
+        emit_progress(app, SyncProgress::Done {
+            account_id: account_id.into(), fetched, inserted
+        });
+
+        Ok(SyncResult { fetched, inserted, folders: folders.len() as i64, error: None })
+    }
+}
+
+fn ensure_folder(conn: &Connection, account_id: &str, imap_path: &str, name: &str, folder_type: &str) -> MailResult<String> {
+    let existing: Option<String> = conn.query_row(
+        "SELECT id FROM email_folders WHERE account_id = ?1 AND imap_path = ?2",
+        rusqlite::params![account_id, imap_path],
+        |row| row.get(0)
+    ).ok();
+    if let Some(id) = existing { return Ok(id); }
+    let id = uuid::Uuid::new_v4().to_string();
+    let is_system = matches!(folder_type, "inbox" | "sent" | "drafts" | "trash" | "spam");
+    db_queries::insert_folder(conn, &EmailFolder {
+        id: id.clone(), account_id: account_id.into(), name: name.into(),
+        imap_path: imap_path.into(), parent_path: None, is_system,
+        folder_type: folder_type.into(), sort_order: 0, unread_count: 0, total_count: 0,
+        created_at: chrono::Utc::now().to_rfc3339(),
+    })?;
+    Ok(id)
+}
+
+fn get_folder_last_uid(conn: &Connection, folder_id: &str) -> MailResult<Option<u32>> {
+    let uid: Option<i64> = conn.query_row(
+        "SELECT last_uid FROM mail_sync_state WHERE folder_id = ?1",
+        rusqlite::params![folder_id], |row| row.get(0)
+    ).ok();
+    Ok(uid.map(|u| u as u32))
+}
+
+fn update_folder_cursor(conn: &Connection, account_id: &str, folder_id: &str, last_uid: u32, uid_validity: u32) -> MailResult<()> {
+    conn.execute(
+        "INSERT INTO mail_sync_state (account_id, folder_id, last_uid, uid_validity, updated_at) VALUES (?1, ?2, ?3, ?4, ?5)
+         ON CONFLICT(account_id, folder_id) DO UPDATE SET last_uid=excluded.last_uid, uid_validity=excluded.uid_validity, updated_at=excluded.updated_at",
+        rusqlite::params![account_id, folder_id, last_uid as i64, uid_validity as i64, chrono::Utc::now().to_rfc3339()],
+    )?;
+    Ok(())
+}
