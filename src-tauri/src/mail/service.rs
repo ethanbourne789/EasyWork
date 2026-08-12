@@ -124,6 +124,113 @@ impl MailService {
 
         Ok(SyncResult { fetched, inserted, folders: folders.len() as i64, error: None })
     }
+
+    pub async fn create_folder(&self, account_id: &str, name: &str) -> MailResult<EmailFolder> {
+        let account = {
+            let db = self.db.lock().await;
+            db_queries::get_account(&db, account_id)?
+        };
+        let password = CredentialStore::get_password(account_id)?;
+        let username = account.username.as_deref().unwrap_or(&account.email);
+        let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
+
+        imap.create_mailbox(name).await?;
+
+        let folder = EmailFolder {
+            id: uuid::Uuid::new_v4().to_string(),
+            account_id: account_id.into(),
+            name: name.into(),
+            imap_path: name.into(),
+            parent_path: None,
+            is_system: false,
+            folder_type: "other".into(),
+            sort_order: 0,
+            unread_count: 0,
+            total_count: 0,
+            created_at: chrono::Utc::now().to_rfc3339(),
+        };
+
+        let db = self.db.lock().await;
+        db_queries::insert_folder(&db, &folder)?;
+        Ok(folder)
+    }
+
+    pub async fn rename_folder(&self, folder_id: &str, new_name: &str) -> MailResult<EmailFolder> {
+        let folder = {
+            let db = self.db.lock().await;
+            let f: Option<EmailFolder> = db.query_row(
+                "SELECT * FROM email_folders WHERE id = ?1",
+                rusqlite::params![folder_id], |row| {
+                    Ok(EmailFolder {
+                        id: row.get("id")?, account_id: row.get("account_id")?, name: row.get("name")?,
+                        imap_path: row.get("imap_path")?, parent_path: row.get("parent_path")?,
+                        is_system: row.get::<_, i64>("is_system")? != 0, folder_type: row.get("folder_type")?,
+                        sort_order: row.get("sort_order")?, unread_count: row.get("unread_count")?,
+                        total_count: row.get("total_count")?, created_at: row.get("created_at")?,
+                    })
+                }
+            ).ok();
+            f
+        };
+        let folder = folder.ok_or_else(|| MailError::new("NOT_FOUND", "文件夹不存在"))?;
+        if folder.is_system {
+            return Err(MailError::new("FORBIDDEN", "系统文件夹不可重命名"));
+        }
+
+        let account = {
+            let db = self.db.lock().await;
+            db_queries::get_account(&db, &folder.account_id)?
+        };
+        let password = CredentialStore::get_password(&folder.account_id)?;
+        let username = account.username.as_deref().unwrap_or(&account.email);
+        let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
+
+        imap.rename_mailbox(&folder.imap_path, new_name).await?;
+
+        let db = self.db.lock().await;
+        db.execute("UPDATE email_folders SET name = ?1, imap_path = ?2 WHERE id = ?3",
+            rusqlite::params![new_name, new_name, folder_id])?;
+
+        let mut updated = folder;
+        updated.name = new_name.into();
+        updated.imap_path = new_name.into();
+        Ok(updated)
+    }
+
+    pub async fn delete_folder(&self, folder_id: &str) -> MailResult<()> {
+        let folder = {
+            let db = self.db.lock().await;
+            let f: Option<EmailFolder> = db.query_row(
+                "SELECT * FROM email_folders WHERE id = ?1",
+                rusqlite::params![folder_id], |row| {
+                    Ok(EmailFolder {
+                        id: row.get("id")?, account_id: row.get("account_id")?, name: row.get("name")?,
+                        imap_path: row.get("imap_path")?, parent_path: row.get("parent_path")?,
+                        is_system: row.get::<_, i64>("is_system")? != 0, folder_type: row.get("folder_type")?,
+                        sort_order: row.get("sort_order")?, unread_count: row.get("unread_count")?,
+                        total_count: row.get("total_count")?, created_at: row.get("created_at")?,
+                    })
+                }
+            ).ok();
+            f
+        };
+        let folder = folder.ok_or_else(|| MailError::new("NOT_FOUND", "文件夹不存在"))?;
+        if folder.is_system {
+            return Err(MailError::new("FORBIDDEN", "系统文件夹不可删除"));
+        }
+
+        let db = self.db.lock().await;
+        db.execute("DELETE FROM emails WHERE folder_id = ?1", rusqlite::params![folder_id])?;
+        db.execute("DELETE FROM email_folders WHERE id = ?1", rusqlite::params![folder_id])?;
+        let account = db_queries::get_account(&db, &folder.account_id)?;
+        drop(db);
+
+        let password = CredentialStore::get_password(&folder.account_id)?;
+        let username = account.username.as_deref().unwrap_or(&account.email);
+        let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
+        let _ = imap.delete_mailbox(&folder.imap_path).await; // 失败仅告警
+        Ok(())
+    }
 }
 
 fn ensure_folder(conn: &Connection, account_id: &str, imap_path: &str, name: &str, folder_type: &str) -> MailResult<String> {
