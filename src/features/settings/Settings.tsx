@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash2, Eye, EyeOff, KeyRound, Settings as SettingsIcon } from "lucide-react";
+import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash2, KeyRound, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore, getCurrentUserId } from "@/features/auth/authStore";
@@ -10,13 +10,13 @@ import { Avatar } from "@/components/ui/avatar";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/lib/toast";
-import { friendlyAuthError } from "@/lib/authErrors";
 import { TOAST_DURATION } from "@/lib/constants";
 import { formatDateLocal } from "@/lib/dateUtils";
 import { useEmailAccounts } from "@/features/mail/useMail";
 import { requestNotificationPermission, fireBudgetWarnings } from "@/lib/notify";
 import { getAppVersion, isTauri, getAutostartStatus, setAutostart, getCloseBehavior, setCloseBehavior } from "@/lib/tauri";
 import { useProfile, useUpdateProfile } from "./useProfile";
+import { ChangePasswordDialog } from "./ChangePasswordDialog";
 import { confirm } from "@/lib/confirm";
 import { useTranslation } from "react-i18next";
 
@@ -100,14 +100,7 @@ export function Settings() {
   const [appVersion, setAppVersion] = useState<string>("");
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [closeOnExit, setCloseOnExit] = useState(false);
-  // 密码修改表单状态
-  const [currentPassword, setCurrentPassword] = useState("");
-  const [newPassword, setNewPassword] = useState("");
-  const [confirmPassword, setConfirmPassword] = useState("");
-  const [showCurrent, setShowCurrent] = useState(false);
-  const [showNew, setShowNew] = useState(false);
-  const [showConfirm, setShowConfirm] = useState(false);
-  const [changingPassword, setChangingPassword] = useState(false);
+  const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
   // 消费 Tauri 真实命令（修复 #6 空壳）：桌面端显示真实版本，Web 端显示回退值
   useEffect(() => {
     getAppVersion().then(setAppVersion);
@@ -158,73 +151,9 @@ export function Settings() {
     }
   };
 
-  const resetPasswordForm = () => {
-    setCurrentPassword("");
-    setNewPassword("");
-    setConfirmPassword("");
-    setShowCurrent(false);
-    setShowNew(false);
-    setShowConfirm(false);
+  const handleAvatarRemove = () => {
+    setAvatarUrl(null);
   };
-
-  const handleChangePassword = async () => {
-    // 表单验证
-    if (!currentPassword) {
-      toast(t('settings.enterCurrentPassword'), "error");
-      return;
-    }
-    if (!newPassword) {
-      toast(t('settings.enterNewPassword'), "error");
-      return;
-    }
-    if (newPassword.length < 6) {
-      toast(t('settings.passwordTooShort'), "error");
-      return;
-    }
-    if (newPassword !== confirmPassword) {
-      toast(t('settings.passwordsMismatch'), "error");
-      return;
-    }
-    if (newPassword === currentPassword) {
-      toast(t('settings.passwordSameAsCurrent'), "error");
-      return;
-    }
-
-    setChangingPassword(true);
-    try {
-      // 先通过当前密码验证用户身份
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: sessionEmail,
-        password: currentPassword,
-      });
-      if (signInError) {
-        toast(t('settings.currentPasswordIncorrect'), "error");
-        return;
-      }
-      if (!signInData.user) {
-        toast(t('settings.authFailed'), "error");
-        return;
-      }
-
-      // 更新密码
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (updateError) {
-        toast(t('settings.changePasswordFailed') + friendlyAuthError(updateError), "error");
-        return;
-      }
-
-      resetPasswordForm();
-      toast(t('settings.changePasswordSuccess'), "success");
-    } catch (err) {
-      toast(t('settings.changePasswordFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
-    } finally {
-      setChangingPassword(false);
-    }
-  };
-
-  // 头像上传：落到 avatars 公开桶，按 <user_id>/avatar.<ext> 前缀隔离，upsert 覆盖旧图。
   const handleAvatarUpload = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -246,10 +175,6 @@ export function Settings() {
       setUploadingAvatar(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
     }
-  };
-
-  const handleAvatarRemove = () => {
-    setAvatarUrl(null);
   };
 
   const handleSaveNotify = async () => {
@@ -448,72 +373,14 @@ export function Settings() {
             </div>
 
             {/* 密码修改 */}
-            <div className="space-y-3 pt-3 border-t">
-              <div className="flex items-center gap-2 text-sm font-medium">
-                <KeyRound className="h-4 w-4" />
+            <div className="pt-3 border-t">
+              <Button
+                variant="outline"
+                onClick={() => setPasswordDialogOpen(true)}
+              >
+                <KeyRound className="mr-2 h-4 w-4" />
                 {t('settings.changePassword')}
-              </div>
-              <p className="text-xs text-muted-foreground">{t('settings.passwordMinLength')}</p>
-              <div className="space-y-2">
-                <label className="text-sm font-medium">{t('settings.currentPassword')}</label>
-                <div className="relative">
-                  <Input
-                    type={showCurrent ? "text" : "password"}
-                    placeholder={t('settings.enterCurrentPassword')}
-                    value={currentPassword}
-                    onChange={(e) => setCurrentPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setShowCurrent((v) => !v)}
-                    aria-label={showCurrent ? t('settings.hidePassword') : t('settings.showPassword')}
-                  >
-                    {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <label className="text-sm font-medium">{t('settings.newPassword')}</label>
-                <div className="relative">
-                  <Input
-                    type={showNew ? "text" : "password"}
-                    placeholder={t('settings.newPasswordPlaceholder')}
-                    value={newPassword}
-                    onChange={(e) => setNewPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setShowNew((v) => !v)}
-                    aria-label={showNew ? t('settings.hidePassword') : t('settings.showPassword')}
-                  >
-                    {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <label className="text-sm font-medium">{t('settings.confirmNewPassword')}</label>
-                <div className="relative">
-                  <Input
-                    type={showConfirm ? "text" : "password"}
-                    placeholder={t('settings.confirmNewPasswordPlaceholder')}
-                    value={confirmPassword}
-                    onChange={(e) => setConfirmPassword(e.target.value)}
-                  />
-                  <button
-                    type="button"
-                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
-                    onClick={() => setShowConfirm((v) => !v)}
-                    aria-label={showConfirm ? t('settings.hidePassword') : t('settings.showPassword')}
-                  >
-                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
-                  </button>
-                </div>
-                <Button
-                  onClick={handleChangePassword}
-                  disabled={changingPassword}
-                  className="mt-1"
-                >
-                  {changingPassword ? t('settings.changingPassword') : t('settings.changePassword')}
-                </Button>
-              </div>
+              </Button>
             </div>
             <div className="flex items-center gap-2">
               <Button onClick={handleSaveProfile}>{t('settings.save')}</Button>
@@ -790,6 +657,8 @@ export function Settings() {
           </div>
         )}
       </div>
+
+      <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
     </div>
   );
 }
