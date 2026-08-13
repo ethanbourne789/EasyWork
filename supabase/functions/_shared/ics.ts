@@ -79,7 +79,18 @@ export function zonedTimeToUtc(
 
 /** 还原折行：续行以空格或制表符开头 */
 function unfold(text: string): string[] {
-  const normalized = text.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
+  // 解码 HTML 实体编码（钉钉 CalDAV 等服务器使用）
+  const decoded = text
+    .replace(/&#13;/g, "\r")
+    .replace(/&#10;/g, "\n")
+    .replace(/&#9;/g, "\t")
+    .replace(/&amp;/g, "&")
+    .replace(/&lt;/g, "<")
+    .replace(/&gt;/g, ">")
+    .replace(/&quot;/g, '"')
+    .replace(/&#39;/g, "'");
+  
+  const normalized = decoded.replace(/\r\n/g, "\n").replace(/\r/g, "\n");
   const out: string[] = [];
   for (const line of normalized.split("\n")) {
     if ((line.startsWith(" ") || line.startsWith("\t")) && out.length > 0) {

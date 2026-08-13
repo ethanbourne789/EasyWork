@@ -146,53 +146,126 @@ async function discoverCalDAV(subs: SubscriptionRow): Promise<string[]> {
   const baseHeaders = { "Content-Type": "application/xml; charset=utf-8", Depth: "1" };
 
   // 1) 发现 principal home（PROPFIND）
-  let home = base;
+  let principal = base;
+  let calendarHomeSet = null;
+  
+  // 尝试查找 principal
   try {
     const principalBody = `<?xml version="1.0"?>
       <d:propfind xmlns:d="DAV:">
         <d:prop><d:current-user-principal/></d:prop>
       </d:propfind>`;
-    const result = await fetchText(`${base}/`, {
-      ...baseHeaders,
-      Authorization: authHeader,
-    }, { method: "PROPFIND", body: principalBody });
-    if (result.ok) {
-      const m = CALDAV_NS("current-user-principal").exec(result.text);
-      if (m) home = absolutize(base, m[1].trim());
+    
+    // 尝试多个可能的路径
+    const principalPaths = [`${base}/`, `${base}/dav/`, `${base}/.well-known/caldav`];
+    for (const path of principalPaths) {
+      try {
+        const result = await fetchText(path, {
+          ...baseHeaders,
+          Authorization: authHeader,
+        }, { method: "PROPFIND", body: principalBody });
+        
+        if (result.ok || result.status === 207) {
+          // 先找到 current-user-principal 的内容，再从中提取 href
+          const principalMatch = CALDAV_NS("current-user-principal").exec(result.text);
+          if (principalMatch) {
+            const hrefMatch = /<D:href[^>]*>([\s\S]*?)<\/D:href>/i.exec(principalMatch[1]);
+            if (hrefMatch) {
+              principal = absolutize(base, hrefMatch[1].trim());
+              break;
+            }
+          }
+        }
+      } catch {
+        /* continue */
+      }
     }
   } catch {
     /* 失败则用 base 继续 */
   }
 
-  // 2) 发现日历集合（PROPFIND，包含 calendar-data 的 resourcetype=collection）
-  const calendarHomeBody = `<?xml version="1.0"?>
-    <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
-      <d:prop>
-        <d:resourcetype/>
-        <c:calendar-home-set/>
-        <d:displayname/>
-      </d:prop>
-    </d:propfind>`;
-  let calendars: string[] = [];
+  // 2) 查找 calendar-home-set
   try {
-    const result = await fetchText(home, {
+    const calendarHomeBody = `<?xml version="1.0"?>
+      <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+        <d:prop>
+          <c:calendar-home-set/>
+          <d:displayname/>
+        </d:prop>
+      </d:propfind>`;
+    
+    // 使用 Depth: 0 因为 principal 不是 collection
+    const result = await fetchText(principal, {
       ...baseHeaders,
+      Depth: "0",
       Authorization: authHeader,
     }, { method: "PROPFIND", body: calendarHomeBody });
-    if (result.ok) {
-      const hrefs = extractHrefs(result.text).filter((h) => h.endsWith("/") || /\.ics$/i.test(h));
-      calendars = hrefs.map((h) => absolutize(home, h));
+    
+    if (result.ok || result.status === 207) {
+      const m = /calendar-home-set[^>]*>([\s\S]*?)<\/[^>]*calendar-home-set/i.exec(result.text);
+      if (m) {
+        // 从 calendar-home-set 内容中提取 href
+        const hrefMatch = /<D:href[^>]*>([\s\S]*?)<\/D:href>/i.exec(m[1]);
+        if (hrefMatch) {
+          calendarHomeSet = absolutize(base, hrefMatch[1].trim());
+        }
+      }
     }
   } catch {
     /* ignore */
   }
 
-  // 兜底：直接尝试 well-known 与 home 本身
-  if (calendars.length === 0) {
-    calendars = [absolutize(base, "/.well-known/caldav/"), home];
+  // 3) 发现日历集合
+  let calendars: string[] = [];
+  
+  if (calendarHomeSet) {
+    // 在 calendar-home-set 下查找日历集合
+    try {
+      const calListBody = `<?xml version="1.0"?>
+        <d:propfind xmlns:d="DAV:" xmlns:c="urn:ietf:params:xml:ns:caldav">
+          <d:prop>
+            <d:resourcetype/>
+            <d:displayname/>
+          </d:prop>
+        </d:propfind>`;
+      
+      const result = await fetchText(calendarHomeSet, {
+        ...baseHeaders,
+        Authorization: authHeader,
+      }, { method: "PROPFIND", body: calListBody });
+      
+      if (result.ok || result.status === 207) {
+        // 解析每个 response 块，找到包含 calendar 类型的集合
+        const responseBlocks = result.text.split("<D:response>");
+        for (const block of responseBlocks) {
+          // 提取 href
+          const hrefMatch = /<D:href>(.*?)<\/D:href>/.exec(block);
+          const typeMatch = /<C:calendar[^>]*>|<c:calendar[^>]*>/i.exec(block);
+          
+          if (hrefMatch && typeMatch) {
+            const href = hrefMatch[1].trim();
+            if (href.endsWith("/") && !href.includes("Inbox") && !href.includes("Outbox")) {
+              calendars.push(absolutize(calendarHomeSet, href));
+            }
+          }
+        }
+      }
+    } catch {
+      /* ignore */
+    }
   }
 
-  // 3) 逐个日历拉取事件（REPORT + time-range 限定同步窗口）
+  // 兜底：如果没找到日历集合，尝试常见路径
+  if (calendars.length === 0) {
+    const fallbackPaths = [
+      absolutize(base, "/.well-known/caldav/"),
+      principal,
+      calendarHomeSet,
+    ].filter(Boolean);
+    calendars = fallbackPaths;
+  }
+
+  // 4) 逐个日历拉取事件（REPORT + time-range 限定同步窗口）
   const windowStart = new Date(Date.now() - SYNC_WINDOW_PAST_DAYS * 86400000);
   const windowEnd = new Date(Date.now() + SYNC_WINDOW_FUTURE_DAYS * 86400000);
   const fmt = (d: Date) => d.toISOString().replace(/[-:]/g, "").replace(/\.\d{3}/, "");
@@ -218,7 +291,8 @@ async function discoverCalDAV(subs: SubscriptionRow): Promise<string[]> {
         ...baseHeaders,
         Authorization: authHeader,
       }, { method: "REPORT", body: reportBody });
-      if (!result.ok) continue;
+      
+      if (!result.ok && result.status !== 207) continue;
       const xml = result.text;
       // 抽取所有 calendar-data 块
       const dataRe =
@@ -299,11 +373,56 @@ async function writeEvents(
 
   let synced = 0;
   if (rows.length > 0) {
-    // upsert：同一 (subscription_id, external_uid) 唯一，重复同步幂等
-    const { error } = await admin.from("calendar_events").upsert(rows, {
-      onConflict: "subscription_id,external_uid",
-    });
-    if (error) throw error;
+    // 由于唯一索引是部分索引（带有 WHERE 条件），ON CONFLICT 无法直接使用。
+    // 改用先查询再插入/更新的方式实现幂等 upsert。
+    const externalUids = rows.map((r) => String(r.external_uid));
+    const { data: existing } = await admin
+      .from("calendar_events")
+      .select("id, external_uid")
+      .eq("subscription_id", subs.id)
+      .in("external_uid", externalUids);
+
+    const existingMap = new Map();
+    for (const row of (existing ?? [])) {
+      existingMap.set(row.external_uid, row.id);
+    }
+
+    // 更新已存在的事件
+    const toUpdate = rows.filter((r) => existingMap.has(String(r.external_uid)));
+    if (toUpdate.length > 0) {
+      for (const row of toUpdate) {
+        await admin
+          .from("calendar_events")
+          .update({
+            title: row.title,
+            description: row.description,
+            location: row.location,
+            start_at: row.start_at,
+            end_at: row.end_at,
+            all_day: row.all_day,
+            color: row.color,
+            organizer: row.organizer,
+          })
+          .eq("id", existingMap.get(String(row.external_uid)));
+      }
+    }
+
+    // 插入新事件（先去重，避免同一 external_uid 多次出现）
+    const toInsert = rows.filter((r) => !existingMap.has(String(r.external_uid)));
+    if (toInsert.length > 0) {
+      // 按 external_uid 去重，保留第一条
+      const uidSet = new Set();
+      const uniqueInserts = toInsert.filter((r) => {
+        const uid = String(r.external_uid);
+        if (uidSet.has(uid)) return false;
+        uidSet.add(uid);
+        return true;
+      });
+      
+      const { error } = await admin.from("calendar_events").insert(uniqueInserts);
+      if (error) throw error;
+    }
+
     synced = rows.length;
   }
 
@@ -368,15 +487,27 @@ async function syncOne(
     let message: string;
     if (e instanceof Error) {
       const cause = (e as { cause?: unknown }).cause;
-      const causeMsg =
-        cause instanceof Error
-          ? cause.message
-          : typeof cause === "string"
-            ? cause
-            : cause
-              ? JSON.stringify(cause)
-              : "";
+      let causeMsg = "";
+      if (cause instanceof Error) {
+        causeMsg = cause.message;
+      } else if (typeof cause === "string") {
+        causeMsg = cause;
+      } else if (cause && typeof cause === "object") {
+        // 安全地序列化对象
+        try {
+          causeMsg = JSON.stringify(cause, null, 2);
+        } catch {
+          causeMsg = String(cause);
+        }
+      }
       message = causeMsg ? `${e.message}: ${causeMsg}` : e.message;
+    } else if (e && typeof e === "object") {
+      // 处理非 Error 对象
+      try {
+        message = JSON.stringify(e, null, 2);
+      } catch {
+        message = String(e);
+      }
     } else {
       message = String(e);
     }
