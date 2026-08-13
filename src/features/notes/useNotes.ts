@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from '@tanstack/react-query';
 import { supabase } from '@/lib/supabase';
 import { getCurrentUserId } from '@/features/auth/authStore';
 import { useSafeMutation } from '@/lib/mutation';
+import i18n from '@/lib/i18n';
 import type { Note, NoteFolder, NoteTag } from '@/types';
 
 // Query keys
@@ -196,7 +197,7 @@ export function useCreateNote() {
         .from('notes')
         .insert({
           user_id: userId,
-          title: data.title || '无标题笔记',
+          title: data.title || i18n.t('notes.untitledNote'),
           content: data.content || { type: 'doc', content: [] },
           content_text: data.content_text || '',
           folder_id: data.folder_id,
@@ -260,7 +261,7 @@ export function useCreateFolder() {
         .from('note_folders')
         .insert({
           user_id: userId,
-          name: data.name || '新建文件夹',
+          name: data.name || i18n.t('notes.newFolderDefault'),
           parent_id: data.parent_id,
           sort_order: data.sort_order || 0,
         })

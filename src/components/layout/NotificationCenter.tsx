@@ -1,4 +1,5 @@
 import { Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { AlertTriangle, Clock, Mail, Bell, CheckCheck } from "lucide-react";
 import { Drawer, DrawerHeader, DrawerTitle, DrawerClose, DrawerBody } from "@/components/ui/drawer";
 import { cn } from "@/lib/utils";
@@ -28,12 +29,13 @@ export function NotificationCenter({
   onDismiss,
   onMarkAllRead,
 }: NotificationCenterProps) {
+  const { t } = useTranslation();
   return (
     <Drawer open={open} onOpenChange={onOpenChange} width="w-full max-w-sm">
       <DrawerHeader>
         <div className="flex items-center gap-2">
           <Bell size={18} className="text-brand-700" />
-          <DrawerTitle>通知中心</DrawerTitle>
+          <DrawerTitle>{t("layout.notificationCenter")}</DrawerTitle>
           {items.length > 0 && (
             <span className="rounded-full bg-brand-50 px-2 py-0.5 text-xs font-semibold text-brand-700">
               {items.length}
@@ -48,7 +50,7 @@ export function NotificationCenter({
               className="inline-flex items-center gap-1 rounded-md px-2 py-1 text-xs font-medium text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
             >
               <CheckCheck size={14} />
-              全部已读
+              {t("layout.markAllRead")}
             </button>
           )}
           <DrawerClose onClose={() => onOpenChange(false)} />
@@ -59,7 +61,7 @@ export function NotificationCenter({
         {items.length === 0 ? (
           <div className="flex flex-col items-center justify-center gap-2 py-16 text-center text-sm text-muted-foreground">
             <Bell size={32} className="opacity-30" />
-            <span>暂时没有需要关注的通知</span>
+            <span>{t("layout.noNotifications")}</span>
           </div>
         ) : (
           <ul className="divide-y divide-border">
@@ -90,9 +92,9 @@ export function NotificationCenter({
                       onDismiss(item.id);
                     }}
                     className="shrink-0 self-start rounded-md px-2 py-1 text-xs text-muted-foreground transition-colors hover:bg-accent hover:text-foreground"
-                    aria-label="标记为已读"
+                    aria-label={t("layout.markAsRead")}
                   >
-                    已读
+                    {t("layout.read")}
                   </button>
                 </>
               );

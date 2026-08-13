@@ -2,6 +2,7 @@ import { useEditor, EditorContent } from "@tiptap/react";
 import StarterKit from "@tiptap/starter-kit";
 import Image from "@tiptap/extension-image";
 import { useEffect, useRef, useCallback, useState } from "react";
+import { useTranslation } from 'react-i18next';
 import { Plus } from "lucide-react";
 import { TiptapToolbar } from "./TiptapToolbar";
 import { useUpdateNote, useNoteTagIds, useSetNoteTags, useNoteTags, useCreateNoteTag } from "./useNotes";
@@ -16,6 +17,7 @@ interface NoteEditorProps {
 const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] } as const;
 
 export function NoteEditor({ note }: NoteEditorProps) {
+  const { t } = useTranslation();
   const updateNote = useUpdateNote();
   const { data: selectedTagIds = [] } = useNoteTagIds(note?.id);
   const setNoteTags = useSetNoteTags();
@@ -155,7 +157,7 @@ export function NoteEditor({ note }: NoteEditorProps) {
   if (!note) {
     return (
       <div className="flex-1 flex items-center justify-center text-muted-foreground">
-        选择一篇笔记开始编辑
+        {t('notes.selectNoteToEdit')}
       </div>
     );
   }
@@ -168,15 +170,15 @@ export function NoteEditor({ note }: NoteEditorProps) {
           value={title}
           onChange={handleTitleChange}
           className="flex-1 min-w-0 text-lg font-medium bg-transparent border-none outline-none"
-          placeholder="笔记标题..."
+          placeholder={t('notes.noteTitlePlaceholder')}
         />
         {updateNote.isPending && (
-          <span className="shrink-0 text-xs text-muted-foreground">保存中...</span>
+          <span className="shrink-0 text-xs text-muted-foreground">{t('notes.saving')}</span>
         )}
       </div>
       {/* 标签选择（NF-2） */}
       <div className="flex flex-wrap items-center gap-1.5 border-b px-3 py-2">
-        <span className="text-xs text-muted-foreground">标签：</span>
+        <span className="text-xs text-muted-foreground">{t('notes.tagLabel')}</span>
         {(allTags ?? []).map((tag) => {
           const active = (selectedTagIds ?? []).includes(tag.id);
           return (
@@ -201,7 +203,7 @@ export function NoteEditor({ note }: NoteEditorProps) {
           <input
             autoFocus
             className="w-20 rounded-full border bg-background px-2 py-0.5 text-xs outline-none"
-            placeholder="标签名"
+            placeholder={t('notes.tagNamePlaceholder')}
             value={newTagName}
             onChange={(e) => setNewTagName(e.target.value)}
             onBlur={() => {
@@ -226,11 +228,11 @@ export function NoteEditor({ note }: NoteEditorProps) {
             className="inline-flex items-center gap-0.5 rounded-full border border-dashed px-2 py-0.5 text-xs text-muted-foreground transition-colors hover:bg-accent"
           >
             <Plus className="h-3 w-3" />
-            标签
+            {t('notes.tags')}
           </button>
         )}
         {(allTags ?? []).length === 0 && !creatingTag && (
-          <span className="text-xs text-muted-foreground">暂无标签，点击「+ 标签」新建</span>
+          <span className="text-xs text-muted-foreground">{t('notes.noTagsHint')}</span>
         )}
       </div>
       {editor && <TiptapToolbar editor={editor} />}

@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { loginDemo, useAuthStore } from "@/features/auth/authStore";
 import { friendlyAuthError } from "@/lib/authErrors";
@@ -7,12 +8,8 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const loginSchema = z.object({
-  email: z.string().email("请输入有效的邮箱地址"),
-  password: z.string().min(6, "密码至少 6 位"),
-});
-
 export function Login() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const session = useAuthStore((s) => s.session);
   const loading = useAuthStore((s) => s.loading);
@@ -21,6 +18,11 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [demoLoading, setDemoLoading] = useState(false);
+
+  const loginSchema = z.object({
+    email: z.string().email(t("auth.invalidEmail")),
+    password: z.string().min(6, t("auth.passwordTooShort")),
+  });
 
   // 已登录的回访用户：getSession 解析完成后自动跳转，避免被卡在登录页
   useEffect(() => {
@@ -69,13 +71,13 @@ export function Login() {
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
-        <h1 className="text-2xl font-semibold text-center">登录 EasyWork</h1>
+        <h1 className="text-2xl font-semibold text-center">{t("auth.loginTitle")}</h1>
 
         <form onSubmit={handlePasswordLogin} className="space-y-3" noValidate>
           <div className="space-y-1">
             <Input
               type="email"
-              placeholder="邮箱"
+              placeholder={t("auth.emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               aria-invalid={!!fieldErrors.email}
@@ -87,7 +89,7 @@ export function Login() {
           <div className="space-y-1">
             <Input
               type="password"
-              placeholder="密码（至少 6 位）"
+              placeholder={t("auth.passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               aria-invalid={!!fieldErrors.password}
@@ -97,7 +99,7 @@ export function Login() {
             )}
           </div>
           <Button type="submit" className="w-full" disabled={demoLoading}>
-            {demoLoading ? "登录中..." : "登录"}
+            {demoLoading ? t("auth.loggingIn") : t("auth.login")}
           </Button>
         </form>
 
@@ -105,7 +107,7 @@ export function Login() {
 
         <div className="space-y-2 text-center text-sm text-muted-foreground">
           <p>
-            没有账号？<Link to="/register" className="text-primary underline">注册</Link>
+            {t("auth.noAccount")}<Link to="/register" className="text-primary underline">{t("auth.register")}</Link>
           </p>
           <button
             type="button"
@@ -113,7 +115,7 @@ export function Login() {
             disabled={demoLoading}
             className="text-primary underline disabled:opacity-50"
           >
-            {demoLoading ? "登录中..." : "以演示账号进入"}
+            {demoLoading ? t("auth.loggingIn") : t("auth.enterDemo")}
           </button>
         </div>
       </div>

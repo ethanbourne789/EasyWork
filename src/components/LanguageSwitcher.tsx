@@ -2,8 +2,8 @@ import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Languages } from 'lucide-react';
 
-export function LanguageSwitcher() {
-  const { i18n } = useTranslation();
+export function LanguageSwitcher({ showLabel = false }: { showLabel?: boolean }) {
+  const { t, i18n } = useTranslation();
 
   const currentLang = i18n.language;
   const isZh = currentLang.startsWith('zh');
@@ -20,10 +20,10 @@ export function LanguageSwitcher() {
       size="sm"
       onClick={toggleLanguage}
       className="gap-1.5"
-      title={isZh ? 'Switch to English' : '切换到中文'}
+      title={isZh ? t('layout.switchToEnglish') : t('layout.switchToChinese')}
     >
       <Languages className="h-4 w-4" />
-      <span className="text-xs">{isZh ? 'EN' : '中'}</span>
+      {showLabel && <span className="text-xs">{isZh ? 'EN' : '中'}</span>}
     </Button>
   );
 }

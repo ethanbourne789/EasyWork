@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from "react";
+import { useTranslation } from "react-i18next";
 import { X, Plus, Trash2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -25,6 +26,7 @@ interface TaskDetailDrawerProps {
 }
 
 export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProps) {
+  const { t } = useTranslation();
   const [isEditing, setIsEditing] = useState(false);
   const [editTitle, setEditTitle] = useState("");
   const [editDescription, setEditDescription] = useState("");
@@ -100,7 +102,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
   const handleSaveEdit = () => {
     const title = editTitle.trim();
     if (!title) {
-      toast("标题不能为空", "error");
+      toast(t('tasks.titleRequired'), "error");
       return;
     }
     updateTask.mutate({
@@ -125,9 +127,9 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
 
   const handleDelete = async () => {
     const ok = await confirm({
-      title: "删除任务",
-      description: `确定删除任务「${task.title}」吗？此操作不可撤销。`,
-      confirmText: "删除",
+      title: t('tasks.deleteTask'),
+      description: t('tasks.deleteTaskConfirm', { title: task.title }),
+      confirmText: t('tasks.delete'),
       destructive: true,
     });
     if (ok) deleteTask.mutate(task.id, { onSuccess: onClose });
@@ -142,11 +144,11 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
       className="fixed inset-y-0 right-0 w-full sm:w-96 bg-background border-l shadow-lg z-50 flex flex-col focus:outline-none"
     >
       <div className="flex items-center justify-between p-4 border-b">
-        <h2 className="text-lg font-semibold">任务详情</h2>
+        <h2 className="text-lg font-semibold">{t('tasks.detail')}</h2>
         <div className="flex items-center gap-1">
           {onEdit && (
             <Button variant="outline" size="sm" onClick={() => onEdit(task)}>
-              完整编辑
+              {t('tasks.editTask')}
             </Button>
           )}
           <Button variant="ghost" size="icon" onClick={onClose}>
@@ -163,14 +165,14 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
               value={editDescription}
               onChange={(e) => setEditDescription(e.target.value)}
               className="w-full min-h-[100px] rounded-md border bg-background px-3 py-2 text-sm"
-              placeholder="描述..."
+              placeholder={t('tasks.descriptionPlaceholder')}
             />
             <div className="flex gap-2">
               <Button size="sm" onClick={handleSaveEdit}>
-                保存
+                {t('tasks.saveChanges')}
               </Button>
               <Button size="sm" variant="outline" onClick={() => setIsEditing(false)}>
-                取消
+                {t('common.cancel')}
               </Button>
             </div>
           </div>
@@ -181,14 +183,14 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
               <p className="text-sm text-muted-foreground whitespace-pre-wrap">{task.description}</p>
             )}
             <Button size="sm" variant="outline" className="mt-2" onClick={handleStartEdit}>
-              编辑标题/描述
+              {t('tasks.editTitleDesc')}
             </Button>
           </div>
         )}
 
         <div className="space-y-3">
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium w-16 shrink-0">状态</span>
+            <span className="text-sm font-medium w-16 shrink-0">{t('tasks.status')}</span>
             <select
               value={task.status}
               onChange={(e) => handleStatusChange(e.target.value as Task["status"])}
@@ -203,7 +205,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium w-16 shrink-0">优先级</span>
+            <span className="text-sm font-medium w-16 shrink-0">{t('tasks.priority')}</span>
             <span
               className={cn("h-2.5 w-2.5 rounded-full shrink-0", priorityDotColors[task.priority])}
               aria-hidden="true"
@@ -222,7 +224,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
           </div>
 
           <div className="flex items-center gap-2">
-            <span className="text-sm font-medium w-16 shrink-0">截止日期</span>
+            <span className="text-sm font-medium w-16 shrink-0">{t('tasks.dueDate')}</span>
             <input
               type="date"
               value={task.due_date ? task.due_date.slice(0, 10) : ""}
@@ -233,7 +235,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
 
           {taskTags.length > 0 && (
             <div className="flex items-start gap-2">
-              <span className="text-sm font-medium w-16 shrink-0 pt-1">标签</span>
+              <span className="text-sm font-medium w-16 shrink-0 pt-1">{t('tasks.tags')}</span>
               <div className="flex flex-wrap gap-1.5">
                 {taskTags.map((tag) => (
                   <Badge
@@ -250,7 +252,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
         </div>
 
         <div>
-          <h4 className="text-sm font-medium mb-2">子任务</h4>
+          <h4 className="text-sm font-medium mb-2">{t('tasks.subtasks')}</h4>
           <div className="space-y-2">
             {subtasks.map((subtask) => (
               <div key={subtask.id} className="flex items-center gap-2 group">
@@ -281,7 +283,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
 
           <div className="flex gap-2 mt-3">
             <Input
-              placeholder="新子任务..."
+              placeholder={t('tasks.newSubtask')}
               value={newSubtaskTitle}
               onChange={(e) => setNewSubtaskTitle(e.target.value)}
               onKeyDown={(e) => {
@@ -311,7 +313,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
       <div className="border-t p-4">
         <Button variant="outline" size="sm" className="w-full text-destructive" onClick={handleDelete}>
           <Trash2 className="h-4 w-4 mr-1" />
-          删除任务
+          {t('tasks.deleteTask')}
         </Button>
       </div>
     </div>

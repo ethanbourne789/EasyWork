@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useForm } from 'react-hook-form';
 import { zodResolver } from '@hookform/resolvers/zod';
 import { z } from 'zod';
@@ -16,11 +17,11 @@ import type { Transaction, TransactionType } from '@/types';
 const transactionSchema = z
   .object({
     type: z.enum(['income', 'expense', 'transfer']),
-    amount: z.number().min(0.01, '金额必须大于0'),
-    account_id: z.string().min(1, '请选择账户'),
+    amount: z.number().min(0.01),
+    account_id: z.string().min(1),
     to_account_id: z.string().optional(),
     category_id: z.string().optional(),
-    date: z.string().min(1, '请选择日期'),
+    date: z.string().min(1),
     note: z.string().optional(),
   })
   .superRefine((data, ctx) => {
@@ -28,13 +29,13 @@ const transactionSchema = z
       if (!data.to_account_id) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: '请选择转入账户',
+          message: '',
           path: ['to_account_id'],
         });
       } else if (data.to_account_id === data.account_id) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
-          message: '转入账户不能与转出账户相同',
+          message: '',
           path: ['to_account_id'],
         });
       }
@@ -50,6 +51,7 @@ interface TransactionFormProps {
 }
 
 export function TransactionForm({ transaction, onSuccess, defaultType = 'expense' }: TransactionFormProps) {
+  const { t } = useTranslation();
   const isEdit = !!transaction;
   const [activeType, setActiveType] = useState<TransactionType>(transaction?.type ?? defaultType);
   const [quickMode, setQuickMode] = useState(false);
@@ -92,10 +94,10 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
   const defaultAccountId = useMemo(() => {
     if (!accounts.length) return '';
     return (
-      accounts.find((a) => a.name === '现金钱包') ??
+      accounts.find((a) => a.name === t('finance.noCashWallet')) ??
       accounts.find((a) => a.type === 'cash')
     )?.id ?? '';
-  }, [accounts]);
+  }, [accounts, t]);
 
   useEffect(() => {
     if (isEdit || activeType === 'transfer' || !defaultAccountId) return;
@@ -106,7 +108,6 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
 
   const filteredCategories = categories.filter((c) => c.type === activeType);
 
-  // 多级分类的「父 / 子」完整路径标签
   const categoriesById = useMemo(() => {
     const map: Record<string, (typeof categories)[number]> = {};
     categories.forEach((c) => (map[c.id] = c));
@@ -172,7 +173,6 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
     });
   };
 
-  // 收据上传（落到 receipt-photos 私有桶，按 <user_id>/ 前缀隔离；失败不影响保存）
   const handleReceipt = async (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
     if (!file) return;
@@ -188,7 +188,7 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
       if (error) throw error;
       setReceiptUrl(path);
     } catch (err: unknown) {
-      setReceiptError(err instanceof Error ? err.message : '收据上传失败');
+      setReceiptError(err instanceof Error ? err.message : t('finance.receiptUploadFailed'));
     } finally {
       setUploading(false);
     }
@@ -207,9 +207,26 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
     }
   };
 
+  const getErrorMessage = (field: 'amount' | 'account_id' | 'to_account_id' | 'date') => {
+    if (!errors[field]) return null;
+    const msg = errors[field].message;
+    if (!msg) {
+      if (field === 'amount') return t('finance.amountMustBePositive');
+      if (field === 'account_id') return t('finance.selectAccount');
+      if (field === 'to_account_id') {
+        const val = getValues('to_account_id');
+        const src = getValues('account_id');
+        if (!val) return t('finance.selectTargetAccount');
+        if (val === src) return t('finance.targetAccountSameAsSource');
+      }
+      if (field === 'date') return t('finance.selectDate');
+    }
+    return msg;
+  };
+
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 p-4 border rounded-lg bg-card">
-      <h3 className="font-semibold text-lg">{isEdit ? '编辑交易' : '记账'}</h3>
+      <h3 className="font-semibold text-lg">{isEdit ? t('finance.editTransaction') : t('finance.addTransaction')}</h3>
 
       {/* Type Tabs */}
       <div className="flex gap-1 bg-muted rounded-lg p-1">
@@ -225,14 +242,14 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
                 : 'text-muted-foreground hover:text-foreground'
             )}
           >
-            {type === 'expense' ? '支出' : type === 'income' ? '收入' : '转账'}
+            {type === 'expense' ? t('finance.expense') : type === 'income' ? t('finance.income') : t('finance.transfer')}
           </button>
         ))}
       </div>
 
       {/* Amount Input */}
       <div className="space-y-1">
-        <label className="text-sm font-medium">金额</label>
+        <label className="text-sm font-medium">{t('finance.amount')}</label>
         <Input
           type="number"
           step="0.01"
@@ -240,7 +257,7 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
           {...register('amount', { valueAsNumber: true })}
           className="text-2xl font-bold"
         />
-        {errors.amount && <p className="text-xs text-destructive">{errors.amount.message}</p>}
+        {errors.amount && <p className="text-xs text-destructive">{getErrorMessage('amount')}</p>}
       </div>
 
       {/* Quick Mode */}
@@ -263,13 +280,13 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
         onClick={() => setQuickMode(!quickMode)}
         className="text-xs text-primary hover:underline"
       >
-        {quickMode ? '关闭快速记账' : '开启快速记账'}
+        {quickMode ? t('finance.closeQuickEntry') : t('finance.openQuickEntry')}
       </button>
 
-      {/* Category Picker — icon grid for income/expense, supports hierarchy */}
+      {/* Category Picker */}
       {activeType !== 'transfer' && (
         <div className="space-y-1.5">
-          <label className="text-sm font-medium">分类</label>
+          <label className="text-sm font-medium">{t('finance.category')}</label>
           <div className="grid grid-cols-4 gap-1.5 sm:grid-cols-5 sm:gap-2">
             {filteredCategories.map((c) => {
               const selected = watch('category_id') === c.id;
@@ -297,25 +314,25 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
       {/* Account */}
       <div className="space-y-1">
         <label className="text-sm font-medium">
-          {activeType === 'transfer' ? '转出账户' : '账户'}
+          {activeType === 'transfer' ? t('finance.fromAccount') : t('finance.account')}
         </label>
         <Select {...register('account_id')}>
-          <option value="">选择账户</option>
+          <option value="">{t('finance.chooseAccount')}</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>
               {a.type === 'cash' ? '💵' : a.type === 'bank' ? '🏦' : '💳'} {a.name}
             </option>
           ))}
         </Select>
-        {errors.account_id && <p className="text-xs text-destructive">{errors.account_id.message}</p>}
+        {errors.account_id && <p className="text-xs text-destructive">{getErrorMessage('account_id')}</p>}
       </div>
 
       {/* To Account (for transfer) */}
       {activeType === 'transfer' && (
         <div className="space-y-1">
-          <label className="text-sm font-medium">转入账户</label>
+          <label className="text-sm font-medium">{t('finance.toAccount')}</label>
           <Select {...register('to_account_id')}>
-            <option value="">选择目标账户</option>
+            <option value="">{t('finance.chooseTargetAccount')}</option>
             {accounts.map((a) => (
               <option key={a.id} value={a.id}>
                 {a.type === 'cash' ? '💵' : a.type === 'bank' ? '🏦' : '💳'} {a.name}
@@ -323,26 +340,27 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
             ))}
           </Select>
           {errors.to_account_id && (
-            <p className="text-xs text-destructive">{errors.to_account_id.message}</p>
+            <p className="text-xs text-destructive">{getErrorMessage('to_account_id')}</p>
           )}
         </div>
       )}
 
       {/* Date */}
       <div className="space-y-1">
-        <label className="text-sm font-medium">日期</label>
+        <label className="text-sm font-medium">{t('finance.date')}</label>
         <Input type="date" {...register('date')} />
+        {errors.date && <p className="text-xs text-destructive">{getErrorMessage('date')}</p>}
       </div>
 
       {/* Note */}
       <div className="space-y-1">
-        <label className="text-sm font-medium">备注</label>
-        <Input type="text" placeholder="可选" {...register('note')} />
+        <label className="text-sm font-medium">{t('finance.note')}</label>
+        <Input type="text" placeholder={t('common.optional')} {...register('note')} />
       </div>
 
       {/* Receipt */}
       <div className="space-y-1">
-        <label className="text-sm font-medium">收据（可选）</label>
+        <label className="text-sm font-medium">{t('finance.receipt')}</label>
         <div className="flex items-center gap-2">
           <input
             type="file"
@@ -357,22 +375,22 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
               onClick={viewReceipt}
               className="text-xs text-primary underline whitespace-nowrap"
             >
-              查看
+              {t('finance.viewReceipt')}
             </button>
           )}
         </div>
-        {uploading && <p className="text-xs text-muted-foreground">上传中...</p>}
+        {uploading && <p className="text-xs text-muted-foreground">{t('finance.uploading')}</p>}
         {receiptError && <p className="text-xs text-destructive">{receiptError}</p>}
       </div>
 
       {/* Submit */}
       <Button type="submit" className="w-full" disabled={isPending}>
-        {isPending ? '保存中...' : isEdit ? '更新' : '保存'}
+        {isPending ? t('finance.saving') : isEdit ? t('common.update') : t('common.save')}
       </Button>
 
       {watchedAmount > 0 && (
         <div className="text-center text-sm text-muted-foreground pt-2 border-t">
-          当前金额：<span className="font-bold text-foreground">{formatMoney(watchedAmount)}</span>
+          {t('finance.currentAmount')}：<span className="font-bold text-foreground">{formatMoney(watchedAmount)}</span>
         </div>
       )}
     </form>

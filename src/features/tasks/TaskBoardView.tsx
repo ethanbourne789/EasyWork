@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   DndContext,
   DragEndEvent,
@@ -18,20 +19,20 @@ import { MS_PER_DAY } from "@/lib/constants";
 import type { Task, TaskStatus, TaskPriority } from "@/types";
 
 /** 看板列定义：待办/进行中/已取消/完成（与 statusLabels 保持一致） */
-const columns: { status: TaskStatus; label: string; dotClass: string }[] = [
-  { status: "todo",        label: "待办",   dotClass: "bg-brand-500" },      // p3 蓝
-  { status: "in_progress", label: "进行中", dotClass: "bg-warning" },         // p2 橙
-  { status: "cancelled",   label: "已取消", dotClass: "bg-muted-foreground/40" }, // p4 灰
-  { status: "done",        label: "完成",   dotClass: "bg-success" },          // 绿
+const getColumnDefs = (t: (key: string) => string): { status: TaskStatus; label: string; dotClass: string }[] => [
+  { status: "todo",        label: t('tasks.todo'),   dotClass: "bg-brand-500" },
+  { status: "in_progress", label: t('tasks.inProgress'), dotClass: "bg-warning" },
+  { status: "cancelled",   label: t('tasks.cancelled'), dotClass: "bg-muted-foreground/40" },
+  { status: "done",        label: t('tasks.completed'), dotClass: "bg-success" },
 ];
 
 /** 优先级 → 标签 chip 文字 */
-const priorityTag = (p: TaskPriority): string => {
+const priorityTag = (p: TaskPriority, t: (key: string) => string): string => {
   switch (p) {
-    case "urgent": return "紧急";
-    case "high":   return "高优";
-    case "medium": return "中";
-    case "low":    return "低";
+    case "urgent": return t('tasks.urgent');
+    case "high":   return t('tasks.high');
+    case "medium": return t('tasks.medium');
+    case "low":    return t('tasks.low');
     default:       return "";
   }
 };
@@ -40,28 +41,28 @@ const priorityTag = (p: TaskPriority): string => {
  * 类别关键词表 — 从标题/描述中按关键词匹配生成标签。
  * 集中配置，便于后续按业务扩展或改为可用户自定义的标签规则。
  */
-const CATEGORY_KEYWORDS: { label: string; keywords: string[]; branded?: boolean }[] = [
-  { label: "设计", keywords: ["设计"] },
-  { label: "文档", keywords: ["代码", "pr", "审查", "周会", "纪要"] },
-  { label: "后端", keywords: ["后端", "supabase", "迁移"] },
-  { label: "邮件", keywords: ["邮件"] },
-  { label: "采购", keywords: ["采购", "日用品"] },
-  { label: "已交付", keywords: ["交付", "原型"], branded: true },
+const getCategoryKeywords = (t: (key: string) => string): { label: string; keywords: string[]; branded?: boolean }[] => [
+  { label: t('tasks.categoryDesign'), keywords: ["设计"] },
+  { label: t('tasks.categoryDoc'), keywords: ["代码", "pr", "审查", "周会", "纪要"] },
+  { label: t('tasks.categoryBackend'), keywords: ["后端", "supabase", "迁移"] },
+  { label: t('tasks.categoryEmail'), keywords: ["邮件"] },
+  { label: t('tasks.categoryShopping'), keywords: ["采购", "日用品"] },
+  { label: t('tasks.categoryDelivered'), keywords: ["交付", "原型"], branded: true },
 ];
 
 /** 从任务标题/描述提取标签关键词（基于可配置的关键词表） */
-function extractTags(task: Task): { text: string; branded?: boolean }[] {
+function extractTags(task: Task, t: (key: string) => string): { text: string; branded?: boolean }[] {
   const tags: { text: string; branded?: boolean }[] = [];
   const title = task.title.toLowerCase();
   const desc = (task.description ?? "").toLowerCase();
 
   // 优先级标签
   if (task.priority === "high" || task.priority === "urgent") {
-    tags.push({ text: priorityTag(task.priority), branded: true });
+    tags.push({ text: priorityTag(task.priority, t), branded: true });
   }
 
   // 类别关键词（可配置）
-  for (const { label, keywords, branded } of CATEGORY_KEYWORDS) {
+  for (const { label, keywords, branded } of getCategoryKeywords(t)) {
     if (keywords.some((k) => title.includes(k) || desc.includes(k))) {
       tags.push({ text: label, branded });
     }
@@ -72,20 +73,20 @@ function extractTags(task: Task): { text: string; branded?: boolean }[] {
     const d = new Date(task.due_date);
     const now = new Date();
     const diffDays = Math.ceil((d.getTime() - now.getTime()) / MS_PER_DAY);
-    if (diffDays >= 0 && diffDays <= 7) tags.push({ text: "本周", branded: true });
+    if (diffDays >= 0 && diffDays <= 7) tags.push({ text: t('tasks.thisWeek'), branded: true });
   }
 
   return tags.slice(0, 3); // 最多 3 个标签
 }
 
 /** 格式化日期显示 — 对齐原型 */
-function formatDate(task: Task): string {
+function formatDate(task: Task, t: (key: string) => string): string {
   if (!task.due_date) {
     switch (task.status) {
-      case "done": return "已完成";
-      case "in_progress": return "进行中";
-      case "cancelled": return "已取消";
-      default: return "待办";
+      case "done": return t('tasks.completed');
+      case "in_progress": return t('tasks.inProgress');
+      case "cancelled": return t('tasks.cancelled');
+      default: return t('tasks.todo');
     }
   }
   const d = new Date(task.due_date);
@@ -94,15 +95,15 @@ function formatDate(task: Task): string {
   const diffDays = Math.ceil(diffMs / MS_PER_DAY);
   if (diffDays < 0) {
     switch (task.status) {
-      case "done": return "已完成";
-      case "cancelled": return "已取消";
-      default: return "待确认";
+      case "done": return t('tasks.completed');
+      case "cancelled": return t('tasks.cancelled');
+      default: return t('tasks.toConfirm');
     }
   }
-  if (diffDays === 0) return `今天 ${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
-  if (diffDays === 1) return "明天";
-  const weekdays = ["日","一","二","三","四","五","六"];
-  return `周${weekdays[d.getDay()]}`;
+  if (diffDays === 0) return `${t('tasks.today')} ${d.getHours().toString().padStart(2,"0")}:${d.getMinutes().toString().padStart(2,"0")}`;
+  if (diffDays === 1) return t('tasks.tomorrow');
+  const weekdays = [t('tasks.sun'), t('tasks.mon'), t('tasks.tue'), t('tasks.wed'), t('tasks.thu'), t('tasks.fri'), t('tasks.sat')];
+  return `${t('tasks.weekdayPrefix')}${weekdays[d.getDay()]}`;
 }
 
 /** 头像字母 + 背景色 */
@@ -122,7 +123,7 @@ interface TaskBoardViewProps {
 }
 
 /* ── Draggable Task Card — 对齐原型 .task-card ── */
-function DraggableTask({ task, onClick, idx }: { task: Task; onClick: () => void; idx: number }) {
+function DraggableTask({ task, onClick, idx, t }: { task: Task; onClick: () => void; idx: number; t: (key: string) => string }) {
   const { attributes, listeners, setNodeRef, transform } = useDraggable({
     id: task.id,
     data: { task },
@@ -132,8 +133,8 @@ function DraggableTask({ task, onClick, idx }: { task: Task; onClick: () => void
     ? { transform: `translate3d(${transform.x}px, ${transform.y}px, 0)` }
     : undefined;
 
-  const tags = extractTags(task);
-  const dateText = formatDate(task);
+  const tags = extractTags(task, t);
+  const dateText = formatDate(task, t);
   const avatar = taskAvatar(task, idx);
 
   return (
@@ -190,12 +191,14 @@ function DroppableColumn({
   dotClass,
   tasks,
   onTaskClick,
+  t,
 }: {
   status: TaskStatus;
   label: string;
   dotClass: string;
   tasks: Task[];
   onTaskClick: (task: Task) => void;
+  t: (key: string) => string;
 }) {
   const { isOver, setNodeRef } = useDroppable({ id: status });
 
@@ -224,6 +227,7 @@ function DroppableColumn({
             key={task.id}
             task={task}
             idx={idx}
+            t={t}
             onClick={() => onTaskClick(task)}
           />
         ))}
@@ -234,6 +238,7 @@ function DroppableColumn({
 
 /* ── Board ── */
 export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
+  const { t } = useTranslation();
   const { data: tasks = [] } = useTasks();
   const updateTask = useUpdateTask();
   const [activeTask, setActiveTask] = useState<Task | null>(null);
@@ -266,8 +271,8 @@ export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       {/* 窄屏横向滚动，列不被压扁（每列 min-w-[260px]） */}
       <div className="flex h-full flex-col gap-3.5 overflow-x-auto md:flex-row md:gap-3.5 p-0 pb-2">
-        {columns.map((col) => {
-          const columnTasks = tasks.filter((t) => t.status === col.status);
+        {getColumnDefs(t).map((col) => {
+          const columnTasks = tasks.filter((t2) => t2.status === col.status);
           return (
             <DroppableColumn
               key={col.status}
@@ -276,6 +281,7 @@ export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
               dotClass={col.dotClass}
               tasks={columnTasks}
               onTaskClick={onTaskClick}
+              t={t}
             />
           );
         })}

@@ -1,4 +1,5 @@
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Plus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -20,7 +21,9 @@ interface ModuleFabProps {
  * 固定在内容区右下角，主按钮展开后列出本模块的新建类操作。
  * 移动端自动上移，避开底部 Tab 栏。
  */
-export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label = "新建" }: ModuleFabProps) {
+export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label }: ModuleFabProps) {
+  const { t } = useTranslation();
+  const defaultLabel = label ?? t("layout.new");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
 
@@ -71,7 +74,7 @@ export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label = "新建"
 
       <button
         type="button"
-        aria-label={label}
+        aria-label={defaultLabel}
         aria-expanded={open}
         onClick={() => setOpen((v) => !v)}
         className={cn(

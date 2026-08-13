@@ -1,4 +1,5 @@
 import { useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Pin, PinOff, Trash2, FileText, X } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -17,7 +18,7 @@ interface NoteListProps {
   onClearTag?: () => void;
 }
 
-function formatRelativeTime(dateStr: string): string {
+function formatRelativeTime(dateStr: string, t: (key: string, params?: Record<string, unknown>) => string): string {
   const date = new Date(dateStr);
   const now = new Date();
   const diffMs = now.getTime() - date.getTime();
@@ -25,21 +26,21 @@ function formatRelativeTime(dateStr: string): string {
   const diffHr = Math.floor(diffMs / 3600000);
   const diffDay = Math.floor(diffMs / 86400000);
 
-  if (diffMin < 1) return '刚刚';
-  if (diffMin < 60) return `${diffMin}分钟前`;
-  if (diffHr < 24) return `${diffHr}小时前`;
-  if (diffDay < 7) return `${diffDay}天前`;
+  if (diffMin < 1) return t('notes.justNow');
+  if (diffMin < 60) return `${diffMin}${t('notes.minAgo')}`;
+  if (diffHr < 24) return `${diffHr}${t('notes.hrAgo')}`;
+  if (diffDay < 7) return `${diffDay}${t('notes.dayAgo')}`;
 
   const month = date.getMonth() + 1;
   const day = date.getDate();
   if (date.getFullYear() === now.getFullYear()) {
-    return `${month}月${day}日`;
+    return `${month}${t('notes.monthUnit')}${day}${t('notes.dayUnit')}`;
   }
   return `${date.getFullYear()}/${month}/${day}`;
 }
 
-function getExcerpt(note: Note, maxLen = 50): string {
-  if (!note.content_text) return '暂无内容';
+function getExcerpt(note: Note, t: (key: string) => string, maxLen = 50): string {
+  if (!note.content_text) return t('notes.noContent');
   const text = note.content_text.replace(/\s+/g, ' ').trim();
   if (text.length <= maxLen) return text;
   return text.slice(0, maxLen) + '...';
@@ -54,6 +55,7 @@ export function NoteList({
   searchQuery,
   onClearTag,
 }: NoteListProps) {
+  const { t } = useTranslation();
   const { data: notes = [], isError, refetch } = useNotes();
   const { data: relations } = useNoteTagRelations();
   const { data: allTags = [] } = useNoteTags();
@@ -98,8 +100,8 @@ export function NoteList({
   if (isError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-        <span className="text-destructive">加载失败</span>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <span className="text-destructive">{t('notes.loadingFailed')}</span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t('common.retry')}</Button>
       </div>
     );
   }
@@ -112,9 +114,9 @@ export function NoteList({
   const handleDelete = async (e: React.MouseEvent, note: Note) => {
     e.stopPropagation();
     const ok = await confirm({
-      title: "删除笔记",
-      description: `确定删除笔记"${note.title || "无标题"}"？此操作不可恢复。`,
-      confirmText: "删除",
+      title: t('notes.deleteNote'),
+      description: t('notes.deleteNoteConfirm', { title: note.title || t('notes.untitled') }),
+      confirmText: t('notes.delete'),
       destructive: true,
     });
     if (ok) {
@@ -127,22 +129,22 @@ export function NoteList({
     <div className="flex h-full flex-col border-r bg-background">
       <div className="flex items-center justify-between border-b px-3 py-2">
         <h2 className="text-sm font-semibold">
-          {selectedFolderId === null ? '所有笔记' : '笔记'}
+          {selectedFolderId === null ? t('notes.allNotes') : t('notes.notesLabel')}
         </h2>
         <span className="text-xs text-muted-foreground">
-          {filteredNotes.length} 条
+          {t('notes.countNotes', { count: filteredNotes.length })}
         </span>
       </div>
       {selectedTagId && (
         <div className="flex items-center gap-1 border-b px-3 py-1.5">
-          <span className="text-xs text-muted-foreground">标签：</span>
+          <span className="text-xs text-muted-foreground">{t('notes.tagLabel')}</span>
           <span className="inline-flex items-center gap-1 rounded-full bg-brand-50 px-2 py-0.5 text-xs text-brand-700">
-            {activeTagName ?? '已选标签'}
+            {activeTagName ?? t('notes.selectedTag')}
             <button
               type="button"
               onClick={onClearTag}
               className="hover:text-brand-900"
-              aria-label="清除标签筛选"
+              aria-label={t('notes.clearTagFilter')}
             >
               <X className="h-3 w-3" />
             </button>
@@ -154,7 +156,7 @@ export function NoteList({
         {filteredNotes.length === 0 ? (
           <div className="flex flex-col items-center gap-2 py-12 text-center text-sm text-muted-foreground">
             <FileText className="h-8 w-8" />
-            <div>{searchQuery ? '未找到匹配的笔记' : '暂无笔记'}</div>
+            <div>{searchQuery ? t('notes.noMatchingNotes') : t('notes.noNotes')}</div>
           </div>
         ) : (
           <div>
@@ -176,11 +178,11 @@ export function NoteList({
                           <Pin className="h-3 w-3 shrink-0 fill-current text-amber-500" />
                         )}
                         <h3 className="truncate text-sm font-medium">
-                          {note.title || '无标题'}
+                          {note.title || t('notes.untitled')}
                         </h3>
                       </div>
                       <p className="mt-1 truncate text-xs text-muted-foreground">
-                        {getExcerpt(note)}
+                        {getExcerpt(note, t)}
                       </p>
                       {(tagMap[note.id] ?? []).length > 0 && (
                         <div className="mt-1 flex flex-wrap gap-1">
@@ -202,15 +204,15 @@ export function NoteList({
                         </div>
                       )}
                       <p className="mt-1 text-xs text-muted-foreground/70">
-                        {formatRelativeTime(note.updated_at)}
+                        {formatRelativeTime(note.updated_at, t)}
                       </p>
                     </div>
                     {/* 移动端没有 hover，按钮必须常显；桌面端保留 hover 浮现 */}
                     <div className="flex shrink-0 items-center gap-0.5 opacity-100 transition-opacity md:opacity-0 md:group-hover:opacity-100 md:focus-within:opacity-100">
                       <button
                         type="button"
-                        title={note.is_pinned ? '取消置顶' : '置顶'}
-                        aria-label={note.is_pinned ? '取消置顶' : '置顶'}
+                        title={note.is_pinned ? t('notes.unpin') : t('notes.pin')}
+                        aria-label={note.is_pinned ? t('notes.unpin') : t('notes.pin')}
                         className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-foreground md:h-7 md:w-7"
                         onClick={(e) => handleTogglePin(e, note)}
                       >
@@ -222,8 +224,8 @@ export function NoteList({
                       </button>
                       <button
                         type="button"
-                        title="删除"
-                        aria-label="删除笔记"
+                        title={t('notes.delete')}
+                        aria-label={t('notes.deleteNote')}
                         className="flex h-9 w-9 items-center justify-center rounded text-muted-foreground hover:bg-background hover:text-destructive md:h-7 md:w-7"
                         onClick={(e) => handleDelete(e, note)}
                       >

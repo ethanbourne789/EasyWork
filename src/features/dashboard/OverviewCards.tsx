@@ -1,4 +1,5 @@
 import { ListChecks, Mail, NotebookText, Wallet } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useTasks } from "@/features/tasks/useTasks";
 import { useTransactions } from "@/features/finance/useFinance";
 import { useNotes } from "@/features/notes/useNotes";
@@ -6,6 +7,7 @@ import { useFolderUnreadCounts } from "@/features/mail/useMail";
 import { formatMoney, sumMoney } from "@/lib/money";
 
 export function OverviewCards() {
+  const { t } = useTranslation();
   const { data: tasks = [] } = useTasks();
   const { data: unreadCounts } = useFolderUnreadCounts();
   const unreadEmails =
@@ -56,37 +58,37 @@ export function OverviewCards() {
 
   const cards = [
     {
-      label: "今日待办",
+      label: t("dashboard.todayTasks"),
       value: todayPending.toString(),
       icon: ListChecks,
       trend: {
-        text: `${pendingTrend <= 0 ? "▼" : "▲"} ${Math.abs(pendingTrend)} 较昨日`,
+        text: `${t("dashboard.comparedToYesterday", { count: Math.abs(pendingTrend) })}`,
         down: pendingTrend > 0,
       },
     },
     {
-      label: "未读邮件",
+      label: t("dashboard.unreadMail"),
       value: unreadEmails.toString(),
       icon: Mail,
       trend: {
-        text: unreadEmails > 0 ? `▲ ${unreadEmails} 未读` : "已全部读完",
+        text: unreadEmails > 0 ? t("dashboard.unread", { count: unreadEmails }) : t("dashboard.allRead"),
         down: unreadEmails === 0,
       },
     },
     {
-      label: "笔记",
+      label: t("dashboard.notes"),
       value: notes.length.toString(),
       icon: NotebookText,
       trend: {
-        text: notes.length > 0 ? `▲ ${notes.length} 篇` : "暂无",
+        text: notes.length > 0 ? t("dashboard.notesCount", { count: notes.length }) : t("dashboard.noNotes"),
         down: false,
       },
     },
     {
-      label: "本月支出",
+      label: t("dashboard.monthlyExpense"),
       value: formatMoney(monthExpenses),
       icon: Wallet,
-      trend: { text: monthExpenses > 0 ? "本月累计" : "暂无支出", down: false },
+      trend: { text: monthExpenses > 0 ? t("dashboard.monthlyTotal") : t("dashboard.noExpenses"), down: false },
     },
   ];
 

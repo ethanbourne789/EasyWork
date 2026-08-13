@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect } from "react";
-import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash2 } from "lucide-react";
+import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash2, Eye, EyeOff, KeyRound, Settings as SettingsIcon } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore, getCurrentUserId } from "@/features/auth/authStore";
@@ -10,11 +10,12 @@ import { Avatar } from "@/components/ui/avatar";
 import { useTheme } from "@/components/theme/ThemeProvider";
 import { supabase } from "@/lib/supabase";
 import { toast } from "@/lib/toast";
+import { friendlyAuthError } from "@/lib/authErrors";
 import { TOAST_DURATION } from "@/lib/constants";
 import { formatDateLocal } from "@/lib/dateUtils";
 import { useEmailAccounts } from "@/features/mail/useMail";
 import { requestNotificationPermission, fireBudgetWarnings } from "@/lib/notify";
-import { getAppVersion, isTauri } from "@/lib/tauri";
+import { getAppVersion, isTauri, getAutostartStatus, setAutostart, getCloseBehavior, setCloseBehavior } from "@/lib/tauri";
 import { useProfile, useUpdateProfile } from "./useProfile";
 import { confirm } from "@/lib/confirm";
 import { useTranslation } from "react-i18next";
@@ -78,7 +79,7 @@ function loadNotify(): NotifySettings {
 
 export function Settings() {
   const { theme, setTheme } = useTheme();
-  const { i18n } = useTranslation();
+  const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
   const sessionEmail = useAuthStore((s) => s.session?.user?.email) || "";
@@ -97,9 +98,23 @@ export function Settings() {
   const avatarInputRef = useRef<HTMLInputElement>(null);
   const [notify, setNotify] = useState<NotifySettings>(() => loadNotify());
   const [appVersion, setAppVersion] = useState<string>("");
+  const [autostartEnabled, setAutostartEnabled] = useState(false);
+  const [closeOnExit, setCloseOnExit] = useState(false);
+  // 密码修改表单状态
+  const [currentPassword, setCurrentPassword] = useState("");
+  const [newPassword, setNewPassword] = useState("");
+  const [confirmPassword, setConfirmPassword] = useState("");
+  const [showCurrent, setShowCurrent] = useState(false);
+  const [showNew, setShowNew] = useState(false);
+  const [showConfirm, setShowConfirm] = useState(false);
+  const [changingPassword, setChangingPassword] = useState(false);
   // 消费 Tauri 真实命令（修复 #6 空壳）：桌面端显示真实版本，Web 端显示回退值
   useEffect(() => {
     getAppVersion().then(setAppVersion);
+    if (isTauri()) {
+      getAutostartStatus().then(setAutostartEnabled);
+      getCloseBehavior().then(setCloseOnExit);
+    }
   }, []);
   // 个人资料：从 Supabase profiles 加载一次，作为可编辑初始值（之后以本地编辑为准）
   useEffect(() => {
@@ -116,18 +131,19 @@ export function Settings() {
   };
 
   const tabs = [
-    { id: "profile", label: "个人资料", icon: User },
-    { id: "email", label: "邮箱账号", icon: Mail },
-    { id: "appearance", label: "外观", icon: Palette },
-    { id: "notifications", label: "通知", icon: Bell },
-    { id: "data", label: "数据管理", icon: Database },
-    { id: "about", label: "关于", icon: Info },
+    { id: "profile", label: t('settings.profile'), icon: User },
+    { id: "email", label: t('settings.mailAccounts'), icon: Mail },
+    { id: "appearance", label: t('settings.appearance'), icon: Palette },
+    { id: "notifications", label: t('settings.notifications'), icon: Bell },
+    { id: "system", label: t('settings.system'), icon: SettingsIcon },
+    { id: "data", label: t('settings.dataManagement'), icon: Database },
+    { id: "about", label: t('settings.about'), icon: Info },
   ];
 
   const handleSaveProfile = async () => {
     // 表单验证：显示名称不能为空
     if (!displayName.trim()) {
-      toast("显示名称不能为空", "error");
+      toast(t('settings.displayNameRequired'), "error");
       return;
     }
 
@@ -138,7 +154,73 @@ export function Settings() {
       });
       flashSaved("profile");
     } catch (err) {
-      toast("保存失败：" + (err instanceof Error ? err.message : "未知错误"), "error");
+      toast(t('settings.saveFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
+    }
+  };
+
+  const resetPasswordForm = () => {
+    setCurrentPassword("");
+    setNewPassword("");
+    setConfirmPassword("");
+    setShowCurrent(false);
+    setShowNew(false);
+    setShowConfirm(false);
+  };
+
+  const handleChangePassword = async () => {
+    // 表单验证
+    if (!currentPassword) {
+      toast(t('settings.enterCurrentPassword'), "error");
+      return;
+    }
+    if (!newPassword) {
+      toast(t('settings.enterNewPassword'), "error");
+      return;
+    }
+    if (newPassword.length < 6) {
+      toast(t('settings.passwordTooShort'), "error");
+      return;
+    }
+    if (newPassword !== confirmPassword) {
+      toast(t('settings.passwordsMismatch'), "error");
+      return;
+    }
+    if (newPassword === currentPassword) {
+      toast(t('settings.passwordSameAsCurrent'), "error");
+      return;
+    }
+
+    setChangingPassword(true);
+    try {
+      // 先通过当前密码验证用户身份
+      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
+        email: sessionEmail,
+        password: currentPassword,
+      });
+      if (signInError) {
+        toast(t('settings.currentPasswordIncorrect'), "error");
+        return;
+      }
+      if (!signInData.user) {
+        toast(t('settings.authFailed'), "error");
+        return;
+      }
+
+      // 更新密码
+      const { error: updateError } = await supabase.auth.updateUser({
+        password: newPassword,
+      });
+      if (updateError) {
+        toast(t('settings.changePasswordFailed') + friendlyAuthError(updateError), "error");
+        return;
+      }
+
+      resetPasswordForm();
+      toast(t('settings.changePasswordSuccess'), "success");
+    } catch (err) {
+      toast(t('settings.changePasswordFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
+    } finally {
+      setChangingPassword(false);
     }
   };
 
@@ -149,7 +231,7 @@ export function Settings() {
     setUploadingAvatar(true);
     try {
       const userId = getCurrentUserId();
-      if (!userId) throw new Error("未登录");
+      if (!userId) throw new Error(t('settings.notLoggedIn'));
       const ext = (file.name.split(".").pop() || "png").toLowerCase();
       const path = `${userId}/avatar.${ext}`;
       const { error: upErr } = await supabase.storage
@@ -159,7 +241,7 @@ export function Settings() {
       const { data } = supabase.storage.from("avatars").getPublicUrl(path);
       setAvatarUrl(data.publicUrl + "?v=" + Date.now());
     } catch (err) {
-      toast("头像上传失败：" + (err instanceof Error ? err.message : "未知错误"), "error");
+      toast(t('settings.avatarUploadFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
     } finally {
       setUploadingAvatar(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -182,9 +264,9 @@ export function Settings() {
 
   const handleExportData = async () => {
     const dump: Record<string, unknown[]> = {};
-    for (const t of DATA_TABLES) {
-      const { data } = await supabase.from(t).select("*");
-      dump[t] = stripSensitive(t, (data ?? []) as Record<string, unknown>[]);
+    for (const table of DATA_TABLES) {
+      const { data } = await supabase.from(table).select("*");
+      dump[table] = stripSensitive(table, (data ?? []) as Record<string, unknown>[]);
     }
     const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
     const url = URL.createObjectURL(blob);
@@ -204,33 +286,32 @@ export function Settings() {
         const parsed = JSON.parse(String(reader.result));
         if (!parsed || typeof parsed !== "object") throw new Error("格式错误");
         if (await confirm({
-          title: "导入数据",
-          description: "导入将覆盖当前所有数据，确定继续吗？",
-          confirmText: "导入",
+          title: t('settings.importData'),
+          description: t('settings.importDataConfirm'),
+          confirmText: t('settings.import'),
           destructive: true,
         })) {
           const uid = getCurrentUserId();
-          for (const t of DATA_TABLES) {
-            const rows = parsed[t];
+          for (const table of DATA_TABLES) {
+            const rows = parsed[table];
             if (Array.isArray(rows) && rows.length) {
-              // 将 user_id 统一改写为当前用户，避免越权写入 / RLS 拒绝
               const remapped = uid
                 ? rows.map((r: Record<string, unknown>) =>
                     "user_id" in r ? { ...r, user_id: uid } : r
                   )
                 : rows;
               const { error } = await supabase
-                .from(t)
-                .upsert(stripSensitive(t, remapped) as never);
+                .from(table)
+                .upsert(stripSensitive(table, remapped) as never);
               if (error) throw error;
             }
           }
           // 用失效刷新替代整页 reload，避免丢失前端内存状态
           await qc.invalidateQueries();
-          toast("数据导入成功", "success");
+          toast(t('settings.importSuccess'), "success");
         }
       } catch {
-        toast("导入失败：文件不是有效的 EasyWork 备份 JSON。", "error");
+        toast(t('settings.importFailed'), "error");
       } finally {
         if (fileInputRef.current) fileInputRef.current.value = "";
       }
@@ -238,23 +319,35 @@ export function Settings() {
     reader.readAsText(file);
   };
 
+  const handleToggleAutostart = async (enabled: boolean) => {
+    setAutostartEnabled(enabled);
+    await setAutostart(enabled);
+    flashSaved("system");
+  };
+
+  const handleToggleCloseBehavior = async (closeOnExitVal: boolean) => {
+    setCloseOnExit(closeOnExitVal);
+    await setCloseBehavior(closeOnExitVal);
+    flashSaved("system");
+  };
+
   const handleResetData = async () => {
     if (await confirm({
-      title: "清空所有数据",
+      title: t('settings.clearAllData'),
       description:
-        "将永久删除任务、记账、笔记、邮件等全部业务数据，且不会恢复任何演示数据。此操作不可撤销，建议先导出备份。",
-      confirmText: "清空",
+        t('settings.clearAllDataConfirm'),
+      confirmText: t('settings.clear'),
       destructive: true,
     })) {
-      for (const t of DATA_TABLES) {
-        const { error } = await supabase.from(t).delete();
+      for (const table of DATA_TABLES) {
+        const { error } = await supabase.from(table).delete();
         if (error) {
-          toast(`清空失败：${t}`, "error");
+          toast(`${t('settings.clearFailed')}${table}`, "error");
           return;
         }
       }
       await qc.invalidateQueries();
-      toast("所有数据已清空", "success");
+      toast(t('settings.cleared'), "success");
     }
   };
 
@@ -298,7 +391,7 @@ export function Settings() {
       <div className="flex-1 p-6 overflow-auto">
         {activeTab === "profile" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">个人资料</h2>
+            <h2 className="text-xl font-semibold">{t('settings.profile')}</h2>
 
             {/* 头像 */}
             <div className="flex items-center gap-4">
@@ -324,7 +417,7 @@ export function Settings() {
                     disabled={uploadingAvatar}
                   >
                     <Upload className="mr-1 h-4 w-4" />
-                    {uploadingAvatar ? "上传中..." : "上传头像"}
+                    {uploadingAvatar ? t('settings.uploading') : t('settings.uploadAvatar')}
                   </Button>
                   {avatarUrl && (
                     <Button
@@ -333,31 +426,100 @@ export function Settings() {
                       type="button"
                       onClick={handleAvatarRemove}
                     >
-                      <Trash2 className="mr-1 h-4 w-4" /> 移除
+                      <Trash2 className="mr-1 h-4 w-4" /> {t('settings.remove')}
                     </Button>
                   )}
                 </div>
-                <p className="text-xs text-muted-foreground">支持 JPG / PNG，建议正方形图片</p>
+                <p className="text-xs text-muted-foreground">{t('settings.supportJpgPng')}</p>
               </div>
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">邮箱</label>
+              <label className="text-sm font-medium">{t('settings.email')}</label>
               <Input value={sessionEmail} disabled />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">显示名称</label>
+              <label className="text-sm font-medium">{t('settings.displayName')}</label>
               <Input
-                placeholder="输入显示名称"
+                placeholder={t('settings.displayNamePlaceholder')}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
               />
             </div>
+
+            {/* 密码修改 */}
+            <div className="space-y-3 pt-3 border-t">
+              <div className="flex items-center gap-2 text-sm font-medium">
+                <KeyRound className="h-4 w-4" />
+                {t('settings.changePassword')}
+              </div>
+              <p className="text-xs text-muted-foreground">{t('settings.passwordMinLength')}</p>
+              <div className="space-y-2">
+                <label className="text-sm font-medium">{t('settings.currentPassword')}</label>
+                <div className="relative">
+                  <Input
+                    type={showCurrent ? "text" : "password"}
+                    placeholder={t('settings.enterCurrentPassword')}
+                    value={currentPassword}
+                    onChange={(e) => setCurrentPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowCurrent((v) => !v)}
+                    aria-label={showCurrent ? t('settings.hidePassword') : t('settings.showPassword')}
+                  >
+                    {showCurrent ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <label className="text-sm font-medium">{t('settings.newPassword')}</label>
+                <div className="relative">
+                  <Input
+                    type={showNew ? "text" : "password"}
+                    placeholder={t('settings.newPasswordPlaceholder')}
+                    value={newPassword}
+                    onChange={(e) => setNewPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowNew((v) => !v)}
+                    aria-label={showNew ? t('settings.hidePassword') : t('settings.showPassword')}
+                  >
+                    {showNew ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <label className="text-sm font-medium">{t('settings.confirmNewPassword')}</label>
+                <div className="relative">
+                  <Input
+                    type={showConfirm ? "text" : "password"}
+                    placeholder={t('settings.confirmNewPasswordPlaceholder')}
+                    value={confirmPassword}
+                    onChange={(e) => setConfirmPassword(e.target.value)}
+                  />
+                  <button
+                    type="button"
+                    className="absolute right-3 top-1/2 -translate-y-1/2 text-muted-foreground hover:text-foreground transition-colors"
+                    onClick={() => setShowConfirm((v) => !v)}
+                    aria-label={showConfirm ? t('settings.hidePassword') : t('settings.showPassword')}
+                  >
+                    {showConfirm ? <EyeOff className="h-4 w-4" /> : <Eye className="h-4 w-4" />}
+                  </button>
+                </div>
+                <Button
+                  onClick={handleChangePassword}
+                  disabled={changingPassword}
+                  className="mt-1"
+                >
+                  {changingPassword ? t('settings.changingPassword') : t('settings.changePassword')}
+                </Button>
+              </div>
+            </div>
             <div className="flex items-center gap-2">
-              <Button onClick={handleSaveProfile}>保存</Button>
+              <Button onClick={handleSaveProfile}>{t('settings.save')}</Button>
               {savedFlag === "profile" && (
                 <span className="text-sm text-success flex items-center gap-1">
-                  <Check className="h-4 w-4" /> 已保存
+                  <Check className="h-4 w-4" /> {t('settings.saved')}
                 </span>
               )}
             </div>
@@ -369,7 +531,7 @@ export function Settings() {
                   navigate({ to: "/login" });
                 }}
               >
-                <LogOut className="mr-2 h-4 w-4" /> 退出登录
+                <LogOut className="mr-2 h-4 w-4" /> {t('settings.logout')}
               </Button>
             </div>
           </div>
@@ -377,14 +539,13 @@ export function Settings() {
 
         {activeTab === "email" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">邮箱账号</h2>
+            <h2 className="text-xl font-semibold">{t('settings.mailAccounts')}</h2>
             <p className="text-sm text-muted-foreground">
-              邮箱账号（IMAP/SMTP）配置保存在云端 Supabase（受 RLS
-              保护）。接入 Tauri 桌面端后，凭证将改为使用系统密钥串安全存储。
+              {t('settings.mailAccountsDesc')}
             </p>
             <div className="space-y-2">
               {emailAccounts.length === 0 ? (
-                <p className="text-sm text-muted-foreground">暂无邮箱账号。</p>
+                <p className="text-sm text-muted-foreground">{t('settings.noMailAccounts')}</p>
               ) : (
                 emailAccounts.map((acc) => (
                   <div
@@ -394,7 +555,7 @@ export function Settings() {
                     <div className="min-w-0">
                       <div className="font-medium truncate">{acc.email}</div>
                       <div className="text-sm text-muted-foreground truncate">
-                        {acc.display_name || "未命名账号"}
+                        {acc.display_name || t('settings.unnamedAccount')}
                       </div>
                     </div>
                     <Button
@@ -402,7 +563,7 @@ export function Settings() {
                       size="sm"
                       onClick={() => navigate({ to: "/mail" })}
                     >
-                      管理
+                      {t('common.manage')}
                     </Button>
                   </div>
                 ))
@@ -413,34 +574,34 @@ export function Settings() {
 
         {activeTab === "appearance" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">外观</h2>
+            <h2 className="text-xl font-semibold">{t('settings.appearance')}</h2>
             <div className="space-y-2">
-              <label className="text-sm font-medium">主题</label>
+              <label className="text-sm font-medium">{t('settings.theme')}</label>
               <div className="grid grid-cols-3 gap-2">
                 <Button
                   variant={theme === "light" ? "default" : "outline"}
                   onClick={() => setTheme("light")}
                 >
-                  浅色
+                  {t('settings.light')}
                 </Button>
                 <Button
                   variant={theme === "dark" ? "default" : "outline"}
                   onClick={() => setTheme("dark")}
                 >
-                  深色
+                  {t('settings.dark')}
                 </Button>
                 <Button
                   variant={theme === "system" ? "default" : "outline"}
                   onClick={() => setTheme("system")}
                 >
-                  系统
+                  {t('settings.system')}
                 </Button>
               </div>
             </div>
 
             {/* 语言切换 */}
             <div className="space-y-2">
-              <label className="text-sm font-medium">语言</label>
+              <label className="text-sm font-medium">{t('settings.language')}</label>
               <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant={i18n.language.startsWith("zh") ? "default" : "outline"}
@@ -449,7 +610,7 @@ export function Settings() {
                     localStorage.setItem("language", "zh-CN");
                   }}
                 >
-                  中文
+                  {t('settings.chinese')}
                 </Button>
                 <Button
                   variant={i18n.language.startsWith("en") ? "default" : "outline"}
@@ -458,7 +619,7 @@ export function Settings() {
                     localStorage.setItem("language", "en-US");
                   }}
                 >
-                  English
+                  {t('settings.english')}
                 </Button>
               </div>
             </div>
@@ -467,12 +628,12 @@ export function Settings() {
 
         {activeTab === "notifications" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">通知</h2>
+            <h2 className="text-xl font-semibold">{t('settings.notifications')}</h2>
             <div className="space-y-3">
               {([
-                { id: "task_reminder", label: "任务到期提醒" },
-                { id: "email_notify", label: "新邮件通知" },
-                { id: "budget_warning", label: "预算超支警告" },
+                { id: "task_reminder", label: t('settings.taskReminder') },
+                { id: "email_notify", label: t('settings.emailNotify') },
+                { id: "budget_warning", label: t('settings.budgetWarning') },
               ] as const).map(({ id, label }) => (
                 <label
                   key={id}
@@ -491,31 +652,91 @@ export function Settings() {
               ))}
             </div>
             <div className="flex items-center gap-2">
-              <Button onClick={handleSaveNotify}>保存设置</Button>
+              <Button onClick={handleSaveNotify}>{t('settings.saveSettings')}</Button>
               {savedFlag === "notifications" && (
                 <span className="text-sm text-success flex items-center gap-1">
-                  <Check className="h-4 w-4" /> 已保存
+                  <Check className="h-4 w-4" /> {t('settings.saved')}
                 </span>
               )}
             </div>
           </div>
         )}
 
+        {activeTab === "system" && (
+          <div className="max-w-2xl space-y-4">
+            <h2 className="text-xl font-semibold">{t('settings.system')}</h2>
+            {!isTauri() && (
+              <p className="text-sm text-muted-foreground rounded-lg border p-4">
+                {t('settings.desktopOnly')}
+              </p>
+            )}
+            <div className="space-y-3">
+              <label
+                className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+              >
+                <div>
+                  <div className="text-sm font-medium">{t('settings.autostart')}</div>
+                  <div className="text-xs text-muted-foreground">{t('settings.autostartDesc')}</div>
+                </div>
+                <div className="flex items-center gap-3">
+                  {savedFlag === "system" && (
+                    <span className="text-xs text-success flex items-center gap-1">
+                      <Check className="h-3 w-3" /> {t('settings.saved')}
+                    </span>
+                  )}
+                  <input
+                    type="checkbox"
+                    checked={autostartEnabled}
+                    onChange={(e) => handleToggleAutostart(e.target.checked)}
+                    disabled={!isTauri()}
+                    className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                  />
+                </div>
+              </label>
+              <label
+                className="flex items-center justify-between rounded-lg border p-3 cursor-pointer hover:bg-muted/50 transition-colors"
+              >
+                <div>
+                  <div className="text-sm font-medium">{t('settings.closeOnExit')}</div>
+                  <div className="text-xs text-muted-foreground">
+                    {t('settings.closeOnExitDesc')}
+                  </div>
+                </div>
+                <input
+                  type="checkbox"
+                  checked={closeOnExit}
+                  onChange={(e) => handleToggleCloseBehavior(e.target.checked)}
+                  disabled={!isTauri()}
+                  className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
+                />
+              </label>
+            </div>
+            <div className="rounded-lg border p-4 text-sm text-muted-foreground space-y-2">
+              <p>
+                {t('settings.trayMenuDesc')}
+              </p>
+              <p>
+                {t('settings.bgSyncDesc')}
+              </p>
+            </div>
+          </div>
+        )}
+
         {activeTab === "data" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">数据管理</h2>
+            <h2 className="text-xl font-semibold">{t('settings.dataManagement')}</h2>
             <div className="space-y-4">
               <div className="rounded-lg border p-4 space-y-2">
-                <h3 className="font-medium">导出数据</h3>
+                <h3 className="font-medium">{t('settings.exportData')}</h3>
                 <p className="text-sm text-muted-foreground">
-                  将所有数据导出为 JSON 文件，用于备份或迁移。
+                  {t('settings.exportDataDesc')}
                 </p>
-                <Button onClick={handleExportData}>导出</Button>
+                <Button onClick={handleExportData}>{t('settings.export')}</Button>
               </div>
               <div className="rounded-lg border p-4 space-y-2">
-                <h3 className="font-medium">导入数据</h3>
+                <h3 className="font-medium">{t('settings.importData')}</h3>
                 <p className="text-sm text-muted-foreground">
-                  从此前导出的 JSON 备份恢复数据（将覆盖当前数据）。
+                  {t('settings.importDataDesc')}
                 </p>
                 <input
                   ref={fileInputRef}
@@ -525,17 +746,16 @@ export function Settings() {
                   onChange={handleImportData}
                 />
                 <Button variant="outline" onClick={() => fileInputRef.current?.click()}>
-                  选择备份文件
+                  {t('settings.selectBackupFile')}
                 </Button>
               </div>
               <div className="rounded-lg border p-4 space-y-2">
-                <h3 className="font-medium">清空所有数据（不可撤销）</h3>
+                <h3 className="font-medium">{t('settings.clearAllData')}</h3>
                 <p className="text-sm text-muted-foreground">
-                  永久删除任务、记账、笔记、邮件等全部业务数据，不会恢复演示数据。
-                  此操作不可撤销，建议先导出备份。
+                  {t('settings.clearAllDataDesc')}
                 </p>
                 <Button variant="destructive" onClick={handleResetData}>
-                  清空所有数据
+                  {t('settings.clearAllData')}
                 </Button>
               </div>
             </div>
@@ -544,30 +764,27 @@ export function Settings() {
 
         {activeTab === "about" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">关于 EasyWork</h2>
+            <h2 className="text-xl font-semibold">{t('settings.about')} EasyWork</h2>
             <div className="rounded-lg border p-4 space-y-1 text-sm">
               <div className="flex justify-between">
-                <span className="text-muted-foreground">版本</span>
+                <span className="text-muted-foreground">{t('settings.version')}</span>
                 <span className="font-medium">{appVersion || "—"}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">运行环境</span>
-                <span className="font-medium">{isTauri() ? "桌面端 (Tauri)" : "浏览器 / Web"}</span>
+                <span className="text-muted-foreground">{t('settings.environment')}</span>
+                <span className="font-medium">{isTauri() ? t('settings.desktop') : t('settings.web')}</span>
               </div>
               <div className="flex justify-between">
-                <span className="text-muted-foreground">数据存储</span>
-                <span className="font-medium">云端 (Supabase)</span>
+                <span className="text-muted-foreground">{t('settings.storage')}</span>
+                <span className="font-medium">{t('settings.cloudStorage')}</span>
               </div>
             </div>
             <div className="rounded-lg border p-4 text-sm text-muted-foreground space-y-2">
               <p>
-                认证与业务数据均由 Supabase 提供与存储，并通过行级安全策略（RLS，
-                按 <code>auth.uid()</code> 隔离）保护。个人资料（显示名称、头像）同步
-                保存在云端 <code>profiles</code> 表，跨设备一致；通知偏好等非敏感设置
-                仍保存在本地（localStorage）。
+                {t('settings.aboutDesc')}
               </p>
               <p>
-                当前为演示版本，邮箱收发与系统级后台通知需接入 Tauri 桌面端或后端服务。
+                {t('settings.aboutDemoNotice')}
               </p>
             </div>
           </div>

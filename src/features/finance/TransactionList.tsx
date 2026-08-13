@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect, useCallback } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
 import { zhCN } from 'date-fns/locale';
@@ -17,14 +18,8 @@ import { confirm } from '@/lib/confirm';
 
 type FilterType = 'all' | TransactionType;
 
-const FILTERS: { value: FilterType; label: string }[] = [
-  { value: 'all', label: '全部' },
-  { value: 'income', label: '收入' },
-  { value: 'expense', label: '支出' },
-  { value: 'transfer', label: '转账' },
-];
-
 export function TransactionList() {
+  const { t } = useTranslation();
   const { data: transactions = [], isLoading, isError, refetch } = useTransactions();
   const { data: categories = [] } = useCategories();
   const { data: accounts = [] } = useAccounts();
@@ -34,6 +29,13 @@ export function TransactionList() {
   const [accountFilter, setAccountFilter] = useState<string>('');
   const [search, setSearch] = useState<string>('');
   const [editingTransaction, setEditingTransaction] = useState<Transaction | null>(null);
+
+  const FILTERS: { value: FilterType; label: string }[] = [
+    { value: 'all', label: t('finance.filter_all') },
+    { value: 'income', label: t('finance.filter_income') },
+    { value: 'expense', label: t('finance.filter_expense') },
+    { value: 'transfer', label: t('finance.filter_transfer') },
+  ];
 
   const { focus } = useSearch({ from: '/app/finance' });
   useEffect(() => {
@@ -54,13 +56,13 @@ export function TransactionList() {
 
   const filteredTransactions = useMemo(() => {
     const kw = search.trim().toLowerCase();
-    return transactions.filter((t) => {
-      if (filter !== 'all' && t.type !== filter) return false;
-      if (catFilter && t.category_id !== catFilter) return false;
-      if (accountFilter && t.account_id !== accountFilter && t.to_account_id !== accountFilter) return false;
+    return transactions.filter((tx) => {
+      if (filter !== 'all' && tx.type !== filter) return false;
+      if (catFilter && tx.category_id !== catFilter) return false;
+      if (accountFilter && tx.account_id !== accountFilter && tx.to_account_id !== accountFilter) return false;
       if (kw) {
-        const cat = getCategory(t.category_id);
-        const hay = `${t.note ?? ''} ${cat?.name ?? ''}`.toLowerCase();
+        const cat = getCategory(tx.category_id);
+        const hay = `${tx.note ?? ''} ${cat?.name ?? ''}`.toLowerCase();
         if (!hay.includes(kw)) return false;
       }
       return true;
@@ -71,30 +73,30 @@ export function TransactionList() {
     const groups: Record<string, Transaction[]> = {};
     [...filteredTransactions]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
-      .forEach((t) => {
-        const dateKey = format(new Date(t.date), 'yyyy-MM-dd');
+      .forEach((tx) => {
+        const dateKey = format(new Date(tx.date), 'yyyy-MM-dd');
         if (!groups[dateKey]) groups[dateKey] = [];
-        groups[dateKey].push(t);
+        groups[dateKey].push(tx);
       });
     return groups;
   }, [filteredTransactions]);
 
-  const handleDelete = async (t: Transaction) => {
+  const handleDelete = async (tx: Transaction) => {
     const ok = await confirm({
-      title: "删除交易记录",
-      description: "确定要删除这条交易记录吗？",
-      confirmText: "删除",
+      title: t('finance.deleteTransaction'),
+      description: t('finance.deleteTransactionConfirm'),
+      confirmText: t('common.delete'),
       destructive: true,
     });
-    if (ok) deleteTransaction.mutate(t.id);
+    if (ok) deleteTransaction.mutate(tx.id);
   };
 
   if (isLoading) return <LoadingState rows={5} />;
   if (isError)
     return (
       <div className="space-y-2 p-8 text-center">
-        <p className="text-sm text-destructive">交易加载失败，请检查网络或登录状态</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <p className="text-sm text-destructive">{t('finance.transactionsLoadFailed')}</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t('common.retry')}</Button>
       </div>
     );
 
@@ -122,7 +124,7 @@ export function TransactionList() {
         <div className="relative flex-1">
           <Search size={15} className="pointer-events-none absolute left-3 top-1/2 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索备注 / 分类"
+            placeholder={t('finance.searchNoteCategory')}
             value={search}
             onChange={(e) => setSearch(e.target.value)}
             className="pl-9"
@@ -133,7 +135,7 @@ export function TransactionList() {
           onChange={(e) => setCatFilter(e.target.value)}
           className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-36"
         >
-          <option value="">全部分类</option>
+          <option value="">{t('finance.allCategories')}</option>
           {categories.map((c) => (
             <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
           ))}
@@ -143,7 +145,7 @@ export function TransactionList() {
           onChange={(e) => setAccountFilter(e.target.value)}
           className="h-10 rounded-md border border-input bg-background px-3 text-sm outline-none focus-visible:ring-1 focus-visible:ring-ring sm:w-32"
         >
-          <option value="">全部账户</option>
+          <option value="">{t('finance.allAccounts')}</option>
           {accounts.map((a) => (
             <option key={a.id} value={a.id}>{a.name}</option>
           ))}
@@ -157,13 +159,13 @@ export function TransactionList() {
             {format(new Date(dateKey), 'M月d日 EEEE', { locale: zhCN })}
           </div>
           <div className="grid grid-cols-1 gap-2 sm:grid-cols-2 lg:grid-cols-3 2xl:grid-cols-4">
-            {txns.map((t) => (
+            {txns.map((tx) => (
               <TransactionItem
-                key={t.id}
-                transaction={t}
+                key={tx.id}
+                transaction={tx}
                 getCategory={getCategory}
                 getAccount={getAccount}
-                onEdit={(tx) => setEditingTransaction(tx)}
+                onEdit={(tx2) => setEditingTransaction(tx2)}
                 onDelete={handleDelete}
               />
             ))}
@@ -172,7 +174,7 @@ export function TransactionList() {
       ))}
 
       {filteredTransactions.length === 0 && (
-        <EmptyState icon={Receipt} title="暂无交易记录" />
+        <EmptyState icon={Receipt} title={t('finance.noTransactions')} />
       )}
 
       {/* 编辑弹窗 */}
@@ -184,7 +186,7 @@ export function TransactionList() {
       >
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>编辑交易</DialogTitle>
+            <DialogTitle>{t('finance.editTransaction')}</DialogTitle>
           </DialogHeader>
           {editingTransaction && (
             <TransactionForm transaction={editingTransaction} onSuccess={() => setEditingTransaction(null)} />

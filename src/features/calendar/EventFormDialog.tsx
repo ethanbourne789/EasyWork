@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -48,6 +49,7 @@ export function EventFormDialog({
   onUpdate,
   onDelete,
 }: EventFormDialogProps) {
+  const { t } = useTranslation();
   const isEdit = !!event;
   const [title, setTitle] = useState("");
   const [description, setDescription] = useState("");
@@ -135,29 +137,29 @@ export function EventFormDialog({
       <DialogContent className="max-w-md">
         <DialogClose onClose={() => onOpenChange(false)} />
         <DialogHeader>
-          <DialogTitle>{isEdit ? "编辑日程" : "新建日程"}</DialogTitle>
+          <DialogTitle>{isEdit ? t("calendar.editEvent") : t("calendar.newEvent")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-4 py-2">
           <div className="space-y-1.5">
-            <Label htmlFor="ev-title">标题</Label>
+            <Label htmlFor="ev-title">{t("calendar.title")}</Label>
             <Input
               id="ev-title"
               value={title}
               onChange={(e) => setTitle(e.target.value)}
-              placeholder="例如：项目周会"
+              placeholder={t("calendar.titlePlaceholder")}
               autoFocus
             />
           </div>
 
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1.5">
-              <Label htmlFor="ev-date">日期</Label>
+              <Label htmlFor="ev-date">{t("calendar.date")}</Label>
               <Input id="ev-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             </div>
             <div className="flex items-end">
               <label className="flex items-center gap-2 pb-1.5 text-sm">
                 <Checkbox checked={allDay} onCheckedChange={(c) => setAllDay(!!c)} />
-                全天
+                {t("calendar.allDay")}
               </label>
             </div>
           </div>
@@ -166,16 +168,16 @@ export function EventFormDialog({
             <div className="space-y-3">
               <div className="grid grid-cols-2 gap-3">
                 <div className="space-y-1.5">
-                  <Label htmlFor="ev-start">开始</Label>
+                  <Label htmlFor="ev-start">{t("calendar.start")}</Label>
                   <Input id="ev-start" type="time" value={startTime} onChange={(e) => setStartTime(e.target.value)} />
                 </div>
                 <div className="space-y-1.5">
-                  <Label htmlFor="ev-end">结束</Label>
+                  <Label htmlFor="ev-end">{t("calendar.end")}</Label>
                   <Input id="ev-end" type="time" value={endTime} onChange={(e) => setEndTime(e.target.value)} />
                 </div>
               </div>
               <div className="space-y-1.5">
-                <Label htmlFor="ev-end-date">结束日期</Label>
+                <Label htmlFor="ev-end-date">{t("calendar.endDate")}</Label>
                 <Input
                   id="ev-end-date"
                   type="date"
@@ -187,29 +189,29 @@ export function EventFormDialog({
           )}
 
           <div className="space-y-1.5">
-            <Label htmlFor="ev-loc">地点（可选）</Label>
-            <Input id="ev-loc" value={location} onChange={(e) => setLocation(e.target.value)} placeholder="会议室 / 线上链接" />
+            <Label htmlFor="ev-loc">{t("calendar.locationOptional")}</Label>
+            <Input id="ev-loc" value={location} onChange={(e) => setLocation(e.target.value)} placeholder={t("calendar.locationPlaceholder")} />
           </div>
 
           <div className="space-y-1.5">
-            <Label htmlFor="ev-desc">备注（可选）</Label>
+            <Label htmlFor="ev-desc">{t("calendar.descriptionOptional")}</Label>
             <Textarea
               id="ev-desc"
               value={description}
               onChange={(e) => setDescription(e.target.value)}
               rows={2}
-              placeholder="补充说明"
+              placeholder={t("calendar.descriptionPlaceholder")}
             />
           </div>
 
           <div className="space-y-1.5">
-            <Label>颜色</Label>
+            <Label>{t("calendar.color")}</Label>
             <div className="flex flex-wrap gap-2">
               {PRESET_COLORS.map((c) => (
                 <button
                   key={c}
                   type="button"
-                  aria-label={`颜色 ${c}`}
+                  aria-label={`${t("calendar.color")} ${c}`}
                   onClick={() => setColor(c)}
                   className={cn(
                     "h-7 w-7 rounded-full ring-offset-2 ring-offset-background transition",
@@ -223,19 +225,19 @@ export function EventFormDialog({
 
           {/* TODO: 提醒功能待实现 — 需在 notifications.ts 中接入日历事件提醒 */}
           <div className="space-y-1.5">
-            <Label htmlFor="ev-rem">提醒</Label>
+            <Label htmlFor="ev-rem">{t("calendar.reminder")}</Label>
             <select
               id="ev-rem"
               value={reminder}
               onChange={(e) => setReminder(e.target.value)}
               className="flex h-9 w-full rounded-md border border-input bg-background px-3 py-1 text-sm shadow-sm focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring"
             >
-              <option value="0">准时提醒</option>
-              <option value="5">提前 5 分钟</option>
-              <option value="10">提前 10 分钟</option>
-              <option value="30">提前 30 分钟</option>
-              <option value="60">提前 1 小时</option>
-              <option value="">不提醒</option>
+              <option value="0">{t("calendar.reminderOnTime")}</option>
+              <option value="5">{t("calendar.reminder5min")}</option>
+              <option value="10">{t("calendar.reminder10min")}</option>
+              <option value="30">{t("calendar.reminder30min")}</option>
+              <option value="60">{t("calendar.reminder1hour")}</option>
+              <option value="">{t("calendar.reminderNone")}</option>
             </select>
           </div>
         </div>
@@ -243,16 +245,16 @@ export function EventFormDialog({
         <div className="flex items-center justify-between gap-2 pt-2">
           {isEdit && onDelete && event ? (
             <Button variant="ghost" className="text-destructive hover:bg-destructive/10" onClick={() => { onDelete(event.id); onOpenChange(false); }}>
-              删除
+              {t("common.delete")}
             </Button>
           ) : (
             <span />
           )}
           <div className="flex gap-2">
             <Button variant="outline" onClick={() => onOpenChange(false)}>
-              取消
+              {t("common.cancel")}
             </Button>
-            <Button onClick={handleSave} disabled={!title.trim()}>保存</Button>
+            <Button onClick={handleSave} disabled={!title.trim()}>{t("common.save")}</Button>
           </div>
         </div>
       </DialogContent>

@@ -1,5 +1,6 @@
 import { useState } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { supabase } from "@/lib/supabase";
 import { loginDemo } from "@/features/auth/authStore";
 import { friendlyAuthError } from "@/lib/authErrors";
@@ -7,18 +8,8 @@ import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 
-const registerSchema = z
-  .object({
-    email: z.string().email("请输入有效的邮箱地址"),
-    password: z.string().min(6, "密码至少 6 位"),
-    confirmPassword: z.string().min(1, "请确认密码"),
-  })
-  .refine((data) => data.password === data.confirmPassword, {
-    message: "两次输入的密码不一致",
-    path: ["confirmPassword"],
-  });
-
 export function Register() {
+  const { t } = useTranslation();
   const navigate = useNavigate();
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
@@ -26,6 +17,17 @@ export function Register() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; confirmPassword?: string }>({});
   const [demoLoading, setDemoLoading] = useState(false);
+
+  const registerSchema = z
+    .object({
+      email: z.string().email(t("auth.invalidEmail")),
+      password: z.string().min(6, t("auth.passwordTooShort")),
+      confirmPassword: z.string().min(1, t("auth.pleaseConfirmPassword")),
+    })
+    .refine((data) => data.password === data.confirmPassword, {
+      message: t("auth.passwordMismatch"),
+      path: ["confirmPassword"],
+    });
 
   const enterDemo = async () => {
     setDemoLoading(true);
@@ -72,13 +74,13 @@ export function Register() {
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
-        <h1 className="text-2xl font-semibold text-center">注册 EasyWork</h1>
+        <h1 className="text-2xl font-semibold text-center">{t("auth.registerTitle")}</h1>
 
         <form onSubmit={handleRegister} className="space-y-3" noValidate>
           <div className="space-y-1">
             <Input
               type="email"
-              placeholder="邮箱"
+              placeholder={t("auth.emailPlaceholder")}
               value={email}
               onChange={(e) => setEmail(e.target.value)}
               aria-invalid={!!fieldErrors.email}
@@ -90,7 +92,7 @@ export function Register() {
           <div className="space-y-1">
             <Input
               type="password"
-              placeholder="密码（至少 6 位）"
+              placeholder={t("auth.passwordPlaceholder")}
               value={password}
               onChange={(e) => setPassword(e.target.value)}
               aria-invalid={!!fieldErrors.password}
@@ -102,7 +104,7 @@ export function Register() {
           <div className="space-y-1">
             <Input
               type="password"
-              placeholder="确认密码"
+              placeholder={t("auth.confirmPasswordPlaceholder")}
               value={confirmPassword}
               onChange={(e) => setConfirmPassword(e.target.value)}
               aria-invalid={!!fieldErrors.confirmPassword}
@@ -112,7 +114,7 @@ export function Register() {
             )}
           </div>
           <Button type="submit" className="w-full">
-            注册
+            {t("auth.register")}
           </Button>
         </form>
 
@@ -120,7 +122,7 @@ export function Register() {
 
         <div className="space-y-2 text-center text-sm text-muted-foreground">
           <p>
-            已有账号？<Link to="/login" className="text-primary underline">登录</Link>
+            {t("auth.haveAccount")}<Link to="/login" className="text-primary underline">{t("auth.login")}</Link>
           </p>
           <button
             type="button"
@@ -128,7 +130,7 @@ export function Register() {
             disabled={demoLoading}
             className="text-primary underline disabled:opacity-50"
           >
-            {demoLoading ? "登录中..." : "以演示账号进入"}
+            {demoLoading ? t("auth.loggingIn") : t("auth.enterDemo")}
           </button>
         </div>
       </div>

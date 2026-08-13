@@ -1,4 +1,5 @@
 import { useState, useMemo, useEffect } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   useBudgets,
   useCategories,
@@ -32,6 +33,7 @@ const prevMonthInfo = () => {
 };
 
 export function BudgetList() {
+  const { t } = useTranslation();
   const { data: budgets = [], isLoading, isError, refetch } = useBudgets();
   const { data: categories = [] } = useCategories();
   const { data: transactions = [] } = useTransactions();
@@ -154,11 +156,11 @@ export function BudgetList() {
   };
 
   const handleDeleteBudget = async (budget: Budget) => {
-    const label = budget.scope === 'overall' ? '整体预算' : getCategory(budget.category_id ?? '')?.name ?? '该分类';
+    const label = budget.scope === 'overall' ? t('finance.overallBudget') : getCategory(budget.category_id ?? '')?.name ?? t('finance.untitled');
     const ok = await confirm({
-      title: "删除预算",
-      description: `确定要删除「${label}」的预算吗？`,
-      confirmText: "删除",
+      title: t('finance.deleteBudget'),
+      description: t('finance.deleteBudgetConfirm', { name: label }),
+      confirmText: t('common.delete'),
       destructive: true,
     });
     if (ok) deleteBudget.mutate(budget.id);
@@ -176,7 +178,6 @@ export function BudgetList() {
         const prevCat = prevBudgets.find((p) => p.scope === 'category' && p.category_id === b.category_id);
         return prevCat ? prevCat.amount - (prevCatSpending[prevCat.category_id ?? ''] || 0) : 0;
       };
-      // 分批（每批 5 个）并发，限制并发数
       const BATCH = 5;
       for (let i = 0; i < targets.length; i += BATCH) {
         const batch = targets.slice(i, i + BATCH);
@@ -204,12 +205,12 @@ export function BudgetList() {
     }
   }, []);
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">加载中...</div>;
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">{t('common.loading')}</div>;
   if (isError)
     return (
       <div className="space-y-2 p-8 text-center">
-        <p className="text-sm text-destructive">预算加载失败</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <p className="text-sm text-destructive">{t('finance.budgetLoadFailed')}</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t('common.retry')}</Button>
       </div>
     );
 
@@ -226,10 +227,10 @@ export function BudgetList() {
             <span className="truncate font-medium">{name}</span>
           </div>
           <div className="flex items-center gap-1">
-            <button type="button" onClick={() => (budget.scope === 'overall' ? openEditOverall() : openEditCatDialog(budget))} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" aria-label="编辑预算">
+            <button type="button" onClick={() => (budget.scope === 'overall' ? openEditOverall() : openEditCatDialog(budget))} className="rounded-md p-1.5 text-muted-foreground hover:bg-muted" aria-label={t('finance.editBudget')}>
               <Pencil size={15} />
             </button>
-            <button type="button" onClick={() => handleDeleteBudget(budget)} disabled={deleteBudget.isPending} className="rounded-md p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-50" aria-label="删除预算">
+            <button type="button" onClick={() => handleDeleteBudget(budget)} disabled={deleteBudget.isPending} className="rounded-md p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-50" aria-label={t('finance.deleteBudget')}>
               <Trash2 size={15} />
             </button>
           </div>
@@ -237,7 +238,7 @@ export function BudgetList() {
 
         {budget.carry_over ? (
           <div className="mt-2 text-[11px] text-muted-foreground">
-            含上月滚动 {budget.carry_over > 0 ? '结余' : '超支'} {formatMoney(Math.abs(budget.carry_over))}
+            {t('finance.carryOverSurplus')} {budget.carry_over > 0 ? t('finance.carryOverSurplus') : t('finance.carryOverDeficit')} {formatMoney(Math.abs(budget.carry_over))}
           </div>
         ) : null}
 
@@ -249,41 +250,43 @@ export function BudgetList() {
           <div className={cn('h-full rounded-full transition-all', getProgressColor(spent, effective))} style={{ width: `${percentage}%` }} />
         </div>
         <div className="mt-1.5 flex justify-between text-xs">
-          <span className="text-muted-foreground">{percentage.toFixed(0)}% 已使用</span>
+          <span className="text-muted-foreground">{t('finance.used', { pct: percentage.toFixed(0) })}</span>
           {over ? (
-            <span className="text-destructive">超支 {formatMoney(spent - effective)}</span>
+            <span className="text-destructive">{t('finance.overBudget')} {formatMoney(spent - effective)}</span>
           ) : (
-            <span className="text-muted-foreground">剩 {formatMoney(effective - spent)}</span>
+            <span className="text-muted-foreground">{t('finance.remaining')} {formatMoney(effective - spent)}</span>
           )}
         </div>
       </div>
     );
   };
 
+  const monthLabel = format(new Date(), 'yyyy年M月');
+
   return (
     <div className="space-y-5">
       <div className="flex flex-wrap items-center justify-between gap-2">
-        <h3 className="font-display text-lg font-semibold">{format(new Date(), 'yyyy年M月')} 预算</h3>
+        <h3 className="font-display text-lg font-semibold">{t('finance.budgetMonth', { month: monthLabel })}</h3>
         <Button variant="ghost" size="sm" onClick={applyRollover} disabled={rolling} className="gap-1">
           <Repeat size={14} />
-          {rolling ? '滚动中...' : '上月结余滚动'}
+          {rolling ? t('finance.rolling') : t('finance.rollOver')}
         </Button>
       </div>
 
       {/* 整体月度上限 */}
       <section className="space-y-2">
         <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-          <Target size={15} className="text-brand-500" /> 整体月度上限
+          <Target size={15} className="text-brand-500" /> {t('finance.overallBudget')}
         </div>
         {currentOverall ? (
-          <BudgetCard budget={currentOverall} name="全部支出" icon="💰" />
+          <BudgetCard budget={currentOverall} name={t('finance.overallBudget')} icon="💰" />
         ) : (
           <button
             type="button"
             onClick={() => { setOverallAmount(0); setShowOverallDialog(true); }}
             className="flex w-full items-center justify-center gap-2 rounded-lg border border-dashed bg-card p-5 text-sm text-muted-foreground transition-colors hover:bg-accent/40"
           >
-            <Plus size={16} /> 设置本月整体支出上限
+            <Plus size={16} /> {t('finance.setOverallBudget')}
           </button>
         )}
       </section>
@@ -291,23 +294,23 @@ export function BudgetList() {
       {/* 分类预算 */}
       <section className="space-y-2">
         <div className="flex items-center gap-1.5 text-sm font-medium text-muted-foreground">
-          <PiggyBank size={15} className="text-brand-500" /> 按分类预算
+          <PiggyBank size={15} className="text-brand-500" /> {t('finance.categoryBudget')}
         </div>
         {currentCategoryBudgets.length === 0 ? (
           <div className="rounded-lg border border-dashed bg-card py-8 text-center text-sm text-muted-foreground">
-            暂无分类预算
+            {t('finance.noCategoryBudget')}
           </div>
         ) : (
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {currentCategoryBudgets.map((budget) => {
               const cat = getCategory(budget.category_id ?? '');
-              return <BudgetCard key={budget.id} budget={budget} name={cat?.name || '未分类'} icon={cat?.icon || '📊'} />;
+              return <BudgetCard key={budget.id} budget={budget} name={cat?.name || t('finance.untitled')} icon={cat?.icon || '📊'} />;
             })}
           </div>
         )}
         {availableCategories.length > 0 && (
           <Button onClick={openCreateCatDialog} variant="outline" className="w-full gap-2">
-            <Plus size={16} /> 添加分类预算
+            <Plus size={16} /> {t('finance.addCategoryBudget')}
           </Button>
         )}
       </section>
@@ -316,11 +319,11 @@ export function BudgetList() {
       <Dialog open={showCatDialog} onOpenChange={setShowCatDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingId ? '编辑预算' : '设置分类预算'}</DialogTitle>
+            <DialogTitle>{editingId ? t('finance.editBudget') : t('finance.setBudget')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">分类</label>
+              <label className="text-sm font-medium">{t('finance.category')}</label>
               {editingId ? (
                 <Select value={newCatBudget.category_id} disabled>
                   <option value={newCatBudget.category_id}>
@@ -329,7 +332,7 @@ export function BudgetList() {
                 </Select>
               ) : (
                 <Select value={newCatBudget.category_id} onChange={(e) => setNewCatBudget({ ...newCatBudget, category_id: e.target.value })}>
-                  <option value="">选择分类</option>
+                  <option value="">{t('finance.chooseCategory')}</option>
                   {availableCategories.map((c) => (
                     <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
                   ))}
@@ -337,7 +340,7 @@ export function BudgetList() {
               )}
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">预算金额</label>
+              <label className="text-sm font-medium">{t('finance.budgetAmount')}</label>
               <Input
                 type="number"
                 step="0.01"
@@ -348,8 +351,8 @@ export function BudgetList() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowCatDialog(false)}>取消</Button>
-            <Button onClick={handleSaveCatBudget} disabled={isSaving}>{isSaving ? '设置中...' : editingId ? '保存' : '设置'}</Button>
+            <Button variant="outline" onClick={() => setShowCatDialog(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleSaveCatBudget} disabled={isSaving}>{isSaving ? t('finance.setting') : editingId ? t('common.save') : t('finance.set')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>
@@ -358,11 +361,11 @@ export function BudgetList() {
       <Dialog open={showOverallDialog} onOpenChange={setShowOverallDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>设置整体月度支出上限</DialogTitle>
+            <DialogTitle>{t('finance.setOverallLimit')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">本月支出上限（¥）</label>
+              <label className="text-sm font-medium">{t('finance.monthlyLimit')}</label>
               <Input
                 type="number"
                 step="0.01"
@@ -373,8 +376,8 @@ export function BudgetList() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowOverallDialog(false)}>取消</Button>
-            <Button onClick={handleSaveOverall} disabled={isSaving}>{isSaving ? '设置中...' : '保存'}</Button>
+            <Button variant="outline" onClick={() => setShowOverallDialog(false)}>{t('common.cancel')}</Button>
+            <Button onClick={handleSaveOverall} disabled={isSaving}>{isSaving ? t('finance.setting') : t('common.save')}</Button>
           </DialogFooter>
         </DialogContent>
       </Dialog>

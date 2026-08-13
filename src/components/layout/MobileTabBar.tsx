@@ -1,4 +1,5 @@
 import { Link, useRouterState } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { LayoutDashboard, ListChecks, Mail, NotebookText, CalendarDays, Settings, Search } from "lucide-react";
 import { cn } from "@/lib/utils";
 
@@ -11,22 +12,24 @@ function YenIcon({ size = 20 }: { size?: number }) {
   );
 }
 
-const tabs = [
-  { to: "/dashboard", label: "仪表盘", icon: LayoutDashboard },
-  { to: "/tasks", label: "任务", icon: ListChecks },
-  { to: "/mail", label: "邮箱", icon: Mail },
-  { to: "/notes", label: "笔记", icon: NotebookText },
-  { to: "/finance", label: "记账", icon: YenIcon },
-  { to: "/calendar", label: "日历", icon: CalendarDays },
-  { to: "/settings", label: "设置", icon: Settings },
+const TAB_ROUTES = [
+  { to: "/dashboard", key: "nav.dashboard", icon: LayoutDashboard },
+  { to: "/tasks", key: "nav.tasks", icon: ListChecks },
+  { to: "/mail", key: "nav.mail", icon: Mail },
+  { to: "/notes", key: "nav.notes", icon: NotebookText },
+  { to: "/finance", key: "nav.finance", icon: YenIcon },
+  { to: "/calendar", key: "nav.calendar", icon: CalendarDays },
+  { to: "/settings", key: "nav.settings", icon: Settings },
 ];
 
 export function MobileTabBar() {
+  const { t } = useTranslation();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   return (
     <nav className="md:hidden flex items-center justify-around border-t bg-card h-14 pb-[env(safe-area-inset-bottom)]">
-      {tabs.map(({ to, label, icon: Icon }) => {
+      {TAB_ROUTES.map(({ to, key, icon: Icon }) => {
         const active = pathname.startsWith(to);
+        const label = t(key);
         return (
           <Link
             key={to}
@@ -47,7 +50,7 @@ export function MobileTabBar() {
       })}
       <button
         type="button"
-        aria-label="搜索"
+        aria-label={t("nav.search")}
         onClick={() => window.dispatchEvent(new CustomEvent("ew:search"))}
         className={cn(
           "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px]",
@@ -56,7 +59,7 @@ export function MobileTabBar() {
         )}
       >
         <Search size={20} />
-        搜索
+        {t("nav.search")}
       </button>
     </nav>
   );

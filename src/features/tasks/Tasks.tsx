@@ -1,5 +1,6 @@
 import { useState, useEffect } from "react";
 import { Plus, FileText } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
@@ -16,6 +17,7 @@ import type { Task } from "@/types";
 type ViewMode = "list" | "board" | "calendar";
 
 export function Tasks() {
+  const { t } = useTranslation();
   const [viewMode, setViewMode] = useState<ViewMode>("board"); // 默认看板（对齐原型）
   const [selectedTaskId, setSelectedTaskId] = useState<string | null>(null);
   const [formOpen, setFormOpen] = useState(false);
@@ -67,15 +69,15 @@ export function Tasks() {
       {/* 页面头部 — 对齐原型 .screen-head */}
       <div className="flex items-end justify-between gap-4 border-b p-4 pb-4">
         <div>
-          <h1 className="font-display text-[28px] font-semibold leading-tight">任务</h1>
+          <h1 className="font-display text-[28px] font-semibold leading-tight">{t('tasks.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">
-            拖动卡片调整状态 · 点击查看详情
+            {t('tasks.dragHint')}
           </p>
         </div>
 
         <div className="flex items-center gap-3">
           <Button size="sm" onClick={openCreate} className="hidden md:flex items-center gap-1">
-            <Plus size={15} /> 新建任务
+            <Plus size={15} /> {t('tasks.newTask')}
           </Button>
 
           {/* 视图切换器 — 对齐原型 .seg-ctl，放在右侧 */}
@@ -89,7 +91,7 @@ export function Tasks() {
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            看板
+            {t('tasks.board')}
           </button>
           <button
             onClick={() => setViewMode("list")}
@@ -100,7 +102,7 @@ export function Tasks() {
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            列表
+            {t('tasks.list')}
           </button>
           <button
             onClick={() => setViewMode("calendar")}
@@ -111,7 +113,7 @@ export function Tasks() {
                 : "text-muted-foreground hover:text-foreground"
             )}
           >
-            日历
+            {t('tasks.calendar')}
           </button>
           </div>
         </div>
@@ -135,7 +137,7 @@ export function Tasks() {
       <Dialog open={formOpen} onOpenChange={(o) => (o ? setFormOpen(true) : closeForm())}>
         <DialogContent className="max-h-[90vh] overflow-auto">
           <DialogHeader>
-            <DialogTitle>{editingTask ? "编辑任务" : "新建任务"}</DialogTitle>
+            <DialogTitle>{editingTask ? t('tasks.editTask') : t('tasks.newTask')}</DialogTitle>
           </DialogHeader>
           <DialogClose onClose={closeForm} />
           <TaskForm task={editingTask} onSuccess={closeForm} onCancel={closeForm} />
@@ -145,15 +147,15 @@ export function Tasks() {
       <ModuleFab
         mainIcon={Plus}
         actions={[
-          { label: "新建任务", icon: Plus, onClick: openCreate },
-          { label: "从模板", icon: FileText, onClick: () => setTemplateOpen(true) },
+          { label: t('tasks.newTask'), icon: Plus, onClick: openCreate },
+          { label: t('tasks.fromTemplate'), icon: FileText, onClick: () => setTemplateOpen(true) },
         ]}
       />
 
       <Dialog open={templateOpen} onOpenChange={setTemplateOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>从模板新建</DialogTitle>
+            <DialogTitle>{t('tasks.fromTemplate')}</DialogTitle>
           </DialogHeader>
           <DialogClose onClose={() => setTemplateOpen(false)} />
           <ul className="space-y-2">

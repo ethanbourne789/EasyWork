@@ -1,4 +1,5 @@
 import { Outlet } from "@tanstack/react-router";
+import { useTranslation } from "react-i18next";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
 import { GlobalSearchDialog } from "@/components/layout/GlobalSearchDialog";
@@ -6,6 +7,7 @@ import { NetworkStatus } from "@/components/NetworkStatus";
 import { useRealtimeStore } from "@/features/realtime/realtimeStore";
 
 export function AppLayout() {
+  const { t } = useTranslation();
   const realtimeStatus = useRealtimeStore((s) => s.status);
   const realtimeError = useRealtimeStore((s) => s.error);
 
@@ -22,15 +24,15 @@ export function AppLayout() {
       <NetworkStatus />
       {realtimeStatus === "reconnecting" && (
         <div className="pointer-events-none fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full bg-foreground px-3 py-1 text-xs font-medium text-background shadow-md">
-          实时同步已断开，正在重连…
+          {t("layout.realtimeDisconnected")}
         </div>
       )}
       {realtimeStatus === "unavailable" && (
         <div
           className="pointer-events-auto fixed left-1/2 top-3 z-50 -translate-x-1/2 rounded-full border border-border bg-background px-3 py-1 text-xs font-medium text-muted-foreground shadow-sm"
-          title={realtimeError ?? "连续重试失败，实时同步已暂停"}
+          title={realtimeError ?? t("layout.realtimeRetrying")}
         >
-          实时同步不可用
+          {t("layout.realtimeUnavailable")}
         </div>
       )}
     </div>

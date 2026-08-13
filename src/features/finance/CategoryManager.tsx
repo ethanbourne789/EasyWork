@@ -1,4 +1,5 @@
 import { useState, useMemo, useCallback } from "react";
+import { useTranslation } from 'react-i18next';
 import {
   useCategories,
   useCreateCategory,
@@ -38,6 +39,7 @@ const emptyForm = (type: CategoryType): FormState => ({
 });
 
 export function CategoryManager() {
+  const { t } = useTranslation();
   const { data: categories = [], isLoading, isError, refetch } = useCategories();
   const createCategory = useCreateCategory();
   const updateCategory = useUpdateCategory();
@@ -116,23 +118,23 @@ export function CategoryManager() {
   const handleDelete = async (cat: Category) => {
     const kids = childrenOf(cat.id);
     const msg = kids.length
-      ? `确定删除「${cat.name}」吗？其 ${kids.length} 个子分类将变为顶级分类。`
-      : `确定删除「${cat.name}」吗？`;
+      ? t('finance.deleteCategoryWithChildren', { name: cat.name, count: kids.length })
+      : t('finance.deleteCategoryConfirm', { name: cat.name });
     const ok = await confirm({
-      title: "删除分类",
+      title: t('finance.deleteCategory'),
       description: msg,
-      confirmText: "删除",
+      confirmText: t('common.delete'),
       destructive: true,
     });
     if (ok) deleteCategory.mutate(cat.id);
   };
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">加载中...</div>;
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">{t('common.loading')}</div>;
   if (isError)
     return (
       <div className="space-y-2 p-8 text-center">
-        <p className="text-sm text-destructive">分类加载失败</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <p className="text-sm text-destructive">{t('finance.categoryLoadFailed')}</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t('common.retry')}</Button>
       </div>
     );
 
@@ -148,12 +150,12 @@ export function CategoryManager() {
         <div className="min-w-0 flex-1">
           <div className="truncate text-sm font-medium leading-tight">{cat.name}</div>
           <div className="text-xs text-muted-foreground leading-tight">
-            {cat.type === "income" ? "收入" : "支出"}
-            {cat.parent_id ? " · 子分类" : " · 顶级"}
+            {cat.type === "income" ? t('finance.income') : t('finance.expense')}
+            {cat.parent_id ? ` · ${t('finance.subcategory')}` : ` · ${t('finance.topLevel')}`}
           </div>
         </div>
         <div className="flex items-center gap-0.5 opacity-0 transition-opacity group-hover:opacity-100">
-          <button type="button" onClick={() => openEdit(cat)} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label="编辑分类">
+          <button type="button" onClick={() => openEdit(cat)} className="rounded-md p-1 text-muted-foreground hover:bg-muted" aria-label={t('finance.editCategory')}>
             <Pencil size={14} />
           </button>
           <button
@@ -161,7 +163,7 @@ export function CategoryManager() {
             onClick={() => handleDelete(cat)}
             disabled={deleteCategory.isPending}
             className="rounded-md p-1 text-destructive hover:bg-destructive/10 disabled:opacity-50"
-            aria-label="删除分类"
+            aria-label={t('finance.deleteCategory')}
           >
             <Trash2 size={14} />
           </button>
@@ -175,27 +177,27 @@ export function CategoryManager() {
     <div className="space-y-4">
       <div className="flex flex-wrap items-center justify-between gap-2">
         <div className="grid grid-cols-2 gap-1 rounded-xl bg-muted p-1">
-          {(["expense", "income"] as CategoryType[]).map((t) => (
+          {(["expense", "income"] as CategoryType[]).map((ct) => (
             <button
-              key={t}
+              key={ct}
               type="button"
-              onClick={() => setFilterType(t)}
+              onClick={() => setFilterType(ct)}
               className={cn(
                 "rounded-lg px-4 py-1.5 text-sm font-medium transition-colors",
-                filterType === t ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
+                filterType === ct ? "bg-background text-foreground shadow-sm" : "text-muted-foreground hover:text-foreground",
               )}
             >
-              {t === "expense" ? "支出分类" : "收入分类"}
+              {ct === "expense" ? t('finance.expenseCategories') : t('finance.incomeCategories')}
             </button>
           ))}
         </div>
         <Button variant="outline" size="sm" onClick={() => openCreate(filterType)} className="gap-1">
-          <Plus size={16} /> 新建
+          <Plus size={16} /> {t('finance.newCategoryBtn')}
         </Button>
       </div>
 
       {roots.length === 0 ? (
-        <EmptyState icon={Tags} title="暂无分类" description="点击「新建」添加" />
+        <EmptyState icon={Tags} title={t('finance.noCategories')} description={t('finance.noCategoriesDesc')} />
       ) : (
         <div className="space-y-1.5">
           {roots.map((cat) => renderCategory(cat, 0))}
@@ -205,24 +207,24 @@ export function CategoryManager() {
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{form.id ? "编辑分类" : "新建分类"}</DialogTitle>
+            <DialogTitle>{form.id ? t('finance.editCategory') : t('finance.newCategory')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">名称</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder="如：餐饮" />
+              <label className="text-sm font-medium">{t('finance.categoryName')}</label>
+              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('finance.categoryNamePlaceholder')} />
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium">类型</label>
+              <label className="text-sm font-medium">{t('finance.categoryType')}</label>
               <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as CategoryType })}>
-                <option value="expense">支出</option>
-                <option value="income">收入</option>
+                <option value="expense">{t('finance.expense')}</option>
+                <option value="income">{t('finance.income')}</option>
               </Select>
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium">图标</label>
+              <label className="text-sm font-medium">{t('finance.categoryIcon')}</label>
               <div className="grid grid-cols-8 gap-1.5">
                 {ICON_CHOICES.map((ic) => (
                   <button
@@ -241,9 +243,9 @@ export function CategoryManager() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium">父级分类（可选，支持多级）</label>
+              <label className="text-sm font-medium">{t('finance.parentCategory')}</label>
               <Select value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
-                <option value="">无（顶级分类）</option>
+                <option value="">{t('finance.noParent')}</option>
                 {parentOptions
                   .filter((c) => c.id !== form.id)
                   .map((c) => (
@@ -256,9 +258,9 @@ export function CategoryManager() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>{t('common.cancel')}</Button>
             <Button onClick={handleSave} disabled={isSaving}>
-              {isSaving ? "保存中..." : "保存"}
+              {isSaving ? t('finance.saving') : t('common.save')}
             </Button>
           </DialogFooter>
         </DialogContent>

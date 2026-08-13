@@ -229,3 +229,41 @@ pub async fn mail_set_account_signature(state: State<'_, AppState>, account_id: 
     let db = state.service.db.lock().await;
     db_queries::set_account_signature(&db, &account_id, signature_id.as_deref(), auto_new, auto_reply)
 }
+
+#[tauri::command]
+pub fn get_autostart_status(app: tauri::AppHandle) -> Result<bool, String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    autostart.is_enabled().map_err(|e| e.to_string())
+}
+
+#[tauri::command]
+pub fn set_autostart(app: tauri::AppHandle, enabled: bool) -> Result<(), String> {
+    use tauri_plugin_autostart::ManagerExt;
+    let autostart = app.autolaunch();
+    if enabled {
+        autostart.enable().map_err(|e| e.to_string())?;
+    } else {
+        autostart.disable().map_err(|e| e.to_string())?;
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub fn get_close_behavior(app: tauri::AppHandle) -> Result<bool, String> {
+    use std::sync::atomic::Ordering;
+    use tauri::Manager;
+    use crate::AppSharedState;
+    let state = app.state::<AppSharedState>();
+    Ok(state.close_behavior.load(Ordering::Relaxed))
+}
+
+#[tauri::command]
+pub fn set_close_behavior(app: tauri::AppHandle, close_on_exit: bool) -> Result<(), String> {
+    use std::sync::atomic::Ordering;
+    use tauri::Manager;
+    use crate::AppSharedState;
+    let state = app.state::<AppSharedState>();
+    state.close_behavior.store(close_on_exit, Ordering::Relaxed);
+    Ok(())
+}

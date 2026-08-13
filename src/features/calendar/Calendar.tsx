@@ -1,6 +1,7 @@
 import { useMemo, useState } from "react";
 import { format } from "date-fns";
 import { zhCN } from "date-fns/locale";
+import { useTranslation } from "react-i18next";
 import {
   CalendarDays,
   ChevronLeft,
@@ -45,10 +46,10 @@ import type { CalendarEvent, Task } from "@/types";
 
 type ViewMode = "month" | "week" | "agenda";
 
-const VIEWS: { value: ViewMode; label: string; icon: typeof List }[] = [
-  { value: "month", label: "月", icon: CalendarRange },
-  { value: "week", label: "周", icon: CalendarClock },
-  { value: "agenda", label: "清单", icon: List },
+const VIEWS: { value: ViewMode; labelKey: string; icon: typeof List }[] = [
+  { value: "month", labelKey: "calendar.month", icon: CalendarRange },
+  { value: "week", labelKey: "calendar.week", icon: CalendarClock },
+  { value: "agenda", labelKey: "calendar.agenda", icon: List },
 ];
 
 /** 清单视图时间窗口：前后各 60 天 */
@@ -56,6 +57,7 @@ const AGENDA_WINDOW_DAYS = 60;
 const MS_PER_DAY = 86400000;
 
 export function Calendar() {
+  const { t } = useTranslation();
   const [view, setView] = useState<ViewMode>("month");
   const [anchor, setAnchor] = useState<Date>(new Date());
   const [selectedKey, setSelectedKey] = useState<string | null>(null);
@@ -156,7 +158,7 @@ export function Calendar() {
   const loading = eventsLoading;
 
   if (isError) {
-    return <div className="flex items-center justify-center h-full text-destructive">日历数据加载失败，请重试</div>;
+    return <div className="flex items-center justify-center h-full text-destructive">{t("calendar.loadFailed")}</div>;
   }
 
   return (
@@ -166,21 +168,21 @@ export function Calendar() {
         <div>
           <div className="flex items-center gap-2">
             <CalendarDays className="h-5 w-5 text-muted-foreground" />
-            <h1 className="font-display text-[28px] font-semibold leading-tight">日历</h1>
+            <h1 className="font-display text-[28px] font-semibold leading-tight">{t("calendar.title")}</h1>
           </div>
           <p className="mt-1 text-sm text-muted-foreground">
-            任务进度 · 日程 · 每日收支，一图掌握
+            {t("calendar.subtitle")}
           </p>
         </div>
 
         <div className="flex flex-wrap items-center gap-2">
-          <Button variant="outline" size="sm" onClick={() => shift(-1)} aria-label="上一页">
+          <Button variant="outline" size="sm" onClick={() => shift(-1)} aria-label={t("calendar.prevPage")}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={goToday}>
-            今天
+            {t("calendar.today")}
           </Button>
-          <Button variant="outline" size="sm" onClick={() => shift(1)} aria-label="下一页">
+          <Button variant="outline" size="sm" onClick={() => shift(1)} aria-label={t("calendar.nextPage")}>
             <ChevronRight className="h-4 w-4" />
           </Button>
           <span className="hidden min-w-[110px] text-sm font-medium sm:inline">{label}</span>
@@ -197,19 +199,19 @@ export function Calendar() {
                     ? "bg-card text-foreground shadow-xs"
                     : "text-muted-foreground hover:text-foreground",
                 )}
-                aria-label={v.label}
+                aria-label={t(v.labelKey)}
               >
                 <v.icon size={15} />
-                <span className="hidden sm:inline">{v.label}</span>
+                <span className="hidden sm:inline">{t(v.labelKey)}</span>
               </button>
             ))}
           </div>
 
           <Button variant="outline" size="sm" onClick={() => setSubsOpen(true)}>
-            <CalendarClock size={15} className="mr-1" /> 订阅
+            <CalendarClock size={15} className="mr-1" /> {t("calendar.subscribe")}
           </Button>
           <Button size="sm" onClick={() => openCreate()}>
-            <Plus size={15} className="mr-1" /> 日程
+            <Plus size={15} className="mr-1" /> {t("calendar.event")}
           </Button>
         </div>
       </div>
@@ -218,17 +220,17 @@ export function Calendar() {
       {(view === "month" || view === "week") && (rangeSummary.income > 0 || rangeSummary.expense > 0) && (
         <div className="flex items-center gap-4 border-b bg-muted/30 px-4 py-2 text-sm">
           <span className="text-muted-foreground">
-            本{view === "month" ? "月" : "周"}
+            {view === "month" ? t("calendar.thisMonth") : t("calendar.thisWeek")}
           </span>
           {rangeSummary.income > 0 && (
-            <span className="font-mono font-semibold text-success">收入 {formatMoney(rangeSummary.income)}</span>
+            <span className="font-mono font-semibold text-success">{t("calendar.income")} {formatMoney(rangeSummary.income)}</span>
           )}
           {rangeSummary.expense > 0 && (
-            <span className="font-mono font-semibold text-destructive">支出 {formatMoney(rangeSummary.expense)}</span>
+            <span className="font-mono font-semibold text-destructive">{t("calendar.expense")} {formatMoney(rangeSummary.expense)}</span>
           )}
           {(rangeSummary.eventCount > 0 || rangeSummary.taskCount > 0) && (
             <span className="text-muted-foreground">
-              {rangeSummary.eventCount} 个日程 · {rangeSummary.taskCount} 个任务
+              {t("calendar.eventsAndTasks", { eventCount: rangeSummary.eventCount, taskCount: rangeSummary.taskCount })}
             </span>
           )}
         </div>
@@ -238,7 +240,7 @@ export function Calendar() {
       <div className="flex-1 overflow-auto">
         {loading ? (
           <div className="flex h-full items-center justify-center text-muted-foreground">
-            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> 加载中…
+            <Loader2 className="mr-2 h-5 w-5 animate-spin" /> {t("common.loading")}
           </div>
         ) : view === "month" ? (
           <CalendarMonthView

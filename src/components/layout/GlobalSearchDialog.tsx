@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from "@/components/ui/dialog";
 import { GlobalSearch } from "@/features/dashboard/GlobalSearch";
 
@@ -7,6 +8,7 @@ import { GlobalSearch } from "@/features/dashboard/GlobalSearch";
  * 复用已有的 GlobalSearch 组件（任务 / 笔记 / 记账 跨模块检索）。
  */
 export function GlobalSearchDialog() {
+  const { t } = useTranslation();
   const [open, setOpen] = useState(false);
 
   useEffect(() => {
@@ -19,7 +21,7 @@ export function GlobalSearchDialog() {
     <Dialog open={open} onOpenChange={setOpen}>
       <DialogContent className="max-w-xl gap-0 p-3">
         <DialogHeader className="sr-only">
-          <DialogTitle>全局搜索</DialogTitle>
+          <DialogTitle>{t("layout.globalSearch")}</DialogTitle>
         </DialogHeader>
         <GlobalSearch />
       </DialogContent>

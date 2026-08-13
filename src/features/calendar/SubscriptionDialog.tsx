@@ -1,4 +1,5 @@
 import { useEffect, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -23,10 +24,10 @@ interface SubscriptionDialogProps {
   updating?: boolean;
 }
 
-const PROVIDER_OPTIONS: { value: CalendarProvider; label: string; hint: string }[] = [
-  { value: "ics", label: "ICS 订阅链接", hint: "钉钉「分享日历」生成的 .ics 链接，或任意 CalDAV/Google/Outlook 的 ICS 分享地址" },
-  { value: "dingtalk_caldav", label: "钉钉 CalDAV", hint: "钉钉日历设置 → 同步 → 生成专用密码，服务器 calendar.dingtalk.com" },
-  { value: "caldav", label: "其他 CalDAV", hint: "如飞书、企业微信等 CalDAV 服务地址" },
+const PROVIDER_OPTIONS: { value: CalendarProvider; labelKey: string; hintKey: string }[] = [
+  { value: "ics", labelKey: "calendar.providerLabelICS", hintKey: "calendar.providerHintICS" },
+  { value: "dingtalk_caldav", labelKey: "calendar.providerLabelDingtalkCalDAV", hintKey: "calendar.providerHintDingtalkCalDAV" },
+  { value: "caldav", labelKey: "calendar.providerLabelCalDAV", hintKey: "calendar.providerHintCalDAV" },
 ];
 
 const PRESET_COLORS = ["#6366f1", "#ef4444", "#f59e0b", "#10b981", "#3b82f6", "#a855f7"];
@@ -44,6 +45,7 @@ export function SubscriptionDialog({
   creating,
   updating,
 }: SubscriptionDialogProps) {
+  const { t } = useTranslation();
   const [showForm, setShowForm] = useState(false);
   const [editingSub, setEditingSub] = useState<CalendarSubscription | null>(null);
   const [name, setName] = useState("");
@@ -124,14 +126,14 @@ export function SubscriptionDialog({
       <DialogContent className="max-w-lg">
         <DialogClose onClose={() => onOpenChange(false)} />
         <DialogHeader>
-          <DialogTitle>日历订阅</DialogTitle>
+          <DialogTitle>{t("calendar.subscriptions")}</DialogTitle>
         </DialogHeader>
 
         <div className="space-y-3 py-1">
           {/* 订阅源列表 */}
           {subscriptions.length === 0 ? (
             <div className="rounded-xl border border-dashed p-4 text-center text-sm text-muted-foreground">
-              还没有订阅，点击下方「添加订阅」接入钉钉日历或其他 ICS 日历
+              {t("calendar.noSubscriptions")}
             </div>
           ) : (
             <ul className="space-y-2">
@@ -142,7 +144,7 @@ export function SubscriptionDialog({
                     <div className="flex items-center gap-1.5">
                       <span className="truncate text-sm font-medium">{sub.name}</span>
                       {!sub.enabled && (
-                        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">已禁用</span>
+                        <span className="shrink-0 rounded bg-muted px-1 py-0.5 text-[9px] text-muted-foreground">{t("calendar.disabled")}</span>
                       )}
                       {sub.last_error ? (
                         <AlertCircle size={14} className="shrink-0 text-destructive" />
@@ -152,14 +154,14 @@ export function SubscriptionDialog({
                     </div>
                     <div className="truncate text-[11px] text-muted-foreground">
                       {sub.provider === "dingtalk_caldav"
-                        ? "钉钉 CalDAV"
+                        ? t("calendar.providerDingtalkCalDAV")
                         : sub.provider === "caldav"
-                          ? "CalDAV"
-                          : "ICS 订阅"}
+                          ? t("calendar.providerCalDAV")
+                          : t("calendar.providerICS")}
                       {sub.last_synced_at
                         ? ` · ${formatDateTime(new Date(sub.last_synced_at))}`
-                        : " · 未同步"}
-                      {sub.event_count ? ` · ${sub.event_count} 条` : ""}
+                        : ` · ${t("calendar.notSynced")}`}
+                      {sub.event_count ? ` · ${t("calendar.eventsCount", { count: sub.event_count })}` : ""}
                     </div>
                     {sub.last_error && (
                       <div className="mt-0.5 truncate text-[11px] text-destructive" title={sub.last_error}>
@@ -173,14 +175,14 @@ export function SubscriptionDialog({
                     className="h-7 shrink-0 px-2 text-[11px]"
                     onClick={() => onUpdate?.(sub.id, { enabled: !sub.enabled })}
                     disabled={updating}
-                    aria-label={sub.enabled ? "禁用订阅" : "启用订阅"}
+                    aria-label={sub.enabled ? t("calendar.disableSubscription") : t("calendar.enableSubscription")}
                   >
-                    {sub.enabled ? "禁用" : "启用"}
+                    {sub.enabled ? t("common.disable") : t("common.enable")}
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => openEdit(sub)} aria-label="编辑订阅">
+                  <Button size="icon" variant="ghost" onClick={() => openEdit(sub)} aria-label={t("calendar.editSubscription")}>
                     <Pencil size={14} />
                   </Button>
-                  <Button size="icon" variant="ghost" onClick={() => onSync(sub.id)} disabled={syncing} aria-label="同步">
+                  <Button size="icon" variant="ghost" onClick={() => onSync(sub.id)} disabled={syncing} aria-label={t("calendar.sync")}>
                     <RefreshCw size={15} className={cn(syncing && "animate-spin")} />
                   </Button>
                   <Button
@@ -188,7 +190,7 @@ export function SubscriptionDialog({
                     variant="ghost"
                     className="text-destructive hover:bg-destructive/10"
                     onClick={() => onDelete(sub.id)}
-                    aria-label="删除订阅"
+                    aria-label={t("calendar.deleteSubscription")}
                   >
                     <Trash2 size={15} />
                   </Button>
@@ -201,7 +203,7 @@ export function SubscriptionDialog({
           {showForm ? (
             <div className="space-y-3 rounded-xl border bg-muted/30 p-3">
               <div className="space-y-1.5">
-                <Label>订阅类型</Label>
+                <Label>{t("calendar.subscriptionType")}</Label>
                 <div className="grid grid-cols-3 gap-1.5">
                   {PROVIDER_OPTIONS.map((o) => (
                     <button
@@ -215,58 +217,58 @@ export function SubscriptionDialog({
                           : "border-border text-muted-foreground hover:bg-accent",
                       )}
                     >
-                      {o.label}
+                      {t(o.labelKey)}
                     </button>
                   ))}
                 </div>
                 <p className="text-[11px] text-muted-foreground">
-                  {PROVIDER_OPTIONS.find((o) => o.value === provider)?.hint}
+                  {PROVIDER_OPTIONS.find((o) => o.value === provider)?.hintKey && t(PROVIDER_OPTIONS.find((o) => o.value === provider)!.hintKey)}
                 </p>
               </div>
 
               <div className="space-y-1.5">
-                <Label htmlFor="sub-name">名称</Label>
+                <Label htmlFor="sub-name">{t("calendar.name")}</Label>
                 <Input
                   id="sub-name"
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="例如：钉钉工作日历"
+                  placeholder={t("calendar.namePlaceholder")}
                 />
               </div>
 
               <div className="space-y-1.5">
                 <Label htmlFor="sub-url">
-                  {provider === "ics" ? "ICS 订阅链接" : "服务器地址"}
+                  {provider === "ics" ? t("calendar.icsUrlLabel") : t("calendar.serverUrlLabel")}
                 </Label>
                 <Input
                   id="sub-url"
                   value={url}
                   onChange={(e) => setUrl(e.target.value)}
-                  placeholder={provider === "ics" ? "https://.../calendar.ics 或 webcal://..." : "https://calendar.dingtalk.com"}
+                  placeholder={provider === "ics" ? t("calendar.icsUrlPlaceholder") : t("calendar.serverUrlPlaceholder")}
                 />
               </div>
 
               {needsAuth && (
                 <div className="grid grid-cols-2 gap-3">
                   <div className="space-y-1.5">
-                    <Label htmlFor="sub-user">用户名</Label>
-                    <Input id="sub-user" value={username} onChange={(e) => setUsername(e.target.value)} placeholder="钉钉账号" />
+                    <Label htmlFor="sub-user">{t("calendar.username")}</Label>
+                    <Input id="sub-user" value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t("calendar.usernamePlaceholder")} />
                   </div>
                   <div className="space-y-1.5">
-                    <Label htmlFor="sub-pass">专用密码</Label>
+                    <Label htmlFor="sub-pass">{t("calendar.appPassword")}</Label>
                     <Input
                       id="sub-pass"
                       type="password"
                       value={password}
                       onChange={(e) => setPassword(e.target.value)}
-                      placeholder="CalDAV 专用密码"
+                      placeholder={t("calendar.appPasswordPlaceholder")}
                     />
                   </div>
                 </div>
               )}
 
               <div className="space-y-1.5">
-                <Label>颜色</Label>
+                <Label>{t("calendar.color")}</Label>
                 <div className="flex gap-2">
                   {PRESET_COLORS.map((c) => (
                     <button
@@ -278,7 +280,7 @@ export function SubscriptionDialog({
                         color === c ? "ring-2 ring-foreground" : "ring-1 ring-border",
                       )}
                       style={{ backgroundColor: c }}
-                      aria-label={`颜色 ${c}`}
+                      aria-label={`${t("calendar.color")} ${c}`}
                     />
                   ))}
                 </div>
@@ -286,34 +288,34 @@ export function SubscriptionDialog({
 
               <div className="flex justify-end gap-2 pt-1">
                 <Button variant="ghost" onClick={resetForm}>
-                  取消
+                  {t("common.cancel")}
                 </Button>
                 <Button onClick={handleSave} disabled={!name.trim() || !url.trim() || creating || updating}>
-                  {editingSub ? (updating ? "保存中…" : "保存修改") : creating ? "添加中…" : "添加"}
+                  {editingSub ? (updating ? t("calendar.saving") : t("calendar.saveChanges")) : creating ? t("calendar.adding") : t("calendar.add")}
                 </Button>
               </div>
             </div>
           ) : (
             <Button variant="outline" className="w-full" onClick={openCreate}>
-              <Plus size={16} /> 添加订阅
+              <Plus size={16} /> {t("calendar.addSubscription")}
             </Button>
           )}
 
           {subscriptions.length > 0 && (
             <Button variant="outline" className="w-full" onClick={() => onSync()} disabled={syncing}>
-              <RefreshCw size={16} className={cn(syncing && "animate-spin")} /> 同步全部
+              <RefreshCw size={16} className={cn(syncing && "animate-spin")} /> {t("calendar.syncAll")}
             </Button>
           )}
 
           <p className="flex items-start gap-1.5 text-[11px] text-muted-foreground">
             <Link2 size={13} className="mt-0.5 shrink-0" />
-            订阅为只读——钉钉/外部日历的增改请在其原平台进行，同步后此处只做展示。同步在服务器完成以规避跨域限制。
+            {t("calendar.readOnlyHint")}
           </p>
         </div>
 
         <div className="flex justify-end pt-1">
           <Button variant="outline" onClick={() => onOpenChange(false)}>
-            关闭
+            {t("common.close")}
           </Button>
         </div>
       </DialogContent>

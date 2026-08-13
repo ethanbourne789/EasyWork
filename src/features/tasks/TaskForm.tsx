@@ -2,6 +2,7 @@ import { useForm } from "react-hook-form";
 import { zodResolver } from "@hookform/resolvers/zod";
 import { z } from "zod";
 import { useEffect, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import { X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -10,16 +11,17 @@ import { useCreateTask, useUpdateTask, useTags, useTaskTags } from "./useTasks";
 import type { Task, TaskPriority, TaskStatus, RecurrenceRule } from "@/types";
 import { Checkbox } from "@/components/ui/checkbox";
 
-const taskSchema = z.object({
-  title: z.string().min(1, "标题不能为空"),
-  description: z.string().optional(),
-  status: z.enum(["todo", "in_progress", "done", "cancelled"]),
-  priority: z.enum(["low", "medium", "high", "urgent"]),
-  due_date: z.string().optional(),
-  tag_ids: z.array(z.string()).optional(),
-});
+const createTaskSchema = (t: (key: string) => string) =>
+  z.object({
+    title: z.string().min(1, t('tasks.titleRequired')),
+    description: z.string().optional(),
+    status: z.enum(["todo", "in_progress", "done", "cancelled"]),
+    priority: z.enum(["low", "medium", "high", "urgent"]),
+    due_date: z.string().optional(),
+    tag_ids: z.array(z.string()).optional(),
+  });
 
-type TaskFormValues = z.infer<typeof taskSchema>;
+type TaskFormValues = z.infer<ReturnType<typeof createTaskSchema>>;
 
 interface TaskFormProps {
   task?: Task | null;
@@ -27,25 +29,26 @@ interface TaskFormProps {
   onCancel?: () => void;
 }
 
-const priorityOptions: { value: TaskPriority; label: string }[] = [
-  { value: "low", label: "低" },
-  { value: "medium", label: "中" },
-  { value: "high", label: "高" },
-  { value: "urgent", label: "紧急" },
-];
-
-const statusOptions: { value: TaskStatus; label: string }[] = [
-  { value: "todo", label: "待办" },
-  { value: "in_progress", label: "进行中" },
-  { value: "done", label: "已完成" },
-  { value: "cancelled", label: "已取消" },
-];
-
 export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
+  const { t } = useTranslation();
   const createTask = useCreateTask();
   const updateTask = useUpdateTask();
   const { data: tags = [] } = useTags();
   const { data: taskTags = [], isFetched: taskTagsFetched } = useTaskTags(task?.id ?? null);
+
+  const priorityOptions: { value: TaskPriority; label: string }[] = [
+    { value: "low", label: t('tasks.low') },
+    { value: "medium", label: t('tasks.medium') },
+    { value: "high", label: t('tasks.high') },
+    { value: "urgent", label: t('tasks.urgent') },
+  ];
+
+  const statusOptions: { value: TaskStatus; label: string }[] = [
+    { value: "todo", label: t('tasks.todo') },
+    { value: "in_progress", label: t('tasks.inProgress') },
+    { value: "done", label: t('tasks.done') },
+    { value: "cancelled", label: t('tasks.cancelled') },
+  ];
 
   const {
     register,
@@ -55,7 +58,7 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
     setValue,
     formState: { errors },
   } = useForm<TaskFormValues>({
-    resolver: zodResolver(taskSchema),
+    resolver: zodResolver(createTaskSchema(t)),
     defaultValues: {
       title: "",
       description: "",
@@ -152,9 +155,9 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4">
       <div className="space-y-1">
-        <label className="text-sm font-medium">标题 *</label>
+        <label className="text-sm font-medium">{t('tasks.taskName')} *</label>
         <Input
-          placeholder="输入任务标题"
+          placeholder={t('tasks.titlePlaceholder')}
           {...register("title")}
         />
         {errors.title && (
@@ -163,17 +166,17 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm font-medium">描述</label>
+        <label className="text-sm font-medium">{t('tasks.description')}</label>
         <textarea
           className="flex w-full rounded-md border border-border bg-background px-3 py-2 text-sm shadow-sm placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-1 focus-visible:ring-ring min-h-[80px]"
-          placeholder="输入任务描述（可选）"
+          placeholder={t('tasks.descriptionPlaceholder')}
           {...register("description")}
         />
       </div>
 
       <div className="grid grid-cols-2 gap-3">
         <div className="space-y-1">
-          <label className="text-sm font-medium">状态</label>
+          <label className="text-sm font-medium">{t('tasks.status')}</label>
           <Select {...register("status")}>
             {statusOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -184,7 +187,7 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
         </div>
 
         <div className="space-y-1">
-          <label className="text-sm font-medium">优先级</label>
+          <label className="text-sm font-medium">{t('tasks.priority')}</label>
           <Select {...register("priority")}>
             {priorityOptions.map((opt) => (
               <option key={opt.value} value={opt.value}>
@@ -196,7 +199,7 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
       </div>
 
       <div className="space-y-1">
-        <label className="text-sm font-medium">截止日期</label>
+        <label className="text-sm font-medium">{t('tasks.dueDate')}</label>
         <Input type="date" {...register("due_date")} />
       </div>
 
@@ -206,7 +209,7 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             checked={recur.enabled}
             onCheckedChange={(c) => setRecur((p) => ({ ...p, enabled: c === true }))}
           />
-          <label className="text-sm font-medium">设为周期任务</label>
+          <label className="text-sm font-medium">{t('tasks.recurring')}</label>
         </div>
         {recur.enabled && (
           <div className="grid grid-cols-2 gap-2 pl-1 sm:grid-cols-3">
@@ -216,9 +219,9 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
                 setRecur((p) => ({ ...p, frequency: e.target.value as RecurrenceRule["frequency"] }))
               }
             >
-              <option value="daily">每天</option>
-              <option value="weekly">每周</option>
-              <option value="monthly">每月</option>
+              <option value="daily">{t('tasks.daily')}</option>
+              <option value="weekly">{t('tasks.weekly')}</option>
+              <option value="monthly">{t('tasks.monthly')}</option>
             </Select>
             <Input
               type="number"
@@ -227,27 +230,28 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
               onChange={(e) =>
                 setRecur((p) => ({ ...p, interval: Math.max(1, Number(e.target.value) || 1) }))
               }
-              aria-label="重复间隔"
+              aria-label={t('tasks.repeatInterval')}
             />
             <Input
               type="date"
               value={recur.end_date}
               onChange={(e) => setRecur((p) => ({ ...p, end_date: e.target.value }))}
-              aria-label="结束日期（可选）"
+              aria-label={t('tasks.endDate')}
             />
           </div>
         )}
         {recur.enabled && (
           <p className="pl-1 text-xs text-muted-foreground">
-            每 {recur.interval > 1 ? recur.interval + " " : ""}
-            {recur.frequency === "daily" ? "天" : recur.frequency === "weekly" ? "周" : "月"}重复；
-            完成后自动生成下一期。
+            {t('tasks.recurHint', {
+              interval: recur.interval > 1 ? recur.interval : undefined,
+              frequency: recur.frequency === "daily" ? t('tasks.daily') : recur.frequency === "weekly" ? t('tasks.weekly') : t('tasks.monthly'),
+            })}
           </p>
         )}
       </div>
 
       <div className="space-y-2">
-        <label className="text-sm font-medium">标签</label>
+        <label className="text-sm font-medium">{t('tasks.tags')}</label>
         <div className="flex flex-wrap gap-2">
           {tags.map((tag) => {
             const isSelected = selectedTags.includes(tag.id);
@@ -269,18 +273,18 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
             );
           })}
           {tags.length === 0 && (
-            <span className="text-xs text-muted-foreground">暂无标签</span>
+            <span className="text-xs text-muted-foreground">{t('tasks.noTags')}</span>
           )}
         </div>
       </div>
 
       <div className="flex gap-2 pt-2">
         <Button type="submit" disabled={isPending}>
-          {isPending ? "保存中..." : task ? "保存修改" : "创建任务"}
+          {isPending ? t('tasks.saving') : task ? t('tasks.saveChanges') : t('tasks.createTask')}
         </Button>
         {onCancel && (
           <Button type="button" variant="outline" onClick={onCancel}>
-            取消
+            {t('common.cancel')}
           </Button>
         )}
       </div>

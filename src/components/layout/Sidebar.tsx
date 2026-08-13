@@ -15,6 +15,7 @@ import {
 } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { ThemeToggle } from "@/components/theme/ThemeToggle";
+import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Avatar } from "@/components/ui/avatar";
 import { useProfile } from "@/features/settings/useProfile";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -86,6 +87,13 @@ export function Sidebar() {
           <ThemeToggle />
           <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
             {t('settings.theme')}
+          </span>
+        </div>
+
+        <div className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent">
+          <LanguageSwitcher />
+          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+            {t('settings.language')}
           </span>
         </div>
 

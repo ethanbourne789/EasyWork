@@ -1,4 +1,5 @@
 import { useState, useEffect, useRef } from 'react';
+import { useTranslation } from 'react-i18next';
 import { useSearch } from '@tanstack/react-router';
 import { Plus, FileText, Upload } from 'lucide-react';
 import { Button } from '@/components/ui/button';
@@ -9,6 +10,7 @@ import { useNote, useCreateNote } from './useNotes';
 import { ModuleFab } from '@/components/layout/ModuleFab';
 
 export function Notes() {
+  const { t } = useTranslation();
   const [selectedFolderId, setSelectedFolderId] = useState<string | null>(null);
   const [selectedNoteId, setSelectedNoteId] = useState<string | null>(null);
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
@@ -20,8 +22,8 @@ export function Notes() {
   const { mutate: createNote } = useCreateNote();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCreateNote = (title: string) => {
-    createNote({ title, folder_id: selectedFolderId ?? undefined });
+  const handleCreateNote = (title?: string) => {
+    createNote({ title: title ?? t('notes.untitledNote'), folder_id: selectedFolderId ?? undefined });
   };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -78,11 +80,11 @@ export function Notes() {
       {/* 页面标题 — 对齐原型 */}
       <div className="flex items-end justify-between gap-4 border-b p-4 pb-4">
         <div>
-          <h1 className="font-display text-[28px] font-semibold leading-tight">笔记</h1>
-          <p className="mt-1 text-sm text-muted-foreground">自动保存 · 支持富文本</p>
+          <h1 className="font-display text-[28px] font-semibold leading-tight">{t('notes.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('notes.subtitle')}</p>
         </div>
-        <Button size="sm" onClick={() => handleCreateNote("未命名笔记")} className="hidden md:flex items-center gap-1">
-          <Plus size={15} /> 新建笔记
+        <Button size="sm" onClick={() => handleCreateNote()} className="hidden md:flex items-center gap-1">
+          <Plus size={15} /> {t('notes.newNote')}
         </Button>
       </div>
 
@@ -120,7 +122,7 @@ export function Notes() {
           </div>
         ) : (
           <div className="hidden flex-1 items-center justify-center text-sm text-muted-foreground md:flex">
-            选择一篇笔记开始编辑
+            {t('notes.selectNoteToEdit')}
           </div>
         )}
       </div>
@@ -137,7 +139,7 @@ export function Notes() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            文件夹
+            {t('notes.folders')}
           </button>
           <button
             onClick={() => setMobileView('list')}
@@ -147,7 +149,7 @@ export function Notes() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            笔记列表
+            {t('notes.noteList')}
           </button>
           <button
             onClick={() => setMobileView('editor')}
@@ -157,7 +159,7 @@ export function Notes() {
                 : 'text-muted-foreground hover:text-foreground'
             }`}
           >
-            编辑器
+            {t('notes.editor')}
           </button>
         </div>
 
@@ -208,9 +210,9 @@ export function Notes() {
       <ModuleFab
         mainIcon={Plus}
         actions={[
-          { label: "新建笔记", icon: Plus, onClick: () => handleCreateNote("未命名笔记") },
-          { label: "从模板", icon: FileText, onClick: () => handleCreateNote("未命名笔记（模板）") },
-          { label: "导入文件", icon: Upload, onClick: () => fileInputRef.current?.click() },
+          { label: t('notes.newNote'), icon: Plus, onClick: () => handleCreateNote() },
+          { label: t('notes.fromTemplate'), icon: FileText, onClick: () => handleCreateNote(t('notes.newNoteTemplate')) },
+          { label: t('notes.importFile'), icon: Upload, onClick: () => fileInputRef.current?.click() },
         ]}
       />
     </div>

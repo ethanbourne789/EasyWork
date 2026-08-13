@@ -1,4 +1,5 @@
 import { useState } from 'react';
+import { useTranslation } from 'react-i18next';
 import { Tabs, TabsList, TabsTrigger, TabsContent } from '@/components/ui/tabs';
 import { TransactionList } from './TransactionList';
 import { TransactionForm } from './TransactionForm';
@@ -14,16 +15,17 @@ import type { TransactionType } from '@/types';
 
 type TabValue = 'overview' | 'transactions' | 'accounts' | 'budgets' | 'categories' | 'reports';
 
-const TABS: { value: TabValue; label: string; icon: typeof LayoutGrid }[] = [
-  { value: 'overview', label: '总览', icon: LayoutGrid },
-  { value: 'transactions', label: '交易', icon: ArrowUpDown },
-  { value: 'accounts', label: '账户', icon: Wallet },
-  { value: 'budgets', label: '预算', icon: PiggyBank },
-  { value: 'categories', label: '分类', icon: Tags },
-  { value: 'reports', label: '报表', icon: BarChart3 },
+const TABS: { value: TabValue; labelKey: string; icon: typeof LayoutGrid }[] = [
+  { value: 'overview', labelKey: 'tab_overview', icon: LayoutGrid },
+  { value: 'transactions', labelKey: 'tab_transactions', icon: ArrowUpDown },
+  { value: 'accounts', labelKey: 'tab_accounts', icon: Wallet },
+  { value: 'budgets', labelKey: 'tab_budgets', icon: PiggyBank },
+  { value: 'categories', labelKey: 'tab_categories', icon: Tags },
+  { value: 'reports', labelKey: 'tab_reports', icon: BarChart3 },
 ];
 
 export function Finance() {
+  const { t } = useTranslation();
   const [activeTab, setActiveTab] = useState<TabValue>('overview');
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [formType, setFormType] = useState<TransactionType>('expense');
@@ -37,17 +39,17 @@ export function Finance() {
     <div className="mx-auto w-full max-w-7xl space-y-4 p-4">
       <div className="flex flex-wrap items-end justify-between gap-4">
         <div>
-          <h1 className="font-display text-[28px] font-semibold leading-tight">记账</h1>
-          <p className="mt-1 text-sm text-muted-foreground">收支概况，一眼掌握</p>
+          <h1 className="font-display text-[28px] font-semibold leading-tight">{t('finance.title')}</h1>
+          <p className="mt-1 text-sm text-muted-foreground">{t('finance.subtitle')}</p>
         </div>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
         <TabsList className="flex w-full flex-nowrap justify-start gap-1 overflow-x-auto pb-1 sm:justify-center">
-          {TABS.map((t) => (
-            <TabsTrigger key={t.value} value={t.value} className="gap-1.5 whitespace-nowrap" aria-label={t.label}>
-              <t.icon size={15} />
-              <span className="text-sm">{t.label}</span>
+          {TABS.map((tab) => (
+            <TabsTrigger key={tab.value} value={tab.value} className="gap-1.5 whitespace-nowrap" aria-label={t(`finance.${tab.labelKey}`)}>
+              <tab.icon size={15} />
+              <span className="text-sm">{t(`finance.${tab.labelKey}`)}</span>
             </TabsTrigger>
           ))}
         </TabsList>
@@ -79,18 +81,18 @@ export function Finance() {
 
       <ModuleFab
         mainIcon={Plus}
-        label="记一笔"
+        label={t('finance.recordOne')}
         actions={[
-          { label: '记一笔支出', icon: TrendingDown, onClick: () => openForm('expense') },
-          { label: '记一笔收入', icon: TrendingUp, onClick: () => openForm('income') },
-          { label: '转账', icon: ArrowLeftRight, onClick: () => openForm('transfer') },
+          { label: t('finance.recordExpense'), icon: TrendingDown, onClick: () => openForm('expense') },
+          { label: t('finance.recordIncome'), icon: TrendingUp, onClick: () => openForm('income') },
+          { label: t('finance.recordTransfer'), icon: ArrowLeftRight, onClick: () => openForm('transfer') },
         ]}
       />
 
       <Dialog open={showFormDialog} onOpenChange={setShowFormDialog}>
         <DialogContent className="max-h-[90vh] max-w-md overflow-y-auto">
           <DialogHeader>
-            <DialogTitle>记账</DialogTitle>
+            <DialogTitle>{t('finance.addTransaction')}</DialogTitle>
           </DialogHeader>
           <TransactionForm
             key={formType}

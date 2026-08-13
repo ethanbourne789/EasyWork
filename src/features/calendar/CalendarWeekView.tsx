@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { formatMoney } from "@/lib/money";
 import { toDateKey, isToday, WEEKDAY_LABELS, type DayBucket } from "./calendarUtils";
@@ -24,6 +25,7 @@ function DayColumn({
   onEventClick: (e: CalendarEvent) => void;
   onTaskClick: (t: Task) => void;
 }) {
+  const { t } = useTranslation();
   const key = toDateKey(date);
   const today = isToday(date);
   return (
@@ -36,7 +38,7 @@ function DayColumn({
           today && "bg-primary/5",
         )}
       >
-        <span className="text-[11px] text-muted-foreground">周{WEEKDAY_LABELS[date.getDay() === 0 ? 6 : date.getDay() - 1]}</span>
+        <span className="text-[11px] text-muted-foreground">{t("calendar.weekdayPrefix")}{WEEKDAY_LABELS[date.getDay() === 0 ? 6 : date.getDay() - 1]}</span>
         <span
           className={cn(
             "flex h-8 w-8 items-center justify-center rounded-full text-base font-semibold",
@@ -54,7 +56,7 @@ function DayColumn({
       </button>
       <div className="flex-1 space-y-1 overflow-auto p-1.5">
         {!bucket || (bucket.events.length === 0 && bucket.tasks.length === 0) ? (
-          <div className="py-4 text-center text-[11px] text-muted-foreground">空闲</div>
+          <div className="py-4 text-center text-[11px] text-muted-foreground">{t("calendar.free")}</div>
         ) : (
           <>
             {bucket.events.map((ev) => (
@@ -76,19 +78,19 @@ function DayColumn({
                 {ev.location && <span className="block truncate text-[10px] text-muted-foreground">@ {ev.location}</span>}
               </button>
             ))}
-            {bucket.tasks.map((t) => (
+            {bucket.tasks.map((task) => (
               <button
-                key={t.id}
+                key={task.id}
                 type="button"
-                onClick={() => onTaskClick(t)}
+                onClick={() => onTaskClick(task)}
                 className={cn(
                   "block w-full rounded-md border-l-2 bg-card px-2 py-1 text-left text-xs shadow-sm transition-colors hover:bg-accent",
-                  t.status === "done" && "opacity-60 line-through",
+                  task.status === "done" && "opacity-60 line-through",
                 )}
-                style={{ borderLeftColor: t.status === "done" ? "#10b981" : "#6366f1" }}
-                title={`${t.title}（${t.status === "done" ? "完成" : "进行中"}）`}
+                style={{ borderLeftColor: task.status === "done" ? "#10b981" : "#6366f1" }}
+                title={`${task.title}（${task.status === "done" ? t("calendar.done") : t("calendar.inProgress")}）`}
               >
-                <span className="truncate font-medium">{t.title}</span>
+                <span className="truncate font-medium">{task.title}</span>
               </button>
             ))}
           </>

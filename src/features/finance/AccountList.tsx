@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import {
   useAccounts,
   useTransactions,
@@ -19,15 +20,10 @@ import { formatMoney, sumMoney } from '@/lib/money';
 import type { Account, AccountType } from '@/types';
 import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_TINT } from './constants';
 
-const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
-  cash: '现金',
-  bank: '银行卡',
-  credit: '信用卡',
-};
-
 const emptyAccountForm = { name: '', type: 'bank' as AccountType, initial_balance: 0 };
 
 export function AccountList() {
+  const { t } = useTranslation();
   const { data: accounts = [], isLoading, isError, refetch } = useAccounts();
   const { data: transactions = [] } = useTransactions();
   const createAccount = useCreateAccount();
@@ -43,14 +39,12 @@ export function AccountList() {
   );
   const totalAssets = useMemo(() => sumMoney(Object.values(accountBalances)), [accountBalances]);
 
-  /* 近期动态：最近 5 笔交易（按日期降序） */
   const recentTxs = useMemo(() => {
     return [...transactions]
       .sort((a, b) => new Date(b.date).getTime() - new Date(a.date).getTime())
       .slice(0, 5);
   }, [transactions]);
 
-  /* 资产分布：各账户占总资产百分比 */
   const assetAllocation = useMemo(() => {
     if (totalAssets === 0) return [];
     return accounts
@@ -101,45 +95,51 @@ export function AccountList() {
   };
 
   const handleDeleteAccount = async (account: Account) => {
-    const related = transactions.filter((t) => t.account_id === account.id || t.to_account_id === account.id).length;
+    const related = transactions.filter((tr) => tr.account_id === account.id || tr.to_account_id === account.id).length;
     const msg =
       related > 0
-        ? `账户「${account.name}」下还有 ${related} 条交易记录。删除账户后这些记录将失去账户归属（不再计入总资产），确定继续吗？`
-        : `确定要删除账户「${account.name}」吗？此操作不可撤销。`;
+        ? t('finance.deleteAccountWithTransactions', { name: account.name, count: related })
+        : t('finance.deleteAccountConfirm', { name: account.name });
     const ok = await confirm({
-      title: "删除账户",
+      title: t('finance.deleteAccount'),
       description: msg,
-      confirmText: "删除",
+      confirmText: t('common.delete'),
       destructive: true,
     });
     if (ok) deleteAccount.mutate(account.id);
   };
 
-  if (isLoading) return <div className="p-8 text-center text-muted-foreground">加载中...</div>;
+  if (isLoading) return <div className="p-8 text-center text-muted-foreground">{t('common.loading')}</div>;
   if (isError)
     return (
       <div className="space-y-2 p-8 text-center">
-        <p className="text-sm text-destructive">账户加载失败，请检查网络或登录状态</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <p className="text-sm text-destructive">{t('finance.accountLoadFailed')}</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t('common.retry')}</Button>
       </div>
     );
+
+  const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+    cash: t('finance.cash'),
+    bank: t('finance.bankCard'),
+    credit: t('finance.creditCard'),
+  };
 
   return (
     <div className="space-y-4">
       {/* 总资产 Hero */}
       <div className="rounded-lg bg-gradient-to-br from-primary to-brand-600 p-5 text-primary-foreground shadow-sm sm:p-6">
-        <div className="text-sm opacity-90">总资产</div>
+        <div className="text-sm opacity-90">{t('finance.totalAssets')}</div>
         <div className={cn('mt-1 break-words font-mono text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight', totalAssets < 0 && 'text-destructive-foreground')}>
           {formatMoney(totalAssets, true)}
         </div>
-        <div className="mt-2 text-xs opacity-80">{accounts.length} 个账户</div>
+        <div className="mt-2 text-xs opacity-80">{t('finance.accountsCount', { count: accounts.length })}</div>
       </div>
 
       {/* 账户卡片网格 */}
       {accounts.length === 0 ? (
         <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-card py-12 text-muted-foreground">
           <PiggyBank size={32} className="opacity-40" />
-          <p className="text-sm">还没有账户，点击下方添加</p>
+          <p className="text-sm">{t('finance.noAccounts')}</p>
         </div>
       ) : (
         <>
@@ -166,7 +166,7 @@ export function AccountList() {
                         type="button"
                         onClick={() => openEditDialog(acc)}
                         className="rounded-md p-1.5 text-muted-foreground hover:bg-muted"
-                        aria-label="编辑账户"
+                        aria-label={t('finance.editAccount')}
                       >
                         <Pencil size={15} />
                       </button>
@@ -175,7 +175,7 @@ export function AccountList() {
                         onClick={() => handleDeleteAccount(acc)}
                         disabled={deleteAccount.isPending}
                         className="rounded-md p-1.5 text-destructive hover:bg-destructive/10 disabled:opacity-50"
-                        aria-label="删除账户"
+                        aria-label={t('finance.deleteAccount')}
                       >
                         <Trash2 size={15} />
                       </button>
@@ -197,7 +197,7 @@ export function AccountList() {
           {/* 资产分布 */}
           {assetAllocation.length > 0 && (
             <div className="rounded-lg border bg-card p-4 shadow-sm sm:p-5">
-              <h3 className="mb-3 text-sm font-semibold text-muted-foreground">资产分布</h3>
+              <h3 className="mb-3 text-sm font-semibold text-muted-foreground">{t('finance.assetAllocation')}</h3>
               <div className="space-y-2.5">
                 {assetAllocation.map((item) => {
                   const barWidth = Math.min(Math.abs(item.pct), 100);
@@ -228,11 +228,11 @@ export function AccountList() {
           {recentTxs.length > 0 && (
             <div className="rounded-lg border bg-card p-4 shadow-sm sm:p-5">
               <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
-                <ArrowRightLeft size={14} /> 近期动态
+                <ArrowRightLeft size={14} /> {t('finance.recentActivity')}
               </h3>
               <div className="divide-y divide-border">
                 {recentTxs.map((tx) => {
-                  const accName = accounts.find((a) => a.id === tx.account_id)?.name ?? '未知账户';
+                  const accName = accounts.find((a) => a.id === tx.account_id)?.name ?? t('finance.unknownAccount');
                   const isIncome = tx.type === 'income';
                   const isExpense = tx.type === 'expense';
                   return (
@@ -243,7 +243,7 @@ export function AccountList() {
                         {isIncome ? <TrendingDown size={14} /> : isExpense ? <TrendingUp size={14} /> : <ArrowRightLeft size={14} />}
                       </span>
                       <div className="min-w-0 flex-1">
-                        <div className="truncate text-sm">{tx.note || '未分类'}</div>
+                        <div className="truncate text-sm">{tx.note || t('finance.untitled')}</div>
                         <div className="text-xs text-muted-foreground">{accName} · {tx.date}</div>
                       </div>
                       <span className={cn('shrink-0 text-sm font-mono font-semibold tabular-nums',
@@ -261,26 +261,26 @@ export function AccountList() {
       )}
 
       <Button onClick={openCreateDialog} variant="outline" className="w-full gap-2">
-        <Plus size={16} /> 添加账户
+        <Plus size={16} /> {t('finance.addAccountBtn')}
       </Button>
 
       <Dialog open={showDialog} onOpenChange={setShowDialog}>
         <DialogContent>
           <DialogHeader>
-            <DialogTitle>{editingId ? '编辑账户' : '添加新账户'}</DialogTitle>
+            <DialogTitle>{editingId ? t('finance.editAccount') : t('finance.addAccount')}</DialogTitle>
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">账户名称</label>
+              <label className="text-sm font-medium">{t('finance.accountName')}</label>
               <Input
                 type="text"
-                placeholder="例如：招商银行"
+                placeholder={t('finance.accountNamePlaceholder')}
                 value={accountForm.name}
                 onChange={(e) => setAccountForm({ ...accountForm, name: e.target.value })}
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">账户类型</label>
+              <label className="text-sm font-medium">{t('finance.accountType')}</label>
               <Select
                 value={accountForm.type}
                 onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value as AccountType })}
@@ -291,7 +291,7 @@ export function AccountList() {
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">初始余额</label>
+              <label className="text-sm font-medium">{t('finance.initialBalance')}</label>
               <Input
                 type="number"
                 step="0.01"
@@ -301,9 +301,9 @@ export function AccountList() {
             </div>
           </div>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setShowDialog(false)}>取消</Button>
+            <Button variant="outline" onClick={() => setShowDialog(false)}>{t('common.cancel')}</Button>
             <Button onClick={handleSaveAccount} disabled={isSaving}>
-              {isSaving ? '保存中...' : editingId ? '保存' : '添加'}
+              {isSaving ? t('finance.saving') : editingId ? t('common.save') : t('common.add')}
             </Button>
           </DialogFooter>
         </DialogContent>

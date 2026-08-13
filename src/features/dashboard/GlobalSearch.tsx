@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useTranslation } from "react-i18next";
 import { Search, X, ListChecks, FileText, Wallet } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useTasks } from "@/features/tasks/useTasks";
@@ -26,6 +27,7 @@ export function GlobalSearch() {
   const [query, setQuery] = useState("");
   const [isOpen, setIsOpen] = useState(false);
   const navigate = useNavigate();
+  const { t } = useTranslation();
 
   const { data: tasks = [] } = useTasks();
   const { data: notes = [] } = useNotes();
@@ -45,16 +47,16 @@ export function GlobalSearch() {
 
     tasks
       .filter(
-        (t) =>
-          t.title.toLowerCase().includes(q) ||
-          t.description?.toLowerCase().includes(q)
+        (task) =>
+          task.title.toLowerCase().includes(q) ||
+          task.description?.toLowerCase().includes(q)
       )
-      .forEach((t) => {
+      .forEach((task) => {
         items.push({
           type: "task",
-          id: t.id,
-          title: t.title,
-          subtitle: t.description?.slice(0, 60) || "无描述",
+          id: task.id,
+          title: task.title,
+          subtitle: task.description?.slice(0, 60) || t("dashboard.noDescription"),
         });
       });
 
@@ -68,20 +70,20 @@ export function GlobalSearch() {
         items.push({
           type: "note",
           id: n.id,
-          title: n.title || "无标题",
-          subtitle: (n.content_text || "").slice(0, 60) || "无内容",
+          title: n.title || t("dashboard.noTitle"),
+          subtitle: (n.content_text || "").slice(0, 60) || t("dashboard.noContent"),
         });
       });
 
     transactions
-      .filter((t) => t.note?.toLowerCase().includes(q))
-      .forEach((t) => {
-        const sign = t.type === "income" ? "+" : "-";
+      .filter((tx) => tx.note?.toLowerCase().includes(q))
+      .forEach((tx) => {
+        const sign = tx.type === "income" ? "+" : "-";
         items.push({
           type: "transaction",
-          id: t.id,
-          title: t.note || "未分类",
-          subtitle: `${sign}${formatMoney(t.amount)}`,
+          id: tx.id,
+          title: tx.note || t("dashboard.uncategorized"),
+          subtitle: `${sign}${formatMoney(tx.amount)}`,
         });
       });
 
@@ -102,11 +104,11 @@ export function GlobalSearch() {
   const typeLabel = (type: ResultType) => {
     switch (type) {
       case "task":
-        return "任务";
+        return t("dashboard.taskLabel");
       case "note":
-        return "笔记";
+        return t("dashboard.noteLabel");
       case "transaction":
-        return "记账";
+        return t("dashboard.financeLabel");
     }
   };
 
@@ -125,7 +127,7 @@ export function GlobalSearch() {
           }}
           onFocus={() => query.trim() && setIsOpen(true)}
           onBlur={() => setTimeout(() => setIsOpen(false), 200)}
-          placeholder="搜索任务、笔记、记账…"
+          placeholder={t("dashboard.searchPlaceholder")}
           className="w-full rounded-md border bg-background py-2 pl-9 pr-9 text-sm"
         />
         {query && (
@@ -177,7 +179,7 @@ export function GlobalSearch() {
 
       {isOpen && query.trim() && results.length === 0 && (
         <div className="absolute top-full left-0 right-0 z-50 mt-1 rounded-md border bg-background shadow-lg p-4 text-center text-sm text-muted-foreground">
-          未找到匹配结果
+          {t("dashboard.noResults")}
         </div>
       )}
     </div>
