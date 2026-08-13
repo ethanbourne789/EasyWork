@@ -3,6 +3,12 @@ import { AppLayout } from "@/components/layout/AppLayout";
 import { Dashboard } from "@/features/dashboard/Dashboard";
 import { Login } from "@/features/auth/Login";
 import { Register } from "@/features/auth/Register";
+import { Tasks } from "@/features/tasks/Tasks";
+import { Mail } from "@/features/mail/Mail";
+import { Notes } from "@/features/notes/Notes";
+import { Finance } from "@/features/finance/Finance";
+import { Settings } from "@/features/settings/Settings";
+import { Calendar } from "@/features/calendar/Calendar";
 import { useAuthStore } from "@/features/auth/authStore";
 
 const rootRoute = createRootRouteWithContext()({
@@ -19,6 +25,17 @@ const registerRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/register",
   component: Register,
+});
+
+const indexRoute = createRoute({
+  getParentRoute: () => rootRoute,
+  path: "/",
+  beforeLoad: () => {
+    const { session, loading } = useAuthStore.getState();
+    // loading 期间（getSession 尚未解析）不打断渲染，避免已登录回访用户被弹回登录页
+    if (loading) return;
+    throw redirect({ to: session ? "/dashboard" : "/login" });
+  },
 });
 
 const appRoute = createRoute({
@@ -42,34 +59,50 @@ const dashboardRoute = createRoute({
 const tasksRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/tasks",
-  component: () => <div className="p-4">任务模块（待实现）</div>,
+  component: Tasks,
+  validateSearch: (search: Record<string, unknown>) => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
 });
 
 const mailRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/mail",
-  component: () => <div className="p-4">邮箱模块（待实现）</div>,
+  component: Mail,
 });
 
 const notesRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/notes",
-  component: () => <div className="p-4">笔记模块（待实现）</div>,
+  component: Notes,
+  validateSearch: (search: Record<string, unknown>) => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
 });
 
 const financeRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/finance",
-  component: () => <div className="p-4">记账模块（待实现）</div>,
+  component: Finance,
+  validateSearch: (search: Record<string, unknown>) => ({
+    focus: typeof search.focus === "string" ? search.focus : undefined,
+  }),
 });
 
 const settingsRoute = createRoute({
   getParentRoute: () => appRoute,
   path: "/settings",
-  component: () => <div className="p-4">设置（待实现）</div>,
+  component: Settings,
+});
+
+const calendarRoute = createRoute({
+  getParentRoute: () => appRoute,
+  path: "/calendar",
+  component: Calendar,
 });
 
 const routeTree = rootRoute.addChildren([
+  indexRoute,
   loginRoute,
   registerRoute,
   appRoute.addChildren([
@@ -78,6 +111,7 @@ const routeTree = rootRoute.addChildren([
     mailRoute,
     notesRoute,
     financeRoute,
+    calendarRoute,
     settingsRoute,
   ]),
 ]);

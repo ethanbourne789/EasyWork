@@ -49,6 +49,8 @@ pub fn run() {
             commands::mail_get_message,
             commands::mail_folder_unread,
             commands::mail_add_account,
+            commands::mail_update_account,
+            commands::mail_delete_account,
             commands::mail_sync,
             commands::mail_send,
             commands::mail_mark_read,

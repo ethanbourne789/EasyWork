@@ -11,18 +11,23 @@ create table if not exists public.profiles (
 alter table public.profiles enable row level security;
 
 -- 策略：用户只能读写自己的 profile
-create policy "用户可读自己的 profile"
-  on public.profiles for select
-  using (auth.uid() = id);
+drop policy if exists "profiles_select" on public.profiles; create policy "profiles_select" on public.profiles for select using (auth.uid() = id);
+drop policy if exists "profiles_insert" on public.profiles; create policy "profiles_insert" on public.profiles for insert with check (auth.uid() = id);
+drop policy if exists "profiles_update" on public.profiles; create policy "profiles_update" on public.profiles for update using (auth.uid() = id) with check (auth.uid() = id);
 
-create policy "用户可插入自己的 profile"
-  on public.profiles for insert
-  with check (auth.uid() = id);
+-- 自动更新 updated_at
+create or replace function public.update_updated_at()
+returns trigger language plpgsql as $$
+begin
+  new.updated_at = now();
+  return new;
+end;
+$$;
 
-create policy "用户可更新自己的 profile"
-  on public.profiles for update
-  using (auth.uid() = id)
-  with check (auth.uid() = id);
+drop trigger if exists update_profiles_updated_at on public.profiles;
+create trigger update_profiles_updated_at
+  before update on public.profiles
+  for each row execute function public.update_updated_at();
 
 -- 新用户注册时自动创建 profile 的触发器
 create or replace function public.handle_new_user()
@@ -32,7 +37,8 @@ security definer set search_path = public
 as $$
 begin
   insert into public.profiles (id, display_name)
-  values (new.id, coalesce(new.raw_user_meta_data->>'display_name', new.email));
+  values (new.id, coalesce(new.raw_user_meta_data->>'display_name', new.email))
+  on conflict (id) do nothing;
   return new;
 end;
 $$;

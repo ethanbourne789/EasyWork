@@ -66,6 +66,26 @@ fn map_folder(row: &rusqlite::Row) -> rusqlite::Result<EmailFolder> {
     })
 }
 
+pub fn update_account(conn: &Connection, id: &str, email: &str, display_name: Option<&str>,
+    username: Option<&str>, imap_host: &str, imap_port: i64, smtp_host: &str, smtp_port: i64,
+    use_ssl: bool) -> MailResult<()> {
+    conn.execute(
+        "UPDATE email_accounts SET email=?1, display_name=?2, username=?3, imap_host=?4,
+         imap_port=?5, smtp_host=?6, smtp_port=?7, use_ssl=?8, updated_at=?9 WHERE id=?10",
+        params![email, display_name, username, imap_host, imap_port, smtp_host, smtp_port,
+                use_ssl as i64, chrono::Utc::now().to_rfc3339(), id],
+    )?;
+    Ok(())
+}
+
+pub fn delete_account_data(conn: &Connection, id: &str) -> MailResult<()> {
+    conn.execute("DELETE FROM emails WHERE account_id = ?1", params![id])?;
+    conn.execute("DELETE FROM email_folders WHERE account_id = ?1", params![id])?;
+    conn.execute("DELETE FROM mail_sync_state WHERE account_id = ?1", params![id])?;
+    conn.execute("DELETE FROM email_accounts WHERE id = ?1", params![id])?;
+    Ok(())
+}
+
 pub fn insert_account(conn: &Connection, account: &EmailAccount) -> MailResult<()> {
     conn.execute(
         "INSERT INTO email_accounts (id, email, display_name, username, credential_ref, imap_host, imap_port,

@@ -74,6 +74,32 @@ pub async fn mail_add_account(state: State<'_, AppState>, email: String, display
 }
 
 #[tauri::command]
+pub async fn mail_update_account(state: State<'_, AppState>, id: String, email: String,
+    display_name: Option<String>, username: Option<String>, password: Option<String>,
+    imap_host: String, imap_port: i64, smtp_host: String, smtp_port: i64,
+    use_ssl: Option<bool>) -> Result<(), MailError> {
+    let db = state.service.db.lock().await;
+    db_queries::update_account(&db, &id, &email, display_name.as_deref(), username.as_deref(),
+        &imap_host, imap_port, &smtp_host, smtp_port, use_ssl.unwrap_or(true))?;
+    drop(db);
+    if let Some(pwd) = password {
+        if !pwd.is_empty() {
+            CredentialStore::save_password(&id, &pwd)?;
+        }
+    }
+    Ok(())
+}
+
+#[tauri::command]
+pub async fn mail_delete_account(state: State<'_, AppState>, id: String) -> Result<(), MailError> {
+    let db = state.service.db.lock().await;
+    db_queries::delete_account_data(&db, &id)?;
+    drop(db);
+    let _ = CredentialStore::delete_password(&id);
+    Ok(())
+}
+
+#[tauri::command]
 pub async fn mail_sync(state: State<'_, AppState>, app: AppHandle, account_id: Option<String>) -> Result<SyncResult, MailError> {
     let accounts: Vec<EmailAccount> = {
         let db = state.service.db.lock().await;

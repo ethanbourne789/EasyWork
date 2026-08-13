@@ -67,10 +67,10 @@ export function useEmailSignatures() {
 export function useCreateEmailSignature() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (input: { name: string; content: string; is_default?: boolean }) => {
+    mutationFn: async (input: { name: string; html: string; is_default?: boolean }) => {
       const sig = await mailApi.saveSignature({
         name: input.name,
-        html: input.content,
+        html: input.html,
         isDefault: input.is_default,
       });
       return sig as EmailSignature;
@@ -86,22 +86,20 @@ export function useUpdateEmailSignature() {
   return useMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<EmailSignature> }) => {
       // 后端 mail_save_signature 是 upsert：需要 name + html 必填；
-      // 此处合并现有字段后调用。若仅更新部分字段，需要先取回原签名。
-      let merged: { name: string; html: string; isDefault?: boolean } | undefined;
-      if (!data.name || data.content === undefined) {
+      // 若仅更新部分字段，需要先取回原签名合并。
+      let merged: { name: string; html: string; isDefault?: boolean };
+      if (!data.name || data.html === undefined) {
         const list = await mailApi.listSignatures();
-        const prev = (list ?? []).find((s: { id?: string; name?: string; html?: string; content?: string; is_default?: boolean }) => s.id === id) as
-          | { id: string; name: string; html?: string; content?: string; is_default?: boolean }
-          | undefined;
+        const prev = (list ?? []).find((s) => s.id === id);
         merged = {
           name: data.name ?? prev?.name ?? "",
-          html: data.content ?? prev?.html ?? prev?.content ?? "",
+          html: data.html ?? prev?.html ?? "",
           isDefault: data.is_default ?? prev?.is_default,
         };
       } else {
         merged = {
           name: data.name,
-          html: data.content,
+          html: data.html,
           isDefault: data.is_default,
         };
       }

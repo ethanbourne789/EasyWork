@@ -1,0 +1,9 @@
+# 绿色版构建配置（no bundle / portable）
+#
+# 静态链接 MSVC CRT（/MT），使生成的 EasyWork.exe 不依赖系统中已安装的
+# Visual C++ 可再发行组件（VC_redist.x64.exe）。
+# 这样「拷贝即用」，符合绿色软件的定义。
+#
+# 注意：该配置仅对 Windows MSVC 目标生效，不影响其他平台。
+[target.x86_64-pc-windows-msvc]
+rustflags = ["-C", "target-feature=+crt-static"]

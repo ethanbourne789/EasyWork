@@ -1,8 +1,5 @@
-import {
-  useQuery,
-  useQueryClient,
-} from "@tanstack/react-query";
-import { mailApi } from "./mailApi";
+import { useQuery, useQueryClient } from "@tanstack/react-query";
+import { mailApi, UNIFIED_INBOX_ID } from "./mailApi";
 import { getCurrentUserId } from "@/features/auth/authStore";
 import { useSafeMutation } from "@/lib/mutation";
 import type {
@@ -74,10 +71,59 @@ export function useEmails(folderId?: string) {
   return useQuery({
     queryKey: ["emails", folderId],
     queryFn: async () => {
-      const data = await mailApi.listMessages(folderId!);
+      // 统一收件箱虚拟节点：聚合所有账户的收件箱邮件
+      if (folderId === UNIFIED_INBOX_ID) {
+        const data = await mailApi.unifiedInbox(50, 0);
+        return (data ?? []) as Email[];
+      }
+      const data = await mailApi.listMessages(folderId!, 50, 0);
       return (data ?? []) as Email[];
     },
     enabled: folderId !== undefined,
+  });
+}
+
+/**
+ * 带分页的邮件查询（用于无限滚动加载）。
+ * @param folderId - 文件夹 ID 或统一收件箱 ID
+ * @param pageSize - 每页数量（默认 50）
+ */
+export function useEmailsPaginated(folderId?: string, pageSize = 50) {
+  return useQuery({
+    queryKey: ["emails-paginated", folderId, pageSize],
+    queryFn: async () => {
+      if (folderId === UNIFIED_INBOX_ID) {
+        const data = await mailApi.unifiedInbox(pageSize, 0);
+        return (data ?? []) as Email[];
+      }
+      if (!folderId) return [];
+      const data = await mailApi.listMessages(folderId, pageSize, 0);
+      return (data ?? []) as Email[];
+    },
+    enabled: folderId !== undefined,
+  });
+}
+
+/** 加载更多邮件（追加到当前列表） */
+export async function loadMoreEmails(folderId: string, currentCount: number, pageSize = 50): Promise<Email[]> {
+  if (folderId === UNIFIED_INBOX_ID) {
+    const data = await mailApi.unifiedInbox(pageSize, currentCount);
+    return (data ?? []) as Email[];
+  }
+  const data = await mailApi.listMessages(folderId, pageSize, currentCount);
+  return (data ?? []) as Email[];
+}
+
+/**
+ * 统一收件箱未读数。聚合所有账户收件箱的未读邮件总数。
+ */
+export function useUnifiedUnread() {
+  return useQuery({
+    queryKey: ["unified-unread"],
+    queryFn: async () => {
+      const n = await mailApi.unifiedUnread();
+      return Number(n ?? 0);
+    },
   });
 }
 
@@ -117,6 +163,7 @@ export function useMarkAsRead() {
       qc.invalidateQueries({ queryKey: ["email", id] });
       qc.invalidateQueries({ queryKey: ["email-folders"] });
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
       qc.invalidateQueries({ queryKey: ["emails"] });
     },
   });
@@ -133,6 +180,7 @@ export function useToggleStar() {
     onSuccess: (_folderId, id) => {
       qc.invalidateQueries({ queryKey: ["email", id] });
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
       qc.invalidateQueries({ queryKey: ["emails"] });
     },
   });
@@ -163,6 +211,7 @@ export function useSendEmail() {
     onSuccess: (email) => {
       qc.invalidateQueries({ queryKey: ["email-folders"] });
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
       if (email?.folder_id) qc.invalidateQueries({ queryKey: ["emails", email.folder_id] });
       else qc.invalidateQueries({ queryKey: ["emails"] });
     },
@@ -180,6 +229,7 @@ export function useSyncMail() {
       qc.invalidateQueries({ queryKey: ["emails"] });
       qc.invalidateQueries({ queryKey: ["email-folders"] });
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
     },
   });
 }
@@ -200,6 +250,7 @@ export function useSaveDraft() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
       qc.invalidateQueries({ queryKey: ["emails"] });
     },
   });
@@ -243,6 +294,7 @@ export function useCreateEmailAccount() {
             qc.invalidateQueries({ queryKey: ["emails"] });
             qc.invalidateQueries({ queryKey: ["email-folders"] });
             qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+            qc.invalidateQueries({ queryKey: ["unified-unread"] });
           })
           .catch((e: unknown) => {
             console.error("自动同步邮件失败:", e instanceof Error ? e.message : e);
@@ -262,6 +314,7 @@ export function useDeleteEmail() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
       qc.invalidateQueries({ queryKey: ["emails"] });
     },
   });
@@ -304,6 +357,7 @@ export function useUpdateDraft() {
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
       qc.invalidateQueries({ queryKey: ["emails"] });
     },
   });
@@ -343,6 +397,57 @@ export function useDeleteFolder() {
       qc.invalidateQueries({ queryKey: ["email-folders"] });
       qc.invalidateQueries({ queryKey: ["emails"] });
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
+    },
+  });
+}
+
+export function useUpdateEmailAccount() {
+  const qc = useQueryClient();
+  return useSafeMutation({
+    mutationFn: async (input: {
+      id: string;
+      email: string;
+      display_name?: string;
+      username?: string;
+      password?: string;
+      imap_host: string;
+      imap_port: number;
+      smtp_host: string;
+      smtp_port: number;
+      use_ssl: boolean;
+    }) => {
+      await mailApi.updateAccount({
+        id: input.id,
+        email: input.email,
+        displayName: input.display_name || undefined,
+        username: input.username?.trim() || undefined,
+        password: input.password || undefined,
+        imapHost: input.imap_host,
+        imapPort: input.imap_port,
+        smtpHost: input.smtp_host,
+        smtpPort: input.smtp_port,
+        useSsl: input.use_ssl,
+      });
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["email-accounts"] });
+    },
+  });
+}
+
+export function useDeleteEmailAccount() {
+  const qc = useQueryClient();
+  return useSafeMutation({
+    mutationFn: async (id: string) => {
+      await mailApi.deleteAccount(id);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["email-accounts"] });
+      qc.invalidateQueries({ queryKey: ["email-folders"] });
+      qc.invalidateQueries({ queryKey: ["emails"] });
+      qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
+      qc.invalidateQueries({ queryKey: ["unified-unread"] });
     },
   });
 }
