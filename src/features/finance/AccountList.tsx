@@ -13,16 +13,17 @@ import { confirm } from '@/lib/confirm';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogFooter } from '@/components/ui/dialog';
-import { Plus, Pencil, Trash2, Wallet, Landmark, CreditCard, PiggyBank, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
+import { Plus, Pencil, Trash2, PiggyBank, ArrowRightLeft, TrendingUp, TrendingDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { formatMoney, sumMoney } from '@/lib/money';
 import type { Account, AccountType } from '@/types';
+import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_TINT } from './constants';
 
-const ACCOUNT_TYPES: { value: AccountType; label: string; icon: typeof Wallet; tint: string }[] = [
-  { value: 'cash', label: '现金', icon: Wallet, tint: 'bg-amber-50 text-amber-600' },
-  { value: 'bank', label: '银行卡', icon: Landmark, tint: 'bg-brand-50 text-brand-700' },
-  { value: 'credit', label: '信用卡', icon: CreditCard, tint: 'bg-rose-50 text-rose-600' },
-];
+const ACCOUNT_TYPE_LABELS: Record<AccountType, string> = {
+  cash: '现金',
+  bank: '银行卡',
+  credit: '信用卡',
+};
 
 const emptyAccountForm = { name: '', type: 'bank' as AccountType, initial_balance: 0 };
 
@@ -123,12 +124,10 @@ export function AccountList() {
       </div>
     );
 
-  const typeMeta = (t: AccountType) => ACCOUNT_TYPES.find((x) => x.value === t) ?? ACCOUNT_TYPES[1];
-
   return (
     <div className="space-y-4">
       {/* 总资产 Hero */}
-      <div className="rounded-2xl bg-gradient-to-br from-primary to-brand-700 p-5 text-primary-foreground shadow-sm sm:p-6">
+      <div className="rounded-lg bg-gradient-to-br from-primary to-brand-600 p-5 text-primary-foreground shadow-sm sm:p-6">
         <div className="text-sm opacity-90">总资产</div>
         <div className={cn('mt-1 break-words font-mono text-2xl sm:text-3xl md:text-4xl font-bold tracking-tight', totalAssets < 0 && 'text-destructive-foreground')}>
           {formatMoney(totalAssets, true)}
@@ -138,7 +137,7 @@ export function AccountList() {
 
       {/* 账户卡片网格 */}
       {accounts.length === 0 ? (
-        <div className="flex flex-col items-center gap-2 rounded-2xl border border-dashed bg-card py-12 text-muted-foreground">
+        <div className="flex flex-col items-center gap-2 rounded-lg border border-dashed bg-card py-12 text-muted-foreground">
           <PiggyBank size={32} className="opacity-40" />
           <p className="text-sm">还没有账户，点击下方添加</p>
         </div>
@@ -147,20 +146,20 @@ export function AccountList() {
           <div className="grid grid-cols-1 gap-3 sm:grid-cols-2">
             {accounts.map((acc) => {
               const bal = accountBalances[acc.id] || 0;
-              const meta = typeMeta(acc.type);
-              const Icon = meta.icon;
+              const Icon = ACCOUNT_TYPE_ICONS[acc.type];
+              const tint = ACCOUNT_TYPE_TINT[acc.type];
               return (
                 <div
                   key={acc.id}
-                  className="group relative overflow-hidden rounded-2xl border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
+                  className="group relative overflow-hidden rounded-lg border bg-card p-4 shadow-sm transition-shadow hover:shadow-md"
                 >
                   <div className="flex items-start gap-3">
-                    <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-xl', meta.tint)}>
+                    <span className={cn('flex h-11 w-11 shrink-0 items-center justify-center rounded-lg', tint)}>
                       <Icon size={20} />
                     </span>
                     <div className="min-w-0 flex-1">
                       <div className="truncate font-medium">{acc.name}</div>
-                      <div className="text-xs text-muted-foreground">{meta.label}</div>
+                      <div className="text-xs text-muted-foreground">{ACCOUNT_TYPE_LABELS[acc.type]}</div>
                     </div>
                     <div className="flex items-center gap-1 opacity-0 transition-opacity group-hover:opacity-100">
                       <button
@@ -197,7 +196,7 @@ export function AccountList() {
 
           {/* 资产分布 */}
           {assetAllocation.length > 0 && (
-            <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">
+            <div className="rounded-lg border bg-card p-4 shadow-sm sm:p-5">
               <h3 className="mb-3 text-sm font-semibold text-muted-foreground">资产分布</h3>
               <div className="space-y-2.5">
                 {assetAllocation.map((item) => {
@@ -227,7 +226,7 @@ export function AccountList() {
 
           {/* 近期动态 */}
           {recentTxs.length > 0 && (
-            <div className="rounded-2xl border bg-card p-4 shadow-sm sm:p-5">
+            <div className="rounded-lg border bg-card p-4 shadow-sm sm:p-5">
               <h3 className="mb-3 flex items-center gap-2 text-sm font-semibold text-muted-foreground">
                 <ArrowRightLeft size={14} /> 近期动态
               </h3>
@@ -286,8 +285,8 @@ export function AccountList() {
                 value={accountForm.type}
                 onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value as AccountType })}
               >
-                {ACCOUNT_TYPES.map((t) => (
-                  <option key={t.value} value={t.value}>{t.label}</option>
+                {Object.entries(ACCOUNT_TYPE_LABELS).map(([value, label]) => (
+                  <option key={value} value={value}>{label}</option>
                 ))}
               </Select>
             </div>
