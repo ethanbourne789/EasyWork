@@ -16,6 +16,8 @@ export default [
       "supabase/**",
       "*.config.js",
       "*.config.ts",
+      "debug-*.mjs",
+      "test-*.mjs",
     ],
   },
   js.configs.recommended,

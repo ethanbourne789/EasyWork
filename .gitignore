@@ -64,6 +64,14 @@ capture-console.js
 diag.mjs
 finance-audit.mjs
 smoke.mjs
+debug-caldav.mjs
+debug-caldav2.mjs
+debug-caldav3.mjs
+debug-caldav4.mjs
+debug-caldav5.mjs
+debug-db-state.mjs
+test-caldav-discovery.mjs
+test-calendar-subscription.mjs
 
 # IDE/编辑器
 .idea/
