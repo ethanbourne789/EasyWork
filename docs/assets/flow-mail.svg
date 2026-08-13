@@ -1,0 +1,124 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 800 680" font-family="'Segoe UI', 'PingFang SC', 'Microsoft YaHei', sans-serif">
+  <defs>
+    <linearGradient id="bg" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#f8f9fc"/>
+      <stop offset="100%" stop-color="#eef0f6"/>
+    </linearGradient>
+    <linearGradient id="header" x1="0" y1="0" x2="1" y2="0">
+      <stop offset="0%" stop-color="#6366f1"/>
+      <stop offset="100%" stop-color="#818cf8"/>
+    </linearGradient>
+    <filter id="shadow" x="-5%" y="-5%" width="110%" height="115%">
+      <feDropShadow dx="0" dy="2" stdDeviation="4" flood-color="#00000015"/>
+    </filter>
+    <marker id="arrow" viewBox="0 0 10 10" refX="9" refY="5" markerWidth="6" markerHeight="6" orient="auto">
+      <path d="M 0 0 L 10 5 L 0 10 z" fill="#94a3b8"/>
+    </marker>
+  </defs>
+
+  <!-- Background -->
+  <rect width="800" height="680" rx="12" fill="url(#bg)"/>
+
+  <!-- Title -->
+  <rect x="20" y="20" width="760" height="48" rx="8" fill="url(#header)"/>
+  <text x="400" y="50" text-anchor="middle" fill="white" font-size="18" font-weight="bold">邮箱 Mail — 收发同步流程</text>
+
+  <!-- Left Column: Fetch Mail -->
+  <rect x="30" y="90" width="350" height="560" rx="10" fill="#eff6ff" stroke="#3b82f6" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="205" y="118" text-anchor="middle" fill="#1e40af" font-size="15" font-weight="bold">收信流程（fetch-mail）</text>
+
+  <!-- Step 1 -->
+  <rect x="50" y="140" width="310" height="44" rx="8" fill="white" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="205" y="167" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">触发同步（手动点击 / pg_cron 每5分钟）</text>
+
+  <line x1="205" y1="184" x2="205" y2="200" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 2 -->
+  <rect x="50" y="200" width="310" height="44" rx="8" fill="white" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="205" y="227" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">读取游标 last_uid + uid_validity</text>
+
+  <line x1="205" y1="244" x2="205" y2="260" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 3: Decision -->
+  <polygon points="205,260 310,300 205,340 100,300" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="205" y="296" text-anchor="middle" fill="#92400e" font-size="11" font-weight="bold">uid_validity 变化？</text>
+  <text x="205" y="312" text-anchor="middle" fill="#92400e" font-size="10">是 → 全量窗口</text>
+  <text x="205" y="326" text-anchor="middle" fill="#92400e" font-size="10">否 → 增量拉取</text>
+
+  <!-- Yes branch -->
+  <line x1="100" y1="300" x2="60" y2="300" stroke="#f59e0b" stroke-width="1.5"/>
+  <line x1="60" y1="300" x2="60" y2="370" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="72" y="296" fill="#f59e0b" font-size="10">是</text>
+
+  <!-- No branch -->
+  <line x1="310" y1="300" x2="350" y2="300" stroke="#10b981" stroke-width="1.5"/>
+  <line x1="350" y1="300" x2="350" y2="370" stroke="#10b981" stroke-width="1.5"/>
+  <text x="320" y="296" fill="#10b981" font-size="10">否</text>
+
+  <!-- Step 4a: Full fetch -->
+  <rect x="50" y="370" width="140" height="44" rx="8" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5"/>
+  <text x="120" y="397" text-anchor="middle" fill="#92400e" font-size="11" font-weight="bold">拉最近 200 封</text>
+
+  <!-- Step 4b: Incremental -->
+  <rect x="270" y="370" width="90" height="44" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="315" y="397" text-anchor="middle" fill="#065f46" font-size="11" font-weight="bold">增量拉取</text>
+
+  <!-- Merge -->
+  <line x1="120" y1="414" x2="120" y2="440" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="315" y1="414" x2="315" y2="440" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="120" y1="440" x2="315" y2="440" stroke="#94a3b8" stroke-width="1.5"/>
+  <line x1="217" y1="440" x2="217" y2="460" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 5 -->
+  <rect x="50" y="460" width="310" height="44" rx="8" fill="white" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="205" y="487" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">PostalMime 解析 MIME 邮件原文</text>
+
+  <line x1="205" y1="504" x2="205" y2="520" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 6 -->
+  <rect x="50" y="520" width="310" height="44" rx="8" fill="white" stroke="#3b82f6" stroke-width="1.5"/>
+  <text x="205" y="547" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">upsert 到 emails 表（按 message_id 去重）</text>
+
+  <line x1="205" y1="564" x2="205" y2="580" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <!-- Step 7 -->
+  <rect x="50" y="580" width="310" height="44" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="205" y="607" text-anchor="middle" fill="#065f46" font-size="12" font-weight="bold">更新游标 + 删除对账（远端已删则本地删除）</text>
+
+  <!-- Right Column: Send Mail -->
+  <rect x="420" y="90" width="350" height="380" rx="10" fill="#f0fdf4" stroke="#10b981" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="595" y="118" text-anchor="middle" fill="#065f46" font-size="15" font-weight="bold">发信流程（send-mail）</text>
+
+  <!-- Send steps -->
+  <rect x="440" y="140" width="310" height="40" rx="8" fill="white" stroke="#10b981" stroke-width="1.5"/>
+  <text x="595" y="165" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">校验 JWT → 获取账号 SMTP 配置</text>
+
+  <line x1="595" y1="180" x2="595" y2="196" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="196" width="310" height="40" rx="8" fill="white" stroke="#10b981" stroke-width="1.5"/>
+  <text x="595" y="221" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">手写 SMTP 客户端连接服务器</text>
+
+  <line x1="595" y1="236" x2="595" y2="252" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="252" width="310" height="40" rx="8" fill="white" stroke="#10b981" stroke-width="1.5"/>
+  <text x="595" y="277" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">AUTH LOGIN → MAIL → RCPT → DATA</text>
+
+  <line x1="595" y1="292" x2="595" y2="308" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="308" width="310" height="40" rx="8" fill="white" stroke="#10b981" stroke-width="1.5"/>
+  <text x="595" y="333" text-anchor="middle" fill="#334155" font-size="12" font-weight="bold">dot-stuffing + base64 附件编码</text>
+
+  <line x1="595" y1="348" x2="595" y2="364" stroke="#94a3b8" stroke-width="2" marker-end="url(#arrow)"/>
+
+  <rect x="440" y="364" width="310" height="40" rx="8" fill="#ecfdf5" stroke="#10b981" stroke-width="1.5"/>
+  <text x="595" y="389" text-anchor="middle" fill="#065f46" font-size="12" font-weight="bold">写回已发送文件夹（数据库）</text>
+
+  <!-- Bottom right: Security -->
+  <rect x="420" y="500" width="350" height="150" rx="10" fill="#fef3c7" stroke="#f59e0b" stroke-width="1.5" filter="url(#shadow)"/>
+  <text x="595" y="528" text-anchor="middle" fill="#92400e" font-size="14" font-weight="bold">安全机制</text>
+
+  <text x="440" y="555" fill="#78350f" font-size="11">  1. sanitizeHtml — DOMPurify 净化邮件正文</text>
+  <text x="440" y="575" fill="#78350f" font-size="11">     禁用 script / iframe / form / on* 事件</text>
+  <text x="440" y="600" fill="#78350f" font-size="11">  2. 密码加密存储 — RLS 仅本人 + service_role 可见</text>
+  <text x="440" y="620" fill="#78350f" font-size="11">  3. 导出 stripSensitive — 剔除账号密码防泄露</text>
+</svg>

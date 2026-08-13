@@ -1,0 +1,75 @@
+node_modules
+dist
+dist-ssr
+*.local
+.env
+src-tauri/target
+.vite
+coverage
+.DS_Store
+
+# Supabase Secrets（含真实密钥，切勿提交）
+supabase/.env.secrets
+# Supabase 本地状态文件（不应提交）
+supabase/.temp/
+supabase/_applied_local/
+
+# tsc -b 配置项目产物（已由 tsconfig.node.json noEmit 抑制，双重保险）
+vite.config.js
+vite.config.d.ts
+*.timestamp-*.mjs
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
+*.tsbuildinfo
+
+# Brainstorm visual companion（本地临时 mockup）
+.superpowers/
+
+# Build artifacts
+gradle-*.zip
+android-*.log
+android-build*.log
+build-green.log
+cargo-build.log
+pnpm-install.log
+_tmp_*
+android-release/
+release-green/
+src-tauri/gen/schemas/
+src-tauri/build-green.log
+*.apk
+*.apk.idsig
+
+# Tauri 生成的 Android 项目（从 src-tauri/icons 自动生成）
+src-tauri/gen/
+
+# 日志文件
+*.log
+dev-server.log
+
+# 临时文件
+tmp_*.json
+skills-lock.json
+downloaded.ts
+
+# 测试截图目录（本地调试产物，不提交）
+audit-shots/
+audit-shots-v2/
+gui-test-screenshots/
+.workbuddy/shots/
+scripts/mail-e2e-shots/
+
+# 根目录临时调试脚本（如有需要应移入 scripts/ 并明确用途）
+capture-console.js
+diag.mjs
+finance-audit.mjs
+smoke.mjs
+
+# IDE/编辑器
+.idea/
+.vscode/*.suo
+*.sdf
+*.sln.docstates
+
+# Android Studio
+*.iml

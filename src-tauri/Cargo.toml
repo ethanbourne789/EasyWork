@@ -1,0 +1,51 @@
+[package]
+name = "easywork"
+version = "0.1.0"
+edition = "2021"
+
+[lib]
+name = "easywork_lib"
+crate-type = ["staticlib", "cdylib", "rlib"]
+
+[build-dependencies]
+tauri-build = { version = "2", features = [] }
+
+[dependencies]
+tauri = { version = "2", features = [] }
+tauri-plugin-dialog = "2"
+tauri-plugin-notification = "2"
+
+tokio = { version = "1", features = ["rt-multi-thread", "macros", "net", "time", "sync", "fs", "io-util"] }
+
+async-imap = { version = "0.10", default-features = false, features = ["runtime-tokio"] }
+futures = "0.3"
+lettre = { version = "0.11", default-features = false, features = ["tokio1", "tokio1-rustls-tls", "smtp-transport", "builder", "hostname", "pool"] }
+mail-parser = "0.11"
+
+rustls = { version = "0.23", default-features = false, features = ["ring", "logging", "std", "tls12"] }
+tokio-rustls = { version = "0.26", default-features = false, features = ["ring", "logging", "tls12"] }
+rustls-platform-verifier = "0.5"
+
+rusqlite = { version = "0.32", features = ["bundled"] }
+keyring = "3"
+ammonia = "4"
+
+tracing = "0.1"
+tracing-subscriber = "0.3"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+chrono = { version = "0.4", features = ["serde"] }
+uuid = { version = "1", features = ["v4"] }
+
+[target.'cfg(target_os = "android")'.dependencies]
+tauri-plugin-background-service = "1"
+
+[features]
+# Required for release builds to embed the frontend dist assets and serve them
+# via the Tauri custom protocol (https://tauri.localhost on Windows).
+# `cargo build --release` must include `--features custom-protocol`.
+custom-protocol = ["tauri/custom-protocol"]
+
+[profile.release]
+# Strip debug symbols from the final binary (smaller portable exe; no runtime cost).
+strip = true

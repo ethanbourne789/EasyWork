@@ -1,0 +1,71 @@
+# Supabase CLI 项目配置
+# 文档: https://supabase.com/docs/reference/cli/config
+# 此文件与 supabase/ 目录一起，构成 Supabase 云端部署单元。
+
+project_id = "nbcsywzqvvputqitmpla"
+
+# ---------- API（本地开发用，云端由 Supabase 托管） ----------
+[api]
+enabled = true
+port = 54321
+schemas = ["public", "graphql_public"]
+extra_search_path = ["public", "extensions"]
+max_rows = 1000
+
+# ---------- 数据库 ----------
+[db]
+port = 54322
+shadow_port = 54320
+major_version = 17
+
+# ---------- 鉴权 ----------
+[auth]
+enabled = true
+site_url = "http://localhost:1420"
+additional_redirect_urls = ["https://nbcsywzqvvputqitmpla.supabase.co/auth/v1/callback"]
+jwt_expiry = 3600
+refresh_token_rotation_enabled = true
+refresh_token_reuse_interval = 10
+enable_signup = true
+enable_anonymous_sign_ins = false
+
+[auth.email]
+enable_signup = true
+double_confirm_changes = true
+enable_confirmations = false
+
+# ---------- 存储 ----------
+[storage]
+enabled = true
+file_size_limit = "50MiB"
+
+# ---------- 实时 ----------
+[realtime]
+enabled = true
+
+# ---------- Edge Functions ----------
+# verify_jwt = false: 函数自行校验 JWT / SERVICE_ROLE_KEY，
+#   不依赖 Supabase 网关层强制 JWT（定时任务用 service_role 调用，无用户 JWT）。
+# 部署时也可用 --no-verify-jwt flag 覆盖。
+
+[functions.fetch-mail]
+verify_jwt = false
+
+[functions.send-mail]
+verify_jwt = false
+
+[functions.manage-folder]
+verify_jwt = false
+
+[functions.sync-calendar]
+verify_jwt = false
+
+# ---------- 本地存储桶 ----------
+[storage.buckets.avatars]
+public = true
+file_size_limit = "2MiB"
+allowed_mime_types = ["image/png", "image/jpeg", "image/gif", "image/webp"]
+
+[storage.buckets.email-attachments]
+public = false
+file_size_limit = "25MiB"
