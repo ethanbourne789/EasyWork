@@ -103,7 +103,21 @@ export function useRealtimeSync(enabled: boolean) {
         }
       }
 
-      // 任一 channel 尚未订阅 -> 重连中
+      // 检查是否有 channel 处于 pending 状态（正在初始化）
+      // 如果所有非 subscribed 的 channel 都是 pending，说明是正常初始化，不更新 UI 状态
+      let hasPending = false;
+      for (const group of CHANNEL_GROUPS) {
+        const st = channelStatus.get(group.name);
+        if (st === "pending") {
+          hasPending = true;
+        }
+      }
+      if (hasPending) {
+        // 仍在初始化阶段，保持当前状态不变（不要闪烁 reconnecting）
+        return;
+      }
+
+      // 任一 channel 尚未订阅（且不是 pending）-> 重连中
       for (const group of CHANNEL_GROUPS) {
         if (channelStatus.get(group.name) !== "subscribed") {
           store.setStatus("reconnecting");
@@ -130,7 +144,6 @@ export function useRealtimeSync(enabled: boolean) {
       }
 
       channelStatus.set(group.name, "pending");
-      updateGlobalStatus();
 
       // 使用带时间戳的唯一 channel 名称，避免 StrictMode 下旧 channel 未完全清理时复用同名对象
       const uniqueChannelName = `${group.name}-${Date.now()}-${Math.random().toString(36).slice(2)}`;
@@ -163,7 +176,7 @@ export function useRealtimeSync(enabled: boolean) {
         // 断线 / 鉴权失效 / 被服务端关闭：记录错误并安排重试
         console.error(`[realtime] ${group.name}: ${status}`, err);
         channelStatus.set(group.name, "pending");
-        useRealtimeStore.getState().setStatus("reconnecting");
+        updateGlobalStatus();
 
         const count = (retryCount.get(group.name) ?? 0) + 1;
         retryCount.set(group.name, count);
