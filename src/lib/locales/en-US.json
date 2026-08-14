@@ -34,6 +34,7 @@
     "all": "All",
     "none": "None",
     "optional": "Optional",
+    "required": "is required",
     "saving": "Saving...",
     "setting": "Setting...",
     "adding": "Adding...",
@@ -68,7 +69,8 @@
     "passwordTooShort": "Password must be at least 6 characters",
     "pleaseConfirmPassword": "Please confirm your password",
     "passwordMismatch": "Passwords do not match",
-    "changePasswordSuccess": "Password changed successfully"
+    "changePasswordSuccess": "Password changed successfully",
+    "registering": "Registering..."
   },
   "nav": {
     "dashboard": "Dashboard",
@@ -451,7 +453,7 @@
     "noCashWallet": "Cash Wallet"
   },
   "calendar": {
-    "title": "Calendar",
+    "title": "Title",
     "subtitle": "Tasks, events, and daily finances at a glance",
     "today": "Today",
     "month": "Month",
@@ -487,7 +489,6 @@
     "income": "Income",
     "expense": "Expense",
     "eventsAndTasks": "{{eventCount}} events · {{taskCount}} tasks",
-    "title": "Title",
     "titlePlaceholder": "e.g.: Weekly Team Meeting",
     "date": "Date",
     "start": "Start",
@@ -623,7 +624,10 @@
     "closeOnExit": "Close Window to Exit",
     "closeOnExitDesc": "Exit the app when closing the window; by default it stays running in the background and minimizes to the system tray",
     "trayMenuDesc": "Right-click the system tray icon to choose \"Show\" or \"Exit EasyWork\". Left-click to toggle window visibility.",
-    "bgSyncDesc": "When running in the background, emails are synced automatically every 5 minutes."
+    "bgSyncDesc": "When running in the background, emails are synced automatically every 5 minutes.",
+    "logoutFailed": "Logout failed, please check your network and try again",
+    "exportSuccess": "Export successful",
+    "exportFailed": "Export failed:"
   },
   "layout": {
     "realtimeDisconnected": "Real-time sync disconnected, reconnecting...",
@@ -644,5 +648,51 @@
     "switchToEnglish": "Switch to English",
     "switchToChinese": "Switch to Chinese",
     "offline": "Network disconnected, some features unavailable"
+  },
+  "sync": {
+    "title": "Cloud Sync",
+    "subtitle": "Configure a PostgreSQL database connection to incrementally sync your local data across devices",
+    "enabled": "Sync enabled",
+    "disabled": "Sync disabled",
+    "provider": "Database provider",
+    "providerSupabase": "Supabase",
+    "providerAiven": "Aiven",
+    "providerRender": "Render",
+    "providerCustom": "Custom",
+    "connectionString": "Connection string",
+    "connectionStringPlaceholder": "postgresql://user:password@host:5432/db",
+    "databaseName": "Database name",
+    "deviceName": "Device name",
+    "testConnection": "Test connection",
+    "testing": "Testing...",
+    "save": "Save config",
+    "delete": "Delete config",
+    "trigger": "Sync now",
+    "syncing": "Syncing...",
+    "synced": "Synced",
+    "pending": "Pending sync",
+    "error": "Sync error",
+    "notConfigured": "Sync not configured",
+    "securityNotice": "Connection info is stored securely only in the local database and is never sent to any server other than the database you specify.",
+    "log": "Sync log",
+    "lastSync": "Last synced",
+    "never": "Never synced",
+    "connected": "Connection successful",
+    "connectionFailed": "Connection failed",
+    "confirmDeleteTitle": "Delete sync config",
+    "confirmDeleteDesc": "Deleting stops automatic sync on this device. Data already uploaded to the cloud is unaffected. Continue?",
+    "configSaved": "Sync config saved",
+    "configDeleted": "Sync config deleted",
+    "saveFailed": "Save failed",
+    "noLog": "No sync records yet",
+    "desktopOnly": "Desktop only",
+    "directionUpload": "Upload",
+    "directionDownload": "Download",
+    "table": "Table",
+    "records": "Records",
+    "result": "Result",
+    "success": "Success",
+    "time": "Time",
+    "device": "Device"
   }
 }

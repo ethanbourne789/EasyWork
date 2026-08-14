@@ -50,8 +50,8 @@ function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function AuthedRouter() {
-  const session = useAuthStore((s) => s.session);
-  useRealtimeSync(!!session);
+  const user = useAuthStore((s) => s.user);
+  useRealtimeSync(!!user);
   return (
     <QueryCacheGuard>
       <RouterProvider router={router} />
@@ -64,16 +64,16 @@ function AuthedRouter() {
  * 从缓存直接渲染给下一个登录用户（多数查询 key 不含 user_id）。
  */
 function QueryCacheGuard({ children }: { children: ReactNode }) {
-  const session = useAuthStore((s) => s.session);
+  const user = useAuthStore((s) => s.user);
   const queryClient = useQueryClient();
-  const prevSession = useRef(session);
+  const prevSession = useRef(user);
 
   useEffect(() => {
-    if (prevSession.current && !session) {
+    if (prevSession.current && !user) {
       queryClient.clear();
     }
-    prevSession.current = session;
-  }, [session, queryClient]);
+    prevSession.current = user;
+  }, [user, queryClient]);
 
   return children;
 }

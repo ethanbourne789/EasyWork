@@ -19,7 +19,7 @@ const EMPTY_DOC = { type: "doc", content: [{ type: "paragraph" }] } as const;
 export function NoteEditor({ note }: NoteEditorProps) {
   const { t } = useTranslation();
   const updateNote = useUpdateNote();
-  const { data: selectedTagIds = [] } = useNoteTagIds(note?.id);
+  const { data: selectedTagIds = [], isSuccess: tagIdsLoaded } = useNoteTagIds(note?.id);
   const setNoteTags = useSetNoteTags();
   const { data: allTags = [] } = useNoteTags();
   const createTag = useCreateNoteTag();
@@ -28,8 +28,25 @@ export function NoteEditor({ note }: NoteEditorProps) {
   const saveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
   const titleSaveTimeoutRef = useRef<ReturnType<typeof setTimeout> | null>(null);
 
+  // 标签就绪守卫：切换笔记后 useNoteTagIds 重新请求期间 selectedTagIds 为 []，
+  // 若此刻点击标签会用「空数组+单标签」整体覆盖新笔记的真实标签（先删后插）。
+  // 与 TaskForm 的 initRef 守卫同理：仅当当前笔记的标签数据加载完成后才允许切换。
+  const tagIdsReadyRef = useRef<string | undefined>(undefined);
+  useEffect(() => {
+    if (note?.id && tagIdsLoaded && tagIdsReadyRef.current !== note.id) {
+      tagIdsReadyRef.current = note.id;
+    }
+  }, [note?.id, tagIdsLoaded]);
+  useEffect(() => {
+    // 笔记切换时立即失效守卫，避免旧状态残留
+    if (note?.id && tagIdsReadyRef.current !== note.id) {
+      tagIdsReadyRef.current = undefined;
+    }
+  }, [note?.id]);
+  const tagIdsReady = (): boolean => !!note?.id && tagIdsReadyRef.current === note.id;
+
   const toggleTag = (tagId: string) => {
-    if (!note) return;
+    if (!note || !tagIdsReady()) return;
     const current = selectedTagIds ?? [];
     const next = current.includes(tagId)
       ? current.filter((id) => id !== tagId)
@@ -38,7 +55,7 @@ export function NoteEditor({ note }: NoteEditorProps) {
   };
 
   const createAndAssign = (name: string) => {
-    if (!note || !name.trim()) return;
+    if (!note || !name.trim() || !tagIdsReady()) return;
     createTag.mutate(
       { name: name.trim() },
       {

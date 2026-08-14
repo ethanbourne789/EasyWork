@@ -70,6 +70,8 @@ const CHANNEL_GROUPS = [
 const MAX_RETRIES = 5;
 const BASE_DELAY_MS = MS_PER_SECOND;
 const MAX_DELAY_MS = 30 * MS_PER_SECOND;
+/** 超过高频重试预算后，仍以低频间隔探测，网络恢复后可自动重连（避免永久失效）。 */
+const PROBE_DELAY_MS = 60 * MS_PER_SECOND;
 
 type ChannelStatus = "subscribed" | "pending" | "unavailable";
 
@@ -182,12 +184,23 @@ export function useRealtimeSync(enabled: boolean) {
         retryCount.set(group.name, count);
 
         if (count > MAX_RETRIES) {
+          // 超过高频重试预算：对外标记不可用（UI 提示），但保留低频探测重试，
+          // 网络恢复后 setupGroup 成功会重置 retryCount 并恢复 connected。
           channelStatus.set(group.name, "unavailable");
           useRealtimeStore.getState().setStatus("unavailable");
           useRealtimeStore
             .getState()
             .setError(`${group.name}: ${status}${err ? ` – ${String(err)}` : ""}`);
           updateGlobalStatus();
+          retryCount.set(group.name, 0); // 重置计数，下次探测走指数退避
+          timers.set(
+            group.name,
+            setTimeout(() => {
+              if (isCleanedUp) return;
+              timers.delete(group.name);
+              setupGroup(group);
+            }, PROBE_DELAY_MS),
+          );
           return;
         }
 
@@ -208,18 +221,27 @@ export function useRealtimeSync(enabled: boolean) {
     }
 
   // 监听 Tauri 邮件事件（Rust 后端同步完成后 emit）
+  // 注意：promise resolve 可能在 effect 清理之后，此时必须立即注销监听，
+  // 否则 unlisten 被推入已废弃数组、永不注销，重挂载时累积事件监听（内存泄漏）。
   const unlisteners: Array<() => void> = [];
+  const registerListener = (fn: (() => void) | undefined) => {
+    if (isCleanedUp) {
+      fn?.();
+      return;
+    }
+    if (fn) unlisteners.push(fn);
+  };
   safeTauriListen('mail://sync-progress', () => {
     queryClient.invalidateQueries({ queryKey: ['email-accounts'] });
     queryClient.invalidateQueries({ queryKey: ['email-folders'] });
     queryClient.invalidateQueries({ queryKey: ['folder-unread-counts'] });
     queryClient.invalidateQueries({ queryKey: ['unified-unread'] });
     queryClient.invalidateQueries({ queryKey: ['emails'] });
-  }).then((fn) => { if (fn) unlisteners.push(fn); });
+  }).then(registerListener);
   safeTauriListen('mail://new-mail', () => {
     queryClient.invalidateQueries({ queryKey: ['emails'] });
     queryClient.invalidateQueries({ queryKey: ['email'] });
-  }).then((fn) => { if (fn) unlisteners.push(fn); });
+  }).then(registerListener);
 
     return () => {
       isCleanedUp = true;

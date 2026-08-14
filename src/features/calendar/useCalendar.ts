@@ -1,9 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { getCurrentUserId } from '@/features/auth/authStore';
 import { useSafeMutation } from '@/lib/mutation';
+import { calendarApi, type SyncResult } from './calendarApi';
 import type { CalendarEvent, CalendarSubscription } from '@/types';
-import type { Database } from '@/types/database.types';
 
 export const calendarKeys = {
   all: ['calendar'] as const,
@@ -18,14 +16,7 @@ export const calendarKeys = {
 export function useCalendarEvents() {
   return useQuery({
     queryKey: calendarKeys.events(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('calendar_events')
-        .select('*')
-        .order('start_at', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as CalendarEvent[];
-    },
+    queryFn: () => calendarApi.listEvents(),
   });
 }
 
@@ -33,27 +24,17 @@ export function useCreateEvent() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async (data: Partial<CalendarEvent>) => {
-      const insertData: Database['public']['Tables']['calendar_events']['Insert'] = {
-        title: data.title!,
-        description: data.description ?? null,
+      return calendarApi.createEvent({
+        title: data.title ?? "",
+        description: data.description ?? undefined,
         start_at: data.start_at!,
         end_at: data.end_at!,
         all_day: data.all_day ?? false,
-        location: data.location ?? null,
-        color: data.color ?? null,
-        reminder_minutes: data.reminder_minutes ?? null,
-        source: 'local',
-        user_id: getCurrentUserId(),
-        subscription_id: null,
-        external_uid: null,
-      };
-      const { data: row, error } = await supabase
-        .from('calendar_events')
-        .insert(insertData)
-        .select()
-        .single();
-      if (error) throw error;
-      return row as CalendarEvent;
+        location: data.location ?? undefined,
+        color: data.color ?? undefined,
+        reminder_minutes: data.reminder_minutes ?? undefined,
+        source: data.source ?? "local",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarKeys.events() });
@@ -65,15 +46,17 @@ export function useUpdateEvent() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<CalendarEvent> }) => {
-      const { data: row, error } = await supabase
-        .from('calendar_events')
-        .update(data)
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId())
-        .select()
-        .single();
-      if (error) throw error;
-      return row as CalendarEvent;
+      return calendarApi.updateEvent({
+        id,
+        title: data.title,
+        description: data.description ?? undefined,
+        location: data.location ?? undefined,
+        start_at: data.start_at,
+        end_at: data.end_at,
+        all_day: data.all_day,
+        color: data.color ?? undefined,
+        reminder_minutes: data.reminder_minutes ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarKeys.events() });
@@ -85,12 +68,7 @@ export function useDeleteEvent() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase
-        .from('calendar_events')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId());
-      if (error) throw error;
+      await calendarApi.deleteEvent(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarKeys.events() });
@@ -105,14 +83,7 @@ export function useDeleteEvent() {
 export function useCalendarSubscriptions() {
   return useQuery({
     queryKey: calendarKeys.subscriptions(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('calendar_subscriptions')
-        .select('*')
-        .order('created_at', { ascending: true });
-      if (error) throw error;
-      return (data ?? []) as CalendarSubscription[];
-    },
+    queryFn: () => calendarApi.listSubscriptions(),
   });
 }
 
@@ -120,23 +91,15 @@ export function useCreateSubscription() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async (data: Partial<CalendarSubscription>) => {
-      const insertData: Database['public']['Tables']['calendar_subscriptions']['Insert'] = {
-        name: data.name!,
-        provider: data.provider!,
-        url: data.url!,
-        username: data.username ?? null,
-        password: data.password ?? null,
-        color: data.color ?? '#6366f1',
+      return calendarApi.createSubscription({
+        name: data.name ?? "",
+        provider: (data.provider ?? "ics") as CalendarSubscription["provider"],
+        url: data.url ?? "",
+        username: data.username ?? undefined,
+        password: data.password ?? undefined,
+        color: data.color ?? "#6366f1",
         enabled: data.enabled ?? true,
-        user_id: getCurrentUserId(),
-      };
-      const { data: row, error } = await supabase
-        .from('calendar_subscriptions')
-        .insert(insertData)
-        .select()
-        .single();
-      if (error) throw error;
-      return row as CalendarSubscription;
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarKeys.subscriptions() });
@@ -148,15 +111,16 @@ export function useUpdateSubscription() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<CalendarSubscription> }) => {
-      const { data: row, error } = await supabase
-        .from('calendar_subscriptions')
-        .update(data)
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId())
-        .select()
-        .single();
-      if (error) throw error;
-      return row as CalendarSubscription;
+      return calendarApi.updateSubscription({
+        id,
+        name: data.name,
+        provider: data.provider,
+        url: data.url,
+        username: data.username ?? undefined,
+        password: data.password ?? undefined,
+        color: data.color,
+        enabled: data.enabled,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarKeys.subscriptions() });
@@ -170,12 +134,7 @@ export function useDeleteSubscription() {
   return useSafeMutation({
     mutationFn: async (id: string) => {
       // calendar_events.subscription_id 为 on delete cascade，事件随订阅一并清除
-      const { error } = await supabase
-        .from('calendar_subscriptions')
-        .delete()
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId());
-      if (error) throw error;
+      await calendarApi.deleteSubscription(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: calendarKeys.subscriptions() });
@@ -184,30 +143,17 @@ export function useDeleteSubscription() {
   });
 }
 
-export interface SyncResult {
-  synced: number;
-  removed: number;
-  subscription: string;
-}
+export type { SyncResult };
 
 /**
- * 触发订阅同步。
- *
- * 走 Edge Function 而非前端直连：ICS/CalDAV 服务端普遍不下发 CORS 头，
- * 浏览器与 WebView 直接请求会被拦截；且 CalDAV 需要携带专用密码，
- * 放在服务端（service_role 读取凭据）比暴露在客户端更安全。
+ * 触发订阅同步（本地优先：由 Tauri Rust 后端直接拉取 ICS/CalDAV 并写入本地 SQLite，
+ * 不再依赖 Supabase Edge Function；CalDAV 凭据存于本地数据库）。
  */
 export function useSyncSubscription() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async (subscriptionId?: string) => {
-      const { data: res, error } = await supabase.functions.invoke('sync-calendar', {
-        body: subscriptionId ? { subscriptionId } : {},
-      });
-      if (error) throw new Error(error.message);
-      if (res && (res as { error?: string }).error) {
-        throw new Error((res as { error: string }).error);
-      }
+      const res = await calendarApi.syncSubscription(subscriptionId);
       return res as { results: SyncResult[] };
     },
     onSuccess: () => {

@@ -39,7 +39,7 @@ pub fn create_sync_tables(conn: &Connection) -> rusqlite::Result<()> {
 
 /// 生成当前时间的 RFC3339 格式时间戳（带微秒精度）。
 fn now_rfc3339() -> String {
-    chrono::Utc::now().to_rfc3333_opts(chrono::SecondsFormat::Micros, true)
+    chrono::Utc::now().to_rfc3339_opts(chrono::SecondsFormat::Micros, true)
 }
 
 /// 从 sync_config 表中读取 id='default' 的同步配置，如果没有配置则返回 None。

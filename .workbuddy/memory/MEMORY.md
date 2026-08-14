@@ -10,11 +10,15 @@ EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任�
 - 导航：桌面可折叠标注侧边栏（替代 56px 悬停图标栏）；⌘K 命令面板；移动端底部 Tab 5 主模块 + 多栏降级单栏。
 - 详细规范见 `design/UI-Redesign-System.md`，实景见 `design/easywork-ui-prototype.html`。
 
-## 已知架构事实（2026-08-10 更正）
-- 数据层现状：业务 hook（tasks/finance 等）**直接调用真实 Supabase**，并非走 mockStore。`src/lib/mockStore.ts` 在运行期未被业务代码接入（仅测试引用），属死代码。
-- **演示模式已彻底移除（2026-08-10 实施）**：`authStore` 不再有 `DEMO_USER_ID`/`demoSession`/`reset`，启动 `session=null` 并以真实 Supabase 会话为准；登录页「以演示账号进入」走真实 `signInWithPassword`（演示账号 `demo@easywork.app`/`Demo123456!`）。演示数据经 `supabase/seed.sql` + 迁移 `0011`（纯 SQL、字面 UUID、含 `extensions.` 限定）写入真实 Supabase，作为唯一数据源（RLS 按 `auth.uid` 隔离）。记账模块唯一真实数据源 = Supabase。
-- 预算 schema（0008）：`budgets` 新增 `scope`(category/overall) 与 `carry_over`(numeric)，`category_id` 可空；整体预算按月唯一（部分唯一索引 `budgets_overall_uniq where scope='overall'`）。
-- Tauri 后端 lib.rs 现含 `app_version` command（返回 CARGO_PKG_VERSION）；前端通过 invoke 调用。
+## 已知架构事实（2026-08-14 更新：local-first 已落地）
+- **local-first 数据架构（2026-08-14 实施）**：任务/笔记/记账/日历的业务数据**全部写入本地 SQLite**（`AppData/easywork.db`），经 `src-tauri/src/business.rs` 的 Tauri 命令读写；前端 hooks 走 api 层，不再直连 Supabase。
+- **认证已本地化（2026-08-14 晚）**：authStore 不再用 Supabase Auth；users 表（argon2 哈希）+ 5 个 auth_* 命令；登录态持久化 localStorage `easywork:user_id`；登录/注册/改密/资料/头像全本地（头像 base64 data URL）。注册成功即自动登录（无邮箱确认）。
+- **Supabase 残留（有意保留）**：`realtime/useRealtimeSync.ts`（postgres_changes 订阅）、`mail/migrateFromSupabase.ts`、`src/lib/supabase.ts`；`authErrors.ts` 业务不再引用（测试仍覆盖）。
+- 本地 schema（db.rs，SCHEMA_VERSION=4）：业务表含 `sync_modified_at`/`sync_device_id` 列 + UPDATE 触发器；v4 加了 `budgets.carry_over_cents`、`notes.content_text/cover_url`、`note_tag_master`/`note_note_tags` 表。云端 PostgreSQL 同步表在 `sync/schema.rs` 保持一致。
+- 邮件模块：独立本地库 `AppData/mail/easywork-mail.db`（mail 命令），密码存 keyring，IMAP/SMTP 走 rustls 平台 CA。
+- **Tauri IPC「未传 vs 显式 null」不可区分**：需要清除字段时用 `null_fields: string[]` 参数（task due_date/recurrence_rule、note folder_id、note_folder parent_id 已支持）。
+- 数据备份：`data_export_all`/`data_import_all`（白名单表+标识符净化）/`data_clear_all`；收据 `receipt_save`/`receipt_open`（存 AppData/receipts/）。
+- 演示模式已彻底移除（2026-08-10）：登录走真实 Supabase signInWithPassword；演示数据在 seed.sql/0011。
 - 用户偏中文、偏好详尽严格的审阅与设计方案。
 
 ## 记账模块审阅结论与实施状态（2026-08-10，详见 docs/finance-module-review-2026-08-10.md 与 docs/finance-implementation-2026-08-10.md）
@@ -39,7 +43,7 @@ EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任�
   - 🔴 **Tauri v2 release 构建必须带 `--features custom-protocol`**：`tauri` crate 的 `build.rs` 用 `dev = !custom_protocol` 判断模式。若 `cargo build --release` 缺此 feature，Tauri 会认为当前是 dev 模式，**不嵌入前端 dist 资源**，运行时直接去连 `devUrl`（`http://localhost:1420`），于是启动后白屏/报「localhost 拒绝连接」。`scripts/build-green.ps1` 已硬编码 `cargo build --release --features custom-protocol`。
   - 🔴 **CSP 必须放开 `connect-src`**：原 CSP 缺 `connect-src`，继承 `default-src 'self'`，导致前端无法请求 Supabase API。已改为 `connect-src 'self' https:`（也可用具体 Supabase 域名）。
 - 包管理器：**pnpm 为 canonical**（package.json 声明 `packageManager: pnpm@11` + `pnpm-lock.yaml` + `pnpm-workspace.yaml`）。
-  - 🔴 **pnpm 11 不再读取 `package.json` 的 `pnpm` 字段**——`onlyBuiltDependencies` 必须放在 **`pnpm-workspace.yaml`**（否则 esbuild 构建脚本被默认拦截，`vite build` 因缺 esbuild 二进制而崩）。
+  - 🔴 **pnpm 11 不再读取 `package.json` 的 `pnpm` 字段**——构建脚本许可必须放在 **`pnpm-workspace.yaml`**。关键坑（2026-08-14 实测）：**仅写 `onlyBuiltDependencies: [esbuild]` 不够**——pnpm 11.15 会在每次 `pnpm install` 时自动往 `pnpm-workspace.yaml` 追加 `allowBuilds: { esbuild: "set this to true or false" }` 占位，并因「构建未批准」持续报 `[ERR_PNPM_IGNORED_BUILDS] Ignored build scripts: esbuild`。必须把该占位改成 **`allowBuilds: { esbuild: true }`** 再跑一次 install，esbuild 的 `node install.js` 才真正执行，依赖状态检查（runDepsStatusCheck，会卡死 `pnpm exec` 与绿色构建）才通过。务必保留 `allowBuilds: { esbuild: true }`，不要删。
   - 构建脚本 `scripts/build-green.ps1`：硬编码 pnpm（不再自动猜），仅当 node_modules 缺失或非 pnpm 布局时才 `pnpm install`；参数 `-DebugBuild`/`-Clean`（无 `[CmdletBinding()]`，以免与公共 `-Debug` 参数重名冲突）；入口 `package.json` 的 `npm run build:green`。
 - 构建流程（`npm run build:green`）：前置检查 → 守卫式 pnpm install → `pnpm run build`(`tsc -b && vite build`) → `cargo build --release` → 拷贝为 `release-green/EasyWork.exe`。
 - 🔴 **cargo 必须前台跑**：本环境 `run_in_background` 的 PowerShell 任务会在 `cargo build --release` 阶段被后台运行器**杀死**（前端能跑完、cargo 中途断、无报错）。务必前台执行（timeout ≥ 600000）。

@@ -246,7 +246,7 @@ export function useSaveDraft() {
     }) => {
       // TODO: 后端尚未提供 mail_save_draft 命令（P1+ 阶段补齐）。
       // 临时回退：调用 mailApi.send 无法生成草稿（会真实发送），故直接抛错避免误用。
-      throw new Error("草稿保存暂未实现：等待后端 mail_save_draft 命令");
+      throw new Error("草稿保存功能开发中，暂不可用");
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
@@ -353,7 +353,7 @@ export function useUpdateDraft() {
       body: string;
     }) => {
       // TODO: 后端尚未提供 mail_update_draft 命令（P1+ 阶段补齐）。
-      throw new Error("草稿更新暂未实现：等待后端 mail_update_draft 命令");
+      throw new Error("草稿编辑功能开发中，暂不可用");
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });

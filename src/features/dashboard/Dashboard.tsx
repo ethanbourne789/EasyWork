@@ -51,7 +51,7 @@ function QuickActions() {
 export function Dashboard() {
   const { t } = useTranslation();
   const { data: tasks = [] } = useTasks();
-  const session = useAuthStore((s) => s.session);
+  const user = useAuthStore((s) => s.user);
   const { data: profile } = useProfile();
 
   const now = new Date();
@@ -60,7 +60,7 @@ export function Dashboard() {
   const pending = tasks.filter(
     (t) => t.status === "todo" || t.status === "in_progress",
   ).length;
-  const email = session?.user?.email ?? "";
+  const email = user?.email ?? "";
   const name = profile?.display_name || (email ? email.split("@")[0] : "同学");
 
   return (

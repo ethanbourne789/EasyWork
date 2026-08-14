@@ -1,41 +1,28 @@
 import { useEffect } from "react";
-import { supabase } from "@/lib/supabase";
 import { useAuthStore } from "@/features/auth/authStore";
 
 /**
- * 认证同步。
- * 策略：以真实 Supabase 会话为准。启动期间等待 getSession 结果，
- * 有会话则用真实会话，无会话则清空（不再保留任何伪造的本地演示会话）。
+ * 认证同步（local-first）。
+ * 启动时从 localStorage 读取本地登录用户 id，再从本地库拉取资料；
+ * 无本地会话则清空。不再依赖 Supabase Auth。
  */
 export function useAuth() {
-  const { session, loading, setSession, clearSession } = useAuthStore();
+  const user = useAuthStore((s) => s.user);
+  const loading = useAuthStore((s) => s.loading);
 
   useEffect(() => {
     let active = true;
-
-    supabase.auth
-      .getSession()
-      .then(({ data }) => {
-        if (!active) return;
-        if (data.session) setSession(data.session);
-        else clearSession();
-      })
+    useAuthStore
+      .getState()
+      .refreshUser()
       .catch((err) => {
         if (!active) return;
-        console.error("[useAuth] getSession failed:", err);
-        clearSession();
+        console.error("[useAuth] 本地会话恢复失败:", err);
       });
-
-    const { data: sub } = supabase.auth.onAuthStateChange((_event, nextSession) => {
-      if (nextSession) setSession(nextSession);
-      else clearSession();
-    });
-
     return () => {
       active = false;
-      sub.subscription.unsubscribe();
     };
-  }, [setSession, clearSession]);
+  }, []);
 
-  return { session, loading };
+  return { session: user, loading };
 }

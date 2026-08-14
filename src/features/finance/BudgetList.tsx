@@ -238,7 +238,9 @@ export function BudgetList() {
 
         {budget.carry_over ? (
           <div className="mt-2 text-[11px] text-muted-foreground">
-            {t('finance.carryOverSurplus')} {budget.carry_over > 0 ? t('finance.carryOverSurplus') : t('finance.carryOverDeficit')} {formatMoney(Math.abs(budget.carry_over))}
+            {budget.carry_over > 0
+              ? `${t('finance.carryOverSurplus')} ${formatMoney(budget.carry_over)}`
+              : `${t('finance.carryOverDeficit')} ${formatMoney(Math.abs(budget.carry_over))}`}
           </div>
         ) : null}
 

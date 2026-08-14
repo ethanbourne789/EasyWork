@@ -34,6 +34,7 @@
     "all": "全部",
     "none": "无",
     "optional": "可选",
+    "required": "为必填项",
     "saving": "保存中...",
     "setting": "设置中...",
     "adding": "添加中...",
@@ -68,7 +69,8 @@
     "passwordTooShort": "密码至少 6 位",
     "pleaseConfirmPassword": "请确认密码",
     "passwordMismatch": "两次输入的密码不一致",
-    "changePasswordSuccess": "密码修改成功"
+    "changePasswordSuccess": "密码修改成功",
+    "registering": "注册中..."
   },
   "nav": {
     "dashboard": "仪表盘",
@@ -451,7 +453,7 @@
     "noCashWallet": "现金钱包"
   },
   "calendar": {
-    "title": "日历",
+    "title": "标题",
     "subtitle": "任务进度 · 日程 · 每日收支，一图掌握",
     "today": "今天",
     "month": "月",
@@ -487,7 +489,6 @@
     "income": "收入",
     "expense": "支出",
     "eventsAndTasks": "{{eventCount}} 个日程 · {{taskCount}} 个任务",
-    "title": "标题",
     "titlePlaceholder": "例如：项目周会",
     "date": "日期",
     "start": "开始",
@@ -623,7 +624,10 @@
     "closeOnExit": "关闭窗口即退出",
     "closeOnExitDesc": "关闭时直接退出应用；默认保持后台运行并最小化到系统托盘",
     "trayMenuDesc": "系统托盘中右键可选择「显示」或「退出 EasyWork」。左键单击可切换窗口显示与隐藏。",
-    "bgSyncDesc": "后台运行时，每 5 分钟自动同步收取邮件。"
+    "bgSyncDesc": "后台运行时，每 5 分钟自动同步收取邮件。",
+    "logoutFailed": "登出失败，请检查网络后重试",
+    "exportSuccess": "导出成功",
+    "exportFailed": "导出失败："
   },
   "layout": {
     "realtimeDisconnected": "实时同步已断开，正在重连…",
@@ -644,5 +648,51 @@
     "switchToEnglish": "Switch to English",
     "switchToChinese": "切换到中文",
     "offline": "网络已断开，部分功能不可用"
+  },
+  "sync": {
+    "title": "云端同步",
+    "subtitle": "配置 PostgreSQL 数据库连接，在设备间增量同步你的本地数据",
+    "enabled": "启用同步",
+    "disabled": "未启用",
+    "provider": "数据库提供商",
+    "providerSupabase": "Supabase",
+    "providerAiven": "Aiven",
+    "providerRender": "Render",
+    "providerCustom": "自定义",
+    "connectionString": "连接地址",
+    "connectionStringPlaceholder": "postgresql://user:password@host:5432/db",
+    "databaseName": "数据库名称",
+    "deviceName": "设备名称",
+    "testConnection": "测试连接",
+    "testing": "测试中...",
+    "save": "保存配置",
+    "delete": "删除配置",
+    "trigger": "立即同步",
+    "syncing": "同步中...",
+    "synced": "已同步",
+    "pending": "待同步",
+    "error": "同步错误",
+    "notConfigured": "未配置同步",
+    "securityNotice": "连接信息仅安全存储在本地数据库，不会发送给除您指定数据库之外的任何服务器。",
+    "log": "同步日志",
+    "lastSync": "上次同步",
+    "never": "从未同步",
+    "connected": "连接成功",
+    "connectionFailed": "连接失败",
+    "confirmDeleteTitle": "删除同步配置",
+    "confirmDeleteDesc": "删除后本机将停止自动同步，已上传到云端的数据不受影响。确定继续？",
+    "configSaved": "同步配置已保存",
+    "configDeleted": "同步配置已删除",
+    "saveFailed": "保存失败",
+    "noLog": "暂无同步记录",
+    "desktopOnly": "仅桌面端可用",
+    "directionUpload": "上传",
+    "directionDownload": "下载",
+    "table": "数据表",
+    "records": "记录数",
+    "result": "结果",
+    "success": "成功",
+    "time": "时间",
+    "device": "设备"
   }
 }

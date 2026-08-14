@@ -1,6 +1,10 @@
 import "@testing-library/jest-dom/vitest";
 import { vi } from "vitest";
 
+// 初始化 i18n（resources 内联，同步加载）。否则 react-i18next 的 t() 返回 key 本身，
+// 导致按中文文案断言（如 getByRole("button", { name: "保存" })）的测试失败。
+import "@/lib/i18n";
+
 // Node 22+ 内置实验性 Web Storage（Node 25 起默认开启）：未传 --localstorage-file 时
 // 会遮蔽 jsdom 的 localStorage，导致 window.localStorage 不可用（如 clear 为 undefined）。
 // 这里统一注入内存版 Storage，保证任何 Node 版本下测试稳定。

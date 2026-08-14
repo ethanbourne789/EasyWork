@@ -1,9 +1,7 @@
 import { useQuery, useQueryClient } from '@tanstack/react-query';
-import { supabase } from '@/lib/supabase';
-import { getCurrentUserId } from '@/features/auth/authStore';
 import { useSafeMutation } from '@/lib/mutation';
+import { financeApi } from './financeApi';
 import type { Transaction, Account, Category, Budget } from '@/types';
-import type { Database } from '@/types/database.types';
 
 // Query Keys
 export const financeKeys = {
@@ -18,42 +16,21 @@ export const financeKeys = {
 export function useTransactions() {
   return useQuery({
     queryKey: financeKeys.transactions(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('transactions')
-        .select('*')
-        .order('date', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as Transaction[];
-    },
+    queryFn: () => financeApi.listTransactions(),
   });
 }
 
 export function useAccounts() {
   return useQuery({
     queryKey: financeKeys.accounts(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('accounts')
-        .select('*')
-        .order('sort_order');
-      if (error) throw error;
-      return (data ?? []) as Account[];
-    },
+    queryFn: () => financeApi.listAccounts(),
   });
 }
 
 export function useCategories() {
   return useQuery({
     queryKey: financeKeys.categories(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('categories')
-        .select('*')
-        .order('sort_order');
-      if (error) throw error;
-      return (data ?? []) as Category[];
-    },
+    queryFn: () => financeApi.listCategories(),
   });
 }
 
@@ -62,13 +39,12 @@ export function useCreateCategory() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async (data: Partial<Category>) => {
-      const { data: row, error } = await supabase
-        .from('categories')
-        .insert({ ...data, user_id: getCurrentUserId() } as unknown as Database['public']['Tables']['categories']['Insert'])
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Category;
+      return financeApi.createCategory({
+        name: data.name ?? "",
+        type: (data.type ?? "expense") as "income" | "expense",
+        icon: data.icon ?? undefined,
+        parent_id: data.parent_id ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.categories() });
@@ -80,15 +56,13 @@ export function useUpdateCategory() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Category> }) => {
-      const { data: row, error } = await supabase
-        .from('categories')
-        .update(data)
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId())
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Category;
+      return financeApi.updateCategory({
+        id,
+        name: data.name,
+        type: data.type,
+        icon: data.icon ?? undefined,
+        parent_id: data.parent_id ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.categories() });
@@ -100,8 +74,7 @@ export function useDeleteCategory() {
   const queryClient = useQueryClient();
   return useSafeMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('categories').delete().eq('id', id).eq('user_id', getCurrentUserId());
-      if (error) throw error;
+      await financeApi.deleteCategory(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.categories() });
@@ -112,14 +85,7 @@ export function useDeleteCategory() {
 export function useBudgets() {
   return useQuery({
     queryKey: financeKeys.budgets(),
-    queryFn: async () => {
-      const { data, error } = await supabase
-        .from('budgets')
-        .select('*')
-        .order('year_month', { ascending: false });
-      if (error) throw error;
-      return (data ?? []) as Budget[];
-    },
+    queryFn: () => financeApi.listBudgets(),
   });
 }
 
@@ -129,13 +95,16 @@ export function useCreateTransaction() {
 
   return useSafeMutation({
     mutationFn: async (data: Partial<Transaction>) => {
-      const { data: row, error } = await supabase
-        .from('transactions')
-        .insert({ ...data, user_id: getCurrentUserId() } as unknown as Database['public']['Tables']['transactions']['Insert'])
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Transaction;
+      return financeApi.createTransaction({
+        type: (data.type ?? "expense") as Transaction["type"],
+        amount: data.amount ?? 0,
+        account_id: data.account_id ?? "",
+        to_account_id: data.to_account_id ?? undefined,
+        category_id: data.category_id ?? undefined,
+        date: data.date ?? new Date().toISOString().slice(0, 10),
+        note: data.note,
+        receipt_url: data.receipt_url ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() });
@@ -149,15 +118,17 @@ export function useUpdateTransaction() {
 
   return useSafeMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Transaction> }) => {
-      const { data: row, error } = await supabase
-        .from('transactions')
-        .update(data)
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId())
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Transaction;
+      return financeApi.updateTransaction({
+        id,
+        type: data.type as Transaction["type"],
+        amount: data.amount,
+        account_id: data.account_id,
+        to_account_id: data.to_account_id ?? undefined,
+        category_id: data.category_id ?? undefined,
+        date: data.date,
+        note: data.note,
+        receipt_url: data.receipt_url ?? undefined,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() });
@@ -171,8 +142,7 @@ export function useDeleteTransaction() {
 
   return useSafeMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('transactions').delete().eq('id', id).eq('user_id', getCurrentUserId());
-      if (error) throw error;
+      await financeApi.deleteTransaction(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.transactions() });
@@ -186,13 +156,12 @@ export function useCreateAccount() {
 
   return useSafeMutation({
     mutationFn: async (data: Partial<Account>) => {
-      const { data: row, error } = await supabase
-        .from('accounts')
-        .insert({ ...data, user_id: getCurrentUserId() } as unknown as Database['public']['Tables']['accounts']['Insert'])
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Account;
+      return financeApi.createAccount({
+        name: data.name ?? "",
+        type: (data.type ?? "cash") as Account["type"],
+        initial_balance: data.initial_balance ?? 0,
+        currency: data.currency || "CNY",
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.accounts() });
@@ -205,15 +174,13 @@ export function useUpdateAccount() {
 
   return useSafeMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Account> }) => {
-      const { data: row, error } = await supabase
-        .from('accounts')
-        .update(data)
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId())
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Account;
+      return financeApi.updateAccount({
+        id,
+        name: data.name,
+        type: data.type,
+        initial_balance: data.initial_balance,
+        currency: data.currency,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.accounts() });
@@ -226,8 +193,7 @@ export function useDeleteAccount() {
 
   return useSafeMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('accounts').delete().eq('id', id).eq('user_id', getCurrentUserId());
-      if (error) throw error;
+      await financeApi.deleteAccount(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.accounts() });
@@ -241,20 +207,13 @@ export function useCreateBudget() {
 
   return useSafeMutation({
     mutationFn: async (data: Partial<Budget>) => {
-      // 使用 upsert 优雅处理「同月同分类/整体」唯一约束冲突（避免 23505 报错）
-      const isOverall = data.scope === 'overall';
-      const { data: row, error } = await supabase
-        .from('budgets')
-        .upsert(
-          { ...data, user_id: getCurrentUserId() } as unknown as Database['public']['Tables']['budgets']['Insert'],
-          {
-            onConflict: isOverall ? 'user_id,overall_uniq_month' : 'user_id,category_id,year_month',
-          }
-        )
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Budget;
+      return financeApi.createBudget({
+        category_id: data.category_id ?? undefined,
+        amount: data.amount ?? 0,
+        year_month: data.year_month ?? Number(String(new Date().getFullYear()) + String(new Date().getMonth() + 1).padStart(2, "0")),
+        scope: (data.scope ?? "category") as "category" | "overall",
+        carry_over: data.carry_over,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.budgets() });
@@ -267,15 +226,14 @@ export function useUpdateBudget() {
 
   return useSafeMutation({
     mutationFn: async ({ id, data }: { id: string; data: Partial<Budget> }) => {
-      const { data: row, error } = await supabase
-        .from('budgets')
-        .update(data)
-        .eq('id', id)
-        .eq('user_id', getCurrentUserId())
-        .select()
-        .single();
-      if (error) throw error;
-      return row as Budget;
+      return financeApi.updateBudget({
+        id,
+        category_id: data.category_id ?? undefined,
+        amount: data.amount,
+        year_month: data.year_month,
+        scope: data.scope,
+        carry_over: data.carry_over,
+      });
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.budgets() });
@@ -288,8 +246,7 @@ export function useDeleteBudget() {
 
   return useSafeMutation({
     mutationFn: async (id: string) => {
-      const { error } = await supabase.from('budgets').delete().eq('id', id).eq('user_id', getCurrentUserId());
-      if (error) throw error;
+      await financeApi.deleteBudget(id);
     },
     onSuccess: () => {
       queryClient.invalidateQueries({ queryKey: financeKeys.budgets() });

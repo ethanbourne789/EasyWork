@@ -3,16 +3,13 @@ import { Eye, EyeOff, KeyRound } from "lucide-react";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose, DialogFooter } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
-import { useAuthStore } from "@/features/auth/authStore";
-import { supabase } from "@/lib/supabase";
+import { getCurrentUserId } from "@/features/auth/authStore";
+import { authApi } from "@/lib/authApi";
 import { toast } from "@/lib/toast";
-import { friendlyAuthError } from "@/lib/authErrors";
 import { useTranslation } from "react-i18next";
 
 export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; onOpenChange: (open: boolean) => void }) {
   const { t } = useTranslation();
-  const sessionEmail = useAuthStore((s) => s.session?.user?.email) || "";
-
   const [currentPassword, setCurrentPassword] = useState("");
   const [newPassword, setNewPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
@@ -59,26 +56,9 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
 
     setChanging(true);
     try {
-      const { data: signInData, error: signInError } = await supabase.auth.signInWithPassword({
-        email: sessionEmail,
-        password: currentPassword,
-      });
-      if (signInError) {
-        toast(t('settings.currentPasswordIncorrect'), "error");
-        return;
-      }
-      if (!signInData.user) {
-        toast(t('settings.authFailed'), "error");
-        return;
-      }
-
-      const { error: updateError } = await supabase.auth.updateUser({
-        password: newPassword,
-      });
-      if (updateError) {
-        toast(t('settings.changePasswordFailed') + friendlyAuthError(updateError), "error");
-        return;
-      }
+      const userId = getCurrentUserId();
+      if (!userId) throw new Error(t('settings.notLoggedIn'));
+      await authApi.changePassword(userId, currentPassword, newPassword);
 
       resetForm();
       onOpenChange(false);

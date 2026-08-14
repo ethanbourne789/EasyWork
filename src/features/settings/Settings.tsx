@@ -1,14 +1,13 @@
 import { useState, useRef, useEffect } from "react";
-import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash2, KeyRound, Settings as SettingsIcon } from "lucide-react";
+import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash2, KeyRound, Settings as SettingsIcon, Cloud } from "lucide-react";
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
-import { useAuthStore, getCurrentUserId } from "@/features/auth/authStore";
+import { useAuthStore } from "@/features/auth/authStore";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
 import { Avatar } from "@/components/ui/avatar";
 import { useTheme } from "@/components/theme/ThemeProvider";
-import { supabase } from "@/lib/supabase";
 import { toast } from "@/lib/toast";
 import { TOAST_DURATION } from "@/lib/constants";
 import { formatDateLocal } from "@/lib/dateUtils";
@@ -17,45 +16,11 @@ import { requestNotificationPermission, fireBudgetWarnings } from "@/lib/notify"
 import { getAppVersion, isTauri, getAutostartStatus, setAutostart, getCloseBehavior, setCloseBehavior } from "@/lib/tauri";
 import { useProfile, useUpdateProfile } from "./useProfile";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { SyncSettings } from "./SyncSettings";
 import { confirm } from "@/lib/confirm";
 import { useTranslation } from "react-i18next";
 
 const NOTIFY_KEY = "easywork:notifications";
-
-// 业务数据表（用户域，受 RLS 约束）：用于导出 / 导入 / 重置
-const DATA_TABLES = [
-  "tasks",
-  "subtasks",
-  "tags",
-  "task_tags",
-  "accounts",
-  "categories",
-  "transactions",
-  "budgets",
-  "note_folders",
-  "notes",
-  "note_tags",
-  "note_note_tags",
-  "email_accounts",
-  "email_folders",
-  "emails",
-  "email_attachments",
-] as const;
-
-// 导出 / 导入时必须剔除的敏感列（凭据泄露防护）
-const SENSITIVE_COLUMNS: Record<string, string[]> = {
-  email_accounts: ["password", "username"],
-};
-
-function stripSensitive(table: string, rows: Record<string, unknown>[]) {
-  const cols = SENSITIVE_COLUMNS[table];
-  if (!cols || !rows.length) return rows;
-  return rows.map((row) => {
-    const next = { ...row };
-    cols.forEach((c) => delete next[c]);
-    return next;
-  });
-}
 
 interface NotifySettings {
   task_reminder: boolean;
@@ -82,7 +47,7 @@ export function Settings() {
   const { t, i18n } = useTranslation();
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
-  const sessionEmail = useAuthStore((s) => s.session?.user?.email) || "";
+  const sessionEmail = useAuthStore((s) => s.user?.email) || "";
   const qc = useQueryClient();
   const [activeTab, setActiveTab] = useState("profile");
   const [savedFlag, setSavedFlag] = useState<string | null>(null);
@@ -130,6 +95,7 @@ export function Settings() {
     { id: "notifications", label: t('settings.notifications'), icon: Bell },
     { id: "system", label: t('settings.system'), icon: SettingsIcon },
     { id: "data", label: t('settings.dataManagement'), icon: Database },
+    { id: "sync", label: t('sync.title'), icon: Cloud },
     { id: "about", label: t('settings.about'), icon: Info },
   ];
 
@@ -159,16 +125,15 @@ export function Settings() {
     if (!file) return;
     setUploadingAvatar(true);
     try {
-      const userId = getCurrentUserId();
-      if (!userId) throw new Error(t('settings.notLoggedIn'));
-      const ext = (file.name.split(".").pop() || "png").toLowerCase();
-      const path = `${userId}/avatar.${ext}`;
-      const { error: upErr } = await supabase.storage
-        .from("avatars")
-        .upload(path, file, { upsert: true, contentType: file.type });
-      if (upErr) throw upErr;
-      const { data } = supabase.storage.from("avatars").getPublicUrl(path);
-      setAvatarUrl(data.publicUrl + "?v=" + Date.now());
+      if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+      // 读为 base64 data URL，直接存本地 users 表（CSP img-src data: 已允许展示）
+      const dataUrl = await new Promise<string>((resolve, reject) => {
+        const reader = new FileReader();
+        reader.onload = () => resolve(String(reader.result ?? ""));
+        reader.onerror = () => reject(new Error("读取文件失败"));
+        reader.readAsDataURL(file);
+      });
+      setAvatarUrl(dataUrl);
     } catch (err) {
       toast(t('settings.avatarUploadFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
     } finally {
@@ -188,18 +153,22 @@ export function Settings() {
   };
 
   const handleExportData = async () => {
-    const dump: Record<string, unknown[]> = {};
-    for (const table of DATA_TABLES) {
-      const { data } = await supabase.from(table).select("*");
-      dump[table] = stripSensitive(table, (data ?? []) as Record<string, unknown>[]);
+    try {
+      if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+      const { invoke } = await import("@tauri-apps/api/core");
+      const dump = await invoke<Record<string, unknown[]>>("data_export_all");
+      const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = `easywork-backup-${formatDateLocal(new Date())}.json`;
+      a.click();
+      URL.revokeObjectURL(url);
+      toast(t('settings.exportSuccess'), "success");
+    } catch (err) {
+      console.error("导出数据失败:", err);
+      toast(t('settings.exportFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
     }
-    const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `easywork-backup-${formatDateLocal(new Date())}.json`;
-    a.click();
-    URL.revokeObjectURL(url);
   };
 
   const handleImportData = (e: React.ChangeEvent<HTMLInputElement>) => {
@@ -216,21 +185,9 @@ export function Settings() {
           confirmText: t('settings.import'),
           destructive: true,
         })) {
-          const uid = getCurrentUserId();
-          for (const table of DATA_TABLES) {
-            const rows = parsed[table];
-            if (Array.isArray(rows) && rows.length) {
-              const remapped = uid
-                ? rows.map((r: Record<string, unknown>) =>
-                    "user_id" in r ? { ...r, user_id: uid } : r
-                  )
-                : rows;
-              const { error } = await supabase
-                .from(table)
-                .upsert(stripSensitive(table, remapped) as never);
-              if (error) throw error;
-            }
-          }
+          if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+          const { invoke } = await import("@tauri-apps/api/core");
+          await invoke("data_import_all", { data: parsed });
           // 用失效刷新替代整页 reload，避免丢失前端内存状态
           await qc.invalidateQueries();
           toast(t('settings.importSuccess'), "success");
@@ -264,15 +221,15 @@ export function Settings() {
       confirmText: t('settings.clear'),
       destructive: true,
     })) {
-      for (const table of DATA_TABLES) {
-        const { error } = await supabase.from(table).delete();
-        if (error) {
-          toast(`${t('settings.clearFailed')}${table}`, "error");
-          return;
-        }
+      try {
+        if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+        const { invoke } = await import("@tauri-apps/api/core");
+        await invoke("data_clear_all");
+        await qc.invalidateQueries();
+        toast(t('settings.cleared'), "success");
+      } catch {
+        toast(t('settings.clearFailed'), "error");
       }
-      await qc.invalidateQueries();
-      toast(t('settings.cleared'), "success");
     }
   };
 
@@ -393,9 +350,14 @@ export function Settings() {
             <div className="pt-2">
               <Button
                 variant="outline"
-                onClick={() => {
-                  logout();
-                  navigate({ to: "/login" });
+                onClick={async () => {
+                  try {
+                    await logout();
+                    navigate({ to: "/login" });
+                  } catch {
+                    // 服务端会话撤销失败：保留本地登录态，提示用户重试（避免登出状态不一致）
+                    toast(t("settings.logoutFailed"), "error");
+                  }
                 }}
               >
                 <LogOut className="mr-2 h-4 w-4" /> {t('settings.logout')}
@@ -627,6 +589,10 @@ export function Settings() {
               </div>
             </div>
           </div>
+        )}
+
+        {activeTab === "sync" && (
+          <SyncSettings />
         )}
 
         {activeTab === "about" && (

@@ -21,6 +21,7 @@ import { useProfile } from "@/features/settings/useProfile";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useNotifications } from "@/lib/notifications";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
+import { SyncStatusIcon } from "@/components/SyncStatusIcon";
 
 
 type Item = { to: string; labelKey: string; icon: LucideIcon };
@@ -38,7 +39,7 @@ export function Sidebar() {
   const { t } = useTranslation();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const { data: profile } = useProfile();
-  const email = useAuthStore((s) => s.session?.user?.email) ?? "";
+  const email = useAuthStore((s) => s.user?.email) ?? "";
   const [notifOpen, setNotifOpen] = useState(false);
   const { items: notifications, unreadCount, dismiss, markAllRead } = useNotifications();
 
@@ -133,6 +134,17 @@ export function Sidebar() {
           onDismiss={dismiss}
           onMarkAllRead={markAllRead}
         />
+
+        <Link
+          to="/settings"
+          aria-label={t('sync.title')}
+          className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent"
+        >
+          <SyncStatusIcon />
+          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+            {t('sync.title')}
+          </span>
+        </Link>
 
         <Link
           to="/settings"

@@ -3,19 +3,15 @@ import { renderHook, act } from "@testing-library/react";
 import { useAuth } from "@/features/auth/useAuth";
 import { useAuthStore } from "@/features/auth/authStore";
 
-const getSession = vi.fn().mockResolvedValue({ data: { session: null } });
-
-vi.mock("@/lib/supabase", () => ({
-  supabase: {
-    auth: {
-      getSession: (...args: unknown[]) => getSession(...args),
-      onAuthStateChange: vi.fn(() => ({
-        data: { subscription: { unsubscribe: vi.fn() } },
-      })),
-      signOut: vi.fn().mockResolvedValue({ error: null }),
-    },
+vi.mock("@/lib/authApi", () => ({
+  authApi: {
+    getUser: vi.fn(),
+    login: vi.fn(),
+    register: vi.fn(),
   },
 }));
+
+import { authApi } from "@/lib/authApi";
 
 async function flush() {
   await act(async () => {
@@ -23,49 +19,46 @@ async function flush() {
   });
 }
 
-describe("useAuth", () => {
+describe("useAuth（local-first 会话恢复）", () => {
   beforeEach(() => {
-    getSession.mockResolvedValue({ data: { session: null } });
-    useAuthStore.setState({ session: null, loading: true });
+    localStorage.clear();
+    useAuthStore.setState({ user: null, loading: true });
+    vi.mocked(authApi.getUser).mockReset();
   });
 
-  it("无真实会话时清空会话且 loading=false", async () => {
+  it("无本地会话时清空用户且 loading=false", async () => {
     const { result } = renderHook(() => useAuth());
     await flush();
-
     expect(result.current.loading).toBe(false);
     expect(result.current.session).toBeNull();
   });
 
-  it("存在真实会话时以真实会话覆盖", async () => {
-    getSession.mockResolvedValue({
-      data: {
-        session: {
-          access_token: "real-token",
-          token_type: "bearer",
-          expires_in: 3600,
-          user: { id: "real-user-id", email: "real@example.com" },
-        },
-      },
+  it("存在本地会话时恢复用户", async () => {
+    localStorage.setItem("easywork:user_id", "u1");
+    vi.mocked(authApi.getUser).mockResolvedValue({
+      id: "u1",
+      email: "real@example.com",
+      display_name: null,
+      avatar_data: null,
+      created_at: "",
+      updated_at: "",
     });
 
     const { result } = renderHook(() => useAuth());
     await flush();
 
     expect(result.current.loading).toBe(false);
-    expect(result.current.session?.user.id).toBe("real-user-id");
+    expect(result.current.session?.email).toBe("real@example.com");
   });
 
-  it("显式 logout 后会话被清空", async () => {
-    getSession.mockResolvedValue({
-      data: {
-        session: {
-          access_token: "real-token",
-          token_type: "bearer",
-          expires_in: 3600,
-          user: { id: "real-user-id", email: "real@example.com" },
-        },
-      },
+  it("显式 logout 后用户被清空", async () => {
+    useAuthStore.getState().setUser({
+      id: "u1",
+      email: "real@example.com",
+      display_name: null,
+      avatar_data: null,
+      created_at: "",
+      updated_at: "",
     });
     const { result } = renderHook(() => useAuth());
     await flush();

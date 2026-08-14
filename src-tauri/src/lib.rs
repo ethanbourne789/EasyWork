@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod sync;
 pub mod calendar_sync;
+pub mod business;
 
 #[cfg(test)]
 mod tests;
@@ -55,13 +56,23 @@ pub fn run() {
             let conn = mail::db::init_db(&db_path)
                 .expect("无法初始化邮件数据库");
 
+            // 主应用本地数据库（任务/笔记等业务表 + 同步元数据表）。
+            let app_db_path = app_data_dir.join("easywork.db");
+            let app_conn = db::init_db(&app_db_path)
+                .expect("无法初始化应用数据库");
+            crate::sync::config::create_sync_tables(&app_conn)
+                .expect("无法创建同步元数据表");
+
             let service = mail::service::MailService {
                 db: Arc::new(tokio::sync::Mutex::new(conn)),
                 attachments_dir: mail_dir.join("attachments").into_boxed_path(),
                 locks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
             };
 
-            app.manage(commands::AppState { service });
+            app.manage(commands::AppState {
+                service,
+                db: Arc::new(tokio::sync::Mutex::new(app_conn)),
+            });
 
             let close_behavior = Arc::new(AtomicBool::new(false));
             app.manage(AppSharedState {
@@ -94,6 +105,32 @@ pub fn run() {
                     ).await;
                 }
             });
+
+            // 云端增量同步后台任务：每 60 秒检查一次同步配置，若已启用则自动
+            // 上传本地变更并下载云端变更。所有错误仅记录日志，绝不让同步故障
+            // 拖垮主进程。
+            {
+                let cloud_db = app.state::<commands::AppState>().db.clone();
+                let cloud_mail_db = app.state::<commands::AppState>().service.db.clone();
+                tauri::async_runtime::spawn(async move {
+                    use tokio::time::{sleep, Duration};
+                    loop {
+                        sleep(Duration::from_secs(60)).await;
+                        if let Err(e) = crate::sync::engine::sync_upload(
+                            &cloud_db,
+                            &cloud_mail_db,
+                        ).await {
+                            tracing::warn!("云端同步上传失败: {}", e);
+                        }
+                        if let Err(e) = crate::sync::engine::sync_download(
+                            &cloud_db,
+                            &cloud_mail_db,
+                        ).await {
+                            tracing::warn!("云端同步下载失败: {}", e);
+                        }
+                    }
+                });
+            }
 
             let show_item = MenuItem::with_id(app, "show", "显示", true, None::<&str>)?;
             let quit_item = MenuItem::with_id(app, "quit", "退出 EasyWork", true, None::<&str>)?;
@@ -172,6 +209,86 @@ pub fn run() {
             commands::set_autostart,
             commands::get_close_behavior,
             commands::set_close_behavior,
+            commands::sync_config_get,
+            commands::sync_config_save,
+            commands::sync_config_delete,
+            commands::sync_test_connection,
+            commands::sync_trigger,
+            commands::sync_status,
+            commands::sync_log_get,
+            commands::sync_set_device_name,
+            // ---- local-first 业务命令（任务/笔记/记账/日历）----
+            business::task_list_all,
+            business::task_get,
+            business::task_create,
+            business::task_update,
+            business::task_delete,
+            business::subtask_list,
+            business::subtask_create,
+            business::subtask_update,
+            business::subtask_delete,
+            business::tag_list_all,
+            business::tag_create,
+            business::tag_update,
+            business::tag_delete,
+            business::task_tag_list,
+            business::task_tag_set,
+            business::note_list_all,
+            business::note_get,
+            business::note_create,
+            business::note_update,
+            business::note_delete,
+            business::note_folder_list_all,
+            business::note_folder_create,
+            business::note_folder_update,
+            business::note_folder_delete,
+            business::note_tag_list_all,
+            business::note_tag_create,
+            business::note_tag_update,
+            business::note_tag_delete,
+            business::note_tag_get_by_note,
+            business::note_tag_get_ids,
+            business::note_tag_list_all_relations,
+            business::note_tag_set,
+            business::transaction_list_all,
+            business::transaction_get,
+            business::transaction_create,
+            business::transaction_update,
+            business::transaction_delete,
+            business::account_list_all,
+            business::account_get,
+            business::account_create,
+            business::account_update,
+            business::account_delete,
+            business::category_list_all,
+            business::category_create,
+            business::category_update,
+            business::category_delete,
+            business::budget_list_all,
+            business::budget_create,
+            business::budget_update,
+            business::budget_delete,
+            business::calendar_event_list_all,
+            business::calendar_event_get,
+            business::calendar_event_create,
+            business::calendar_event_update,
+            business::calendar_event_delete,
+            business::calendar_subscription_list_all,
+            business::calendar_subscription_get,
+            business::calendar_subscription_create,
+            business::calendar_subscription_update,
+            business::calendar_subscription_delete,
+            business::calendar_sync_subscription,
+            business::data_export_all,
+            business::data_import_all,
+            business::data_clear_all,
+            business::receipt_save,
+            business::receipt_open,
+            business::auth_register,
+            business::auth_login,
+            business::auth_get_user,
+            business::auth_update_profile,
+            business::auth_change_password,
         ])
         .run(tauri::generate_context!())
     {

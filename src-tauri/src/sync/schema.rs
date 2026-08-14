@@ -119,6 +119,7 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             period_start TEXT NOT NULL,
             period_end TEXT NOT NULL,
             rollover INTEGER NOT NULL DEFAULT 0,
+            carry_over_cents INTEGER NOT NULL DEFAULT 0,
             scope TEXT DEFAULT 'category',
             year_month TEXT,
             created_at TEXT NOT NULL,
@@ -133,6 +134,8 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             content TEXT NOT NULL,
             folder_id TEXT,
             is_pinned INTEGER NOT NULL DEFAULT 0,
+            content_text TEXT,
+            cover_url TEXT,
             created_at TEXT NOT NULL,
             updated_at TEXT NOT NULL,
             sync_modified_at TEXT NOT NULL,
@@ -160,6 +163,26 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             PRIMARY KEY (note_id, tag_name)
         );
         CREATE INDEX IF NOT EXISTS idx_note_tags_sync_modified ON note_tags(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS note_tag_master (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT,
+            created_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_note_tag_master_sync_modified ON note_tag_master(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS note_note_tags (
+            id TEXT PRIMARY KEY,
+            note_id TEXT NOT NULL,
+            tag_id TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL,
+            UNIQUE (note_id, tag_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_note_note_tags_sync_modified ON note_note_tags(sync_modified_at);
 
         CREATE TABLE IF NOT EXISTS calendar_events (
             id TEXT PRIMARY KEY,

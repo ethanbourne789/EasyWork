@@ -31,10 +31,10 @@ const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
   beforeLoad: () => {
-    const { session, loading } = useAuthStore.getState();
-    // loading 期间（getSession 尚未解析）不打断渲染，避免已登录回访用户被弹回登录页
+    const { user, loading } = useAuthStore.getState();
+    // loading 期间（本地会话恢复中）不打断渲染，避免已登录回访用户被弹回登录页
     if (loading) return;
-    throw redirect({ to: session ? "/dashboard" : "/login" });
+    throw redirect({ to: user ? "/dashboard" : "/login" });
   },
 });
 
@@ -43,8 +43,8 @@ const appRoute = createRoute({
   id: "app",
   component: AppLayout,
   beforeLoad: () => {
-    const { session, loading } = useAuthStore.getState();
-    if (!loading && !session) {
+    const { user, loading } = useAuthStore.getState();
+    if (!loading && !user) {
       throw redirect({ to: "/login" });
     }
   },

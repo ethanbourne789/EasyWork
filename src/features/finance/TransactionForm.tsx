@@ -6,7 +6,6 @@ import { z } from 'zod';
 import { format } from 'date-fns';
 import { useCreateTransaction, useUpdateTransaction, useCategories, useAccounts } from './useFinance';
 import { getCurrentUserId } from '@/features/auth/authStore';
-import { supabase } from '@/lib/supabase';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Select } from '@/components/ui/select';
@@ -179,14 +178,22 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
     setUploading(true);
     setReceiptError(null);
     try {
-      const userId = getCurrentUserId();
-      const ext = file.name.split('.').pop() ?? 'bin';
-      const path = `${userId}/${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
-      const { error } = await supabase.storage
-        .from('receipt-photos')
-        .upload(path, file, { upsert: false, contentType: file.type });
-      if (error) throw error;
-      setReceiptUrl(path);
+      const { isTauri } = await import("@/lib/tauri");
+      if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+      const reader = new FileReader();
+      const base64 = await new Promise<string>((resolve, reject) => {
+        reader.onload = () => {
+          const dataUrl = String(reader.result ?? "");
+          resolve(dataUrl.split(',')[1] ?? "");
+        };
+        reader.onerror = () => reject(new Error("读取文件失败"));
+        reader.readAsDataURL(file);
+      });
+      const ext = file.name.split('.').pop() ?? 'png';
+      const filename = `${Date.now()}-${Math.random().toString(36).slice(2)}.${ext}`;
+      const { invoke } = await import("@tauri-apps/api/core");
+      const saved = await invoke<string>("receipt_save", { dataBase64: base64, filename });
+      setReceiptUrl(saved);
     } catch (err: unknown) {
       setReceiptError(err instanceof Error ? err.message : t('finance.receiptUploadFailed'));
     } finally {
@@ -196,8 +203,14 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
 
   const viewReceipt = async () => {
     if (!receiptUrl) return;
-    const { data } = await supabase.storage.from('receipt-photos').createSignedUrl(receiptUrl, 3600);
-    if (data?.signedUrl) window.open(data.signedUrl, '_blank');
+    try {
+      const { isTauri } = await import("@/lib/tauri");
+      if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("receipt_open", { filename: receiptUrl });
+    } catch (err: unknown) {
+      setReceiptError(err instanceof Error ? err.message : t('finance.receiptUploadFailed'));
+    }
   };
 
   const handleQuickInput = (value: string) => {

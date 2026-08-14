@@ -1,5 +1,5 @@
 import { isTauri } from "@/lib/tauri";
-import type { Task, Subtask, Tag, TaskTag, TaskStatus, TaskPriority, RecurrenceRule } from "@/types";
+import type { Task, Subtask, Tag, TaskStatus, TaskPriority, RecurrenceRule } from "@/types";
 
 /**
  * 懒加载 Tauri invoke 函数。
@@ -33,6 +33,7 @@ export const taskApi = {
     due_date?: string;
     tag_ids?: string[];
     recurrence_rule?: RecurrenceRule;
+    recurrence_next?: string;
   }) => {
     const invoke = await getInvoke();
     return invoke<Task>("task_create", {
@@ -43,18 +44,22 @@ export const taskApi = {
       due_date: data.due_date,
       tag_ids: data.tag_ids,
       recurrence_rule: data.recurrence_rule,
+      recurrence_next: data.recurrence_next,
     });
   },
-  updateTask: async (data: {
-    id: string;
-    title?: string;
-    description?: string;
-    status?: TaskStatus;
-    priority?: TaskPriority;
-    due_date?: string | null;
-    tag_ids?: string[];
-    recurrence_rule?: RecurrenceRule | null;
-  }) => {
+  updateTask: async (
+    data: {
+      id: string;
+      title?: string;
+      description?: string;
+      status?: TaskStatus;
+      priority?: TaskPriority;
+      due_date?: string | null;
+      tag_ids?: string[];
+      recurrence_rule?: RecurrenceRule | null;
+    },
+    null_fields?: string[],
+  ) => {
     const invoke = await getInvoke();
     return invoke<Task>("task_update", {
       id: data.id,
@@ -62,9 +67,10 @@ export const taskApi = {
       description: data.description,
       status: data.status,
       priority: data.priority,
-      due_date: data.due_date,
+      due_date: data.due_date ?? undefined,
       tag_ids: data.tag_ids,
-      recurrence_rule: data.recurrence_rule,
+      recurrence_rule: data.recurrence_rule ?? undefined,
+      null_fields,
     });
   },
   deleteTask: async (id: string) => {

@@ -1,4 +1,7 @@
-use tokio_postgres::{Client, NoTls};
+use tokio_postgres::Client;
+use tokio_postgres_rustls::MakeRustlsConnect;
+use rustls::ClientConfig;
+use rustls_platform_verifier::ConfigVerifierExt;
 use super::ConnectionTestResult;
 
 /// PostgreSQL 连接封装结构体。
@@ -6,30 +9,21 @@ pub struct PgConnection {
     pub client: Client,
 }
 
-/// 建立 PostgreSQL 连接，使用系统 TLS 证书验证（rustls-platform-verifier）。
-/// 如果连接字符串为空或无效，则返回错误信息。
+/// 建立 PostgreSQL 连接，使用平台信任的根证书进行 TLS 验证
+/// （rustls-platform-verifier 会读取系统 / 平台原生信任库，支持自签名与私有 CA）。
+/// 连接字符串为空或无效时返回中文错误信息。
 pub async fn connect(connection_string: &str) -> Result<PgConnection, String> {
-    // 构建使用系统 TLS 的连接器
-    let tls = rustls_platform_verifier::builder()
-        .unwrap_or_else(|e| {
-            tracing::warn!("构建系统 TLS 失败: {}，降级使用 NoTls", e);
-        })
-        .map(|builder| builder.build())
-        .ok();
+    if connection_string.trim().is_empty() {
+        return Err("连接字符串为空".to_string());
+    }
 
-    let (client, connection) = match tls {
-        Some(tls_connector) => {
-            tokio_postgres::connect(connection_string, tls_connector)
-                .await
-                .map_err(|e| format!("连接 PostgreSQL 失败（TLS）: {}", e))?
-        }
-        None => {
-            tracing::warn!("TLS 不可用，使用无加密连接");
-            tokio_postgres::connect(connection_string, NoTls)
-                .await
-                .map_err(|e| format!("连接 PostgreSQL 失败（无 TLS）: {}", e))?
-        }
-    };
+    // 使用平台信任的根证书构建 TLS 配置（rustls 0.23 + rustls-platform-verifier）
+    let tls_config = ClientConfig::with_platform_verifier();
+    let tls = MakeRustlsConnect::new(tls_config);
+
+    let (client, connection) = tokio_postgres::connect(connection_string, tls)
+        .await
+        .map_err(|e| format!("连接 PostgreSQL 失败: {}", e))?;
 
     // 在后台任务中保持连接活跃
     tokio::spawn(async move {

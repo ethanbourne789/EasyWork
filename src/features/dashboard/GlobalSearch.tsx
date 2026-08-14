@@ -88,7 +88,7 @@ export function GlobalSearch() {
       });
 
     return items.slice(0, 10);
-  }, [query, tasks, notes, transactions]);
+  }, [query, tasks, notes, transactions, t]);
 
   const typeIcon = (type: ResultType) => {
     switch (type) {

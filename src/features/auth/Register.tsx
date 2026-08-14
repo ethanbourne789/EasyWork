@@ -1,9 +1,7 @@
 import { useState } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/lib/supabase";
-import { loginDemo } from "@/features/auth/authStore";
-import { friendlyAuthError } from "@/lib/authErrors";
+import { useAuthStore } from "@/features/auth/authStore";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -14,9 +12,10 @@ export function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
+  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; confirmPassword?: string }>({});
-  const [demoLoading, setDemoLoading] = useState(false);
+  const [registering, setRegistering] = useState(false);
 
   const registerSchema = z
     .object({
@@ -28,18 +27,6 @@ export function Register() {
       message: t("auth.passwordMismatch"),
       path: ["confirmPassword"],
     });
-
-  const enterDemo = async () => {
-    setDemoLoading(true);
-    setError(null);
-    const { error: demoError } = await loginDemo();
-    setDemoLoading(false);
-    if (demoError) {
-      setError(demoError);
-      return;
-    }
-    navigate({ to: "/dashboard" });
-  };
 
   const handleRegister = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,18 +44,15 @@ export function Register() {
     }
     setFieldErrors({});
 
-    const { data, error: supaError } = await supabase.auth.signUp({ email, password });
-    if (supaError) {
-      // 注册失败明确提示，不再静默回退到演示会话
-      setError(friendlyAuthError(supaError));
+    setRegistering(true);
+    // 本地账号注册成功即自动登录（local-first，无邮箱确认流程）
+    const err = await useAuthStore.getState().register(email, password, displayName || undefined);
+    setRegistering(false);
+    if (err) {
+      setError(err);
       return;
     }
-    // 注册成功：若 Supabase 直接返回会话（关闭邮箱确认）则进入应用，否则引导登录
-    if (data.session) {
-      navigate({ to: "/dashboard" });
-    } else {
-      navigate({ to: "/login" });
-    }
+    navigate({ to: "/dashboard" });
   };
 
   return (
@@ -113,8 +97,16 @@ export function Register() {
               <p className="text-xs text-red-500">{fieldErrors.confirmPassword}</p>
             )}
           </div>
-          <Button type="submit" className="w-full">
-            {t("auth.register")}
+          <div className="space-y-1">
+            <Input
+              type="text"
+              placeholder={t("auth.displayNamePlaceholder")}
+              value={displayName}
+              onChange={(e) => setDisplayName(e.target.value)}
+            />
+          </div>
+          <Button type="submit" className="w-full" disabled={registering}>
+            {registering ? t("auth.registering") : t("auth.register")}
           </Button>
         </form>
 
@@ -124,14 +116,6 @@ export function Register() {
           <p>
             {t("auth.haveAccount")}<Link to="/login" className="text-primary underline">{t("auth.login")}</Link>
           </p>
-          <button
-            type="button"
-            onClick={enterDemo}
-            disabled={demoLoading}
-            className="text-primary underline disabled:opacity-50"
-          >
-            {demoLoading ? t("auth.loggingIn") : t("auth.enterDemo")}
-          </button>
         </div>
       </div>
     </div>

@@ -28,31 +28,43 @@ export const notesApi = {
   createNote: async (data: {
     title: string;
     content?: TiptapJSON;
+    content_text?: string;
     folder_id?: string;
     is_pinned?: boolean;
+    cover_url?: string;
   }) => {
     const invoke = await getInvoke();
     return invoke<Note>("note_create", {
       title: data.title,
       content: data.content ? JSON.stringify(data.content) : "",
+      content_text: data.content_text,
       folder_id: data.folder_id,
       is_pinned: data.is_pinned,
+      cover_url: data.cover_url,
     });
   },
-  updateNote: async (data: {
-    id: string;
-    title?: string;
-    content?: TiptapJSON;
-    folder_id?: string;
-    is_pinned?: boolean;
-  }) => {
+  updateNote: async (
+    data: {
+      id: string;
+      title?: string;
+      content?: TiptapJSON;
+      content_text?: string;
+      folder_id?: string;
+      is_pinned?: boolean;
+      cover_url?: string;
+    },
+    null_fields?: string[],
+  ) => {
     const invoke = await getInvoke();
     return invoke<Note>("note_update", {
       id: data.id,
       title: data.title,
       content: data.content ? JSON.stringify(data.content) : undefined,
+      content_text: data.content_text,
       folder_id: data.folder_id,
       is_pinned: data.is_pinned,
+      cover_url: data.cover_url,
+      null_fields,
     });
   },
   deleteNote: async (id: string) => {
@@ -79,18 +91,22 @@ export const notesApi = {
       sort_order: data.sort_order,
     });
   },
-  updateFolder: async (data: {
-    id: string;
-    name?: string;
-    parent_id?: string;
-    sort_order?: number;
-  }) => {
+  updateFolder: async (
+    data: {
+      id: string;
+      name?: string;
+      parent_id?: string;
+      sort_order?: number;
+    },
+    null_fields?: string[],
+  ) => {
     const invoke = await getInvoke();
     return invoke<NoteFolder>("note_folder_update", {
       id: data.id,
       name: data.name,
       parent_id: data.parent_id,
       sort_order: data.sort_order,
+      null_fields,
     });
   },
   deleteFolder: async (id: string) => {

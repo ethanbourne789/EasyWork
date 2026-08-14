@@ -89,9 +89,12 @@ export function useNotifications(): NotificationsApi {
       }
     }
     for (const b of budgets) {
-      if (b.year_month !== currentMonthNum || !b.amount) continue;
+      if (b.year_month !== currentMonthNum) continue;
+      // 有效额度 = 预算 + 上月结转（与 BudgetList 保持一致；carry_over 可为负）
+      const effective = (b.amount ?? 0) + (b.carry_over ?? 0);
+      if (effective <= 0) continue;
       const totalSpent = b.scope === "overall" ? overallSpent : categorySpending[b.category_id ?? ""] ?? 0;
-      if (totalSpent > b.amount) {
+      if (totalSpent > effective) {
         const catName = b.scope === "overall"
           ? "整体"
           : (categories.find((c) => c.id === b.category_id)?.name ?? "未分类");
@@ -99,7 +102,7 @@ export function useNotifications(): NotificationsApi {
           id: `budget:${b.id}:${currentMonthNum}`,
           type: "budget",
           title: "预算超支提醒",
-          body: `${catName} 本月已支出 ¥${totalSpent.toFixed(2)}，超出预算 ¥${(totalSpent - b.amount).toFixed(2)}`,
+          body: `${catName} 本月已支出 ¥${totalSpent.toFixed(2)}，超出预算 ¥${(totalSpent - effective).toFixed(2)}`,
           href: "/finance",
           ts: now,
         });

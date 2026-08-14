@@ -1,9 +1,7 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { supabase } from "@/lib/supabase";
-import { loginDemo, useAuthStore } from "@/features/auth/authStore";
-import { friendlyAuthError } from "@/lib/authErrors";
+import { useAuthStore } from "@/features/auth/authStore";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -11,36 +9,23 @@ import { Input } from "@/components/ui/input";
 export function Login() {
   const { t } = useTranslation();
   const navigate = useNavigate();
-  const session = useAuthStore((s) => s.session);
+  const user = useAuthStore((s) => s.user);
   const loading = useAuthStore((s) => s.loading);
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
-  const [demoLoading, setDemoLoading] = useState(false);
+  const [loggingIn, setLoggingIn] = useState(false);
 
   const loginSchema = z.object({
     email: z.string().email(t("auth.invalidEmail")),
     password: z.string().min(6, t("auth.passwordTooShort")),
   });
 
-  // 已登录的回访用户：getSession 解析完成后自动跳转，避免被卡在登录页
+  // 已登录的回访用户：本地会话恢复完成后自动跳转
   useEffect(() => {
-    if (!loading && session) navigate({ to: "/dashboard" });
-  }, [loading, session, navigate]);
-
-  // 以演示账号进入：走真实 Supabase 登录（演示数据已 seed 进数据库）。
-  const enterDemo = async () => {
-    setDemoLoading(true);
-    setError(null);
-    const { error: demoError } = await loginDemo();
-    setDemoLoading(false);
-    if (demoError) {
-      setError(demoError);
-      return;
-    }
-    navigate({ to: "/dashboard" });
-  };
+    if (!loading && user) navigate({ to: "/dashboard" });
+  }, [loading, user, navigate]);
 
   const handlePasswordLogin = async (e: React.FormEvent) => {
     e.preventDefault();
@@ -57,12 +42,11 @@ export function Login() {
     }
     setFieldErrors({});
 
-    setDemoLoading(true); // 复用 demoLoading 状态
-    const { error: supaError } = await supabase.auth.signInWithPassword({ email, password });
-    setDemoLoading(false);
-    if (supaError) {
-      // 明确提示登录失败原因，而不是偷偷用演示会话顶替
-      setError(friendlyAuthError(supaError));
+    setLoggingIn(true);
+    const err = await useAuthStore.getState().login(email, password);
+    setLoggingIn(false);
+    if (err) {
+      setError(err);
       return;
     }
     navigate({ to: "/dashboard" });
@@ -98,8 +82,8 @@ export function Login() {
               <p className="text-xs text-red-500">{fieldErrors.password}</p>
             )}
           </div>
-          <Button type="submit" className="w-full" disabled={demoLoading}>
-            {demoLoading ? t("auth.loggingIn") : t("auth.login")}
+          <Button type="submit" className="w-full" disabled={loggingIn}>
+            {loggingIn ? t("auth.loggingIn") : t("auth.login")}
           </Button>
         </form>
 
@@ -109,14 +93,6 @@ export function Login() {
           <p>
             {t("auth.noAccount")}<Link to="/register" className="text-primary underline">{t("auth.register")}</Link>
           </p>
-          <button
-            type="button"
-            onClick={enterDemo}
-            disabled={demoLoading}
-            className="text-primary underline disabled:opacity-50"
-          >
-            {demoLoading ? t("auth.loggingIn") : t("auth.enterDemo")}
-          </button>
         </div>
       </div>
     </div>
