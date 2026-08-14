@@ -1,0 +1,3 @@
+# Mailmap: 把使用 noreply 邮箱的提交合并到主身份显示
+# 格式：<canonical name> <canonical email> <提交中的 name> <提交中的 email>
+ethanbourne789 <ethanbourne789@gmail.com> ethanbourne789 <ethanbourne789@users.noreply.gitee.com>
