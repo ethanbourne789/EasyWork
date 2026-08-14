@@ -1,6 +1,7 @@
 /**
- * 将 Supabase 鉴权错误转换为对用户友好的中文提示。
- * 用于登录 / 注册失败时不静默回退，而是明确告知原因。
+ * 将后端鉴权错误转换为对用户友好的中文提示。
+ * 源自 Supabase 鉴权错误映射（local-first 前的登录/注册错误文案），
+ * 现为通用工具：本地认证 / 云同步等后端报错均可复用。
  */
 export function friendlyAuthError(err: unknown): string {
   const message = err instanceof Error ? err.message : String(err ?? "");

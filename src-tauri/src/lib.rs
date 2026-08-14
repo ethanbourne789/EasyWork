@@ -289,6 +289,7 @@ pub fn run() {
             business::auth_get_user,
             business::auth_update_profile,
             business::auth_change_password,
+            business::demo_enter,
         ])
         .run(tauri::generate_context!())
     {

@@ -10,17 +10,6 @@ const { mockAccounts, mockCreateMutate, mockUpdateMutate } = vi.hoisted(() => ({
   mockUpdateMutate: vi.fn(),
 }));
 
-vi.mock("@/lib/supabase", () => ({
-  supabase: {
-    storage: {
-      from: vi.fn(() => ({
-        upload: vi.fn(),
-        createSignedUrl: vi.fn(),
-      })),
-    },
-  },
-}));
-
 vi.mock("@/features/finance/useFinance", () => ({
   useCreateTransaction: () => ({
     isPending: false,

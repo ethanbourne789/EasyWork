@@ -1973,3 +1973,47 @@ pub async fn auth_change_password(
     .map_err(|e| e.to_string())?;
     Ok(())
 }
+
+// ---------------------------------------------------------------------------
+// 演示账号（"以演示账号进入"）：确保演示用户存在并返回，前端据此建立本地会话。
+// 演示数据本身由前端 seedDemoData 在每次进入/打开时重新生成（日期相对 now），
+// 因此本命令只负责"演示用户"这一身份，不触碰业务数据。
+// ---------------------------------------------------------------------------
+
+/// 演示账号固定邮箱与密码（前端 seedDemoData 直接登录，无需校验密码）。
+const DEMO_EMAIL: &str = "demo@easywork.app";
+const DEMO_PASSWORD: &str = "demo123456";
+
+/// 确保演示账号存在（INSERT OR 忽略），返回该用户信息。
+/// 供前端 `以演示账号进入` 建立本地会话；业务数据由前端另行播种。
+#[tauri::command]
+pub async fn demo_enter(state: State<'_, AppState>) -> Result<AuthUserOut, String> {
+    let db = state.db.lock().await;
+    let exists: bool = db
+        .query_row(
+            "SELECT EXISTS(SELECT 1 FROM users WHERE email = ?1)",
+            params![DEMO_EMAIL],
+            |r| r.get(0),
+        )
+        .unwrap_or(false);
+    if !exists {
+        let salt = argon2::password_hash::SaltString::generate(&mut argon2::password_hash::rand_core::OsRng);
+        let hash = Argon2::default()
+            .hash_password(DEMO_PASSWORD.as_bytes(), &salt)
+            .map_err(|e| format!("演示账号密码哈希失败: {}", e))?
+            .to_string();
+        let id = new_id();
+        let ts = now();
+        db.execute(
+            "INSERT INTO users (id,email,password_hash,display_name,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?5)",
+            params![id, DEMO_EMAIL, hash, "演示用户", ts],
+        )
+        .map_err(|e| e.to_string())?;
+    }
+    db.query_row(
+        &format!("SELECT {} FROM users WHERE email = ?1", AUTH_USER_COLS),
+        params![DEMO_EMAIL],
+        |r| row_to_auth_user(r),
+    )
+    .map_err(|e| e.to_string())
+}

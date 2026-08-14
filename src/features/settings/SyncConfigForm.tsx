@@ -38,7 +38,7 @@ export function SyncConfigForm() {
   const trigger = useTriggerSync();
 
   const { register, handleSubmit, reset, watch, setValue } = useForm<FormValues>({
-    defaultValues: { enabled: false, provider: "supabase", connection_string: "", database_name: "", device_name: "" },
+    defaultValues: { enabled: false, provider: "custom", connection_string: "", database_name: "", device_name: "" },
   });
 
   useEffect(() => {
@@ -110,7 +110,7 @@ export function SyncConfigForm() {
       try {
         await del.mutateAsync();
         toast(t("sync.configDeleted"), "success");
-        reset({ enabled: false, provider: "supabase", connection_string: "", database_name: "", device_name: "" });
+        reset({ enabled: false, provider: "custom", connection_string: "", database_name: "", device_name: "" });
       } catch (e) {
         toast(`${t("sync.saveFailed")} ${e instanceof Error ? e.message : ""}`, "error");
       }

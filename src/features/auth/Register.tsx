@@ -12,7 +12,6 @@ export function Register() {
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
   const [confirmPassword, setConfirmPassword] = useState("");
-  const [displayName, setDisplayName] = useState("");
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string; confirmPassword?: string }>({});
   const [registering, setRegistering] = useState(false);
@@ -46,7 +45,7 @@ export function Register() {
 
     setRegistering(true);
     // 本地账号注册成功即自动登录（local-first，无邮箱确认流程）
-    const err = await useAuthStore.getState().register(email, password, displayName || undefined);
+    const err = await useAuthStore.getState().register(email, password);
     setRegistering(false);
     if (err) {
       setError(err);
@@ -96,14 +95,6 @@ export function Register() {
             {fieldErrors.confirmPassword && (
               <p className="text-xs text-red-500">{fieldErrors.confirmPassword}</p>
             )}
-          </div>
-          <div className="space-y-1">
-            <Input
-              type="text"
-              placeholder={t("auth.displayNamePlaceholder")}
-              value={displayName}
-              onChange={(e) => setDisplayName(e.target.value)}
-            />
           </div>
           <Button type="submit" className="w-full" disabled={registering}>
             {registering ? t("auth.registering") : t("auth.register")}

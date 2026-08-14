@@ -5,7 +5,6 @@ import { QueryClient, QueryCache, QueryClientProvider, useQueryClient } from "@t
 import { ThemeProvider } from "@/components/theme/ThemeProvider";
 import { Button } from "@/components/ui/button";
 import { useAuth } from "@/features/auth/useAuth";
-import { useRealtimeSync } from "@/features/realtime/useRealtimeSync";
 import { useAuthStore } from "@/features/auth/authStore";
 import { toast } from "@/lib/toast";
 import { router } from "@/router";
@@ -50,8 +49,6 @@ function AuthGate({ children }: { children: ReactNode }) {
 }
 
 function AuthedRouter() {
-  const user = useAuthStore((s) => s.user);
-  useRealtimeSync(!!user);
   return (
     <QueryCacheGuard>
       <RouterProvider router={router} />

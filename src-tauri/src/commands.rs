@@ -292,7 +292,7 @@ pub async fn sync_config_get(state: State<'_, AppState>) -> Result<SyncConfig, S
         None => Ok(SyncConfig {
             id: "default".to_string(),
             enabled: false,
-            provider: "supabase".to_string(),
+            provider: "custom".to_string(),
             connection_string: String::new(),
             database_name: String::new(),
             last_sync_at: None,

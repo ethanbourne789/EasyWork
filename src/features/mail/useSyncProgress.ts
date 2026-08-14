@@ -3,7 +3,7 @@ import { useQueryClient } from "@tanstack/react-query";
 import { isTauri } from "@/lib/tauri";
 
 /**
- * 安全的 Tauri 事件监听封装（同 useRealtimeSync）。
+ * 安全的 Tauri 事件监听封装。
  * 仅在 Tauri 桌面壳内调用 @tauri-apps/api 的 listen()，
  * 浏览器 / dev 模式下跳过。
  */

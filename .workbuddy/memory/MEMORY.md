@@ -18,7 +18,7 @@ EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任�
 - 邮件模块：独立本地库 `AppData/mail/easywork-mail.db`（mail 命令），密码存 keyring，IMAP/SMTP 走 rustls 平台 CA。
 - **Tauri IPC「未传 vs 显式 null」不可区分**：需要清除字段时用 `null_fields: string[]` 参数（task due_date/recurrence_rule、note folder_id、note_folder parent_id 已支持）。
 - 数据备份：`data_export_all`/`data_import_all`（白名单表+标识符净化）/`data_clear_all`；收据 `receipt_save`/`receipt_open`（存 AppData/receipts/）。
-- 演示模式已彻底移除（2026-08-10）：登录走真实 Supabase signInWithPassword；演示数据在 seed.sql/0011。
+- **演示模式（2026-08-14 重新落地，local-first 版）**：登录页新增「以演示账号进入」按钮。后端 `business::demo_enter`（`src-tauri/src/business.rs`，已注册）确保演示用户 `demo@easywork.app`（argon2 哈希 `demo123456`）存在并返回；前端 `authStore.enterDemo()` 调 `systemApi.enterDemoSession()` 拿到用户后，调 `seedDemoData()`（`src/features/auth/seedDemoData.ts`）先 `data_clear_all` 再生成全模块示例数据。**关键机制：演示数据日期全部相对 `now()` 计算（交易落在近 28 天、任务有逾期/即将到期、日历含过去与未来事件），因此「每次打开都是最新、永远近 1 个月」**。演示会话标记存 localStorage `easywork:demo_mode`；`useAuth` 启动检测到该标记会重新 `enterDemo()`（即每次打开重新播种）；`AppLayout` 在 `isDemo` 时顶部显示「演示模式」胶囊；退出登录清除标记。
 - 用户偏中文、偏好详尽严格的审阅与设计方案。
 
 ## 记账模块审阅结论与实施状态（2026-08-10，详见 docs/finance-module-review-2026-08-10.md 与 docs/finance-implementation-2026-08-10.md）
@@ -32,7 +32,7 @@ EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任�
 - 直接 `INSERT auth.users` 的坑：文本列 `phone_change`/`recovery_token`/`confirmation_token`/`email_change`/`email_change_token_new` 必须为 `''` 而非 NULL，否则 GoTrue 登录触发器对 NULL 做字符串处理抛 500「Database error querying schema」。修复见 `0016`。
 - pgcrypto 的 `crypt`/`gen_salt` 在迁移角色 search_path 不含 `extensions`，需显式 `extensions.crypt(...)`。
 - 无 service_role 排错手法：建关闭 RLS 的 `public._diag` 表，把 `auth.users`/`identities` 真实字段 `to_jsonb` 复制进去并 `grant select to anon`，再用 anon 客户端读取，可逐列对比定位（已用 `0012–0015` + `0018` 清理）。
-- 远程库现有 auth 用户：`test@example.com`、`testuser2026@example.com`（用户此前真实注册）、`demo@easywork.app`（本次种子）。
+- 远程库现有 auth 用户：`test@example.com`、`testuser2026@example.com`（用户此前真实注册）。注：`demo@easywork.app` 现为**本地**演示账号（由 `demo_enter` 在本地库创建），非云端种子。
 
 ## Windows 绿色版（no bundle）构建方式
 - 目标：免安装、拷贝即用的可移植 exe，且不依赖 Visual C++ 可再发行组件。

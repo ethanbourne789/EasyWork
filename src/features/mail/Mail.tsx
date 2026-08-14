@@ -1,5 +1,4 @@
 import { useState, useEffect } from "react";
-import { useQueryClient } from "@tanstack/react-query";
 import { Pencil, FolderPlus, RefreshCw, Menu, PenSquare } from "lucide-react";
 import { ModuleFab } from "@/components/layout/ModuleFab";
 import { Button } from "@/components/ui/button";
@@ -25,28 +24,12 @@ import {
   useCreateFolder,
 } from "./useMail";
 import { UNIFIED_INBOX_ID } from "./mailApi";
-import { migrateAccountsFromSupabase } from "./migrateFromSupabase";
 import { SyncProgressIndicator, SyncProgressBar } from "./SyncProgressIndicator";
 import { useSyncProgress } from "./useSyncProgress";
 import type { Email } from "@/types";
 
 export function Mail() {
-  const queryClient = useQueryClient();
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>();
-
-  // 首启动从 Supabase 迁移邮箱账号到本地存储
-  useEffect(() => {
-    migrateAccountsFromSupabase().then((result) => {
-      if (result.migrated > 0) {
-        console.log(`[mail-migrate] 已从 Supabase 迁移 ${result.migrated} 个邮箱账号`);
-        // 刷新账号列表和文件夹数据
-        queryClient.invalidateQueries({ queryKey: ['email-accounts'] });
-        queryClient.invalidateQueries({ queryKey: ['email-folders'] });
-      }
-    }).catch((err) => {
-      console.error('[mail-migrate] 迁移失败:', err);
-    });
-  }, [queryClient]);
 
   // 进入邮箱页应直接看到邮件，而不是停在「请选择一个文件夹」空态。
   // 默认选中「统一收件箱」虚拟节点，聚合所有账户的收件箱邮件；

@@ -44,7 +44,7 @@ const priorityTag = (p: TaskPriority, t: (key: string) => string): string => {
 const getCategoryKeywords = (t: (key: string) => string): { label: string; keywords: string[]; branded?: boolean }[] => [
   { label: t('tasks.categoryDesign'), keywords: ["设计"] },
   { label: t('tasks.categoryDoc'), keywords: ["代码", "pr", "审查", "周会", "纪要"] },
-  { label: t('tasks.categoryBackend'), keywords: ["后端", "supabase", "迁移"] },
+  { label: t('tasks.categoryBackend'), keywords: ["后端", "数据库", "同步", "迁移"] },
   { label: t('tasks.categoryEmail'), keywords: ["邮件"] },
   { label: t('tasks.categoryShopping'), keywords: ["采购", "日用品"] },
   { label: t('tasks.categoryDelivered'), keywords: ["交付", "原型"], branded: true },

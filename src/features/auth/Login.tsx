@@ -1,10 +1,12 @@
 import { useState, useEffect } from "react";
 import { useNavigate, Link } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
+import { Sparkles } from "lucide-react";
 import { useAuthStore } from "@/features/auth/authStore";
 import { z } from "zod";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { toast } from "@/lib/toast";
 
 export function Login() {
   const { t } = useTranslation();
@@ -16,6 +18,7 @@ export function Login() {
   const [error, setError] = useState<string | null>(null);
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [loggingIn, setLoggingIn] = useState(false);
+  const [enteringDemo, setEnteringDemo] = useState(false);
 
   const loginSchema = z.object({
     email: z.string().email(t("auth.invalidEmail")),
@@ -52,6 +55,18 @@ export function Login() {
     navigate({ to: "/dashboard" });
   };
 
+  const handleEnterDemo = async () => {
+    setError(null);
+    setEnteringDemo(true);
+    const err = await useAuthStore.getState().enterDemo();
+    setEnteringDemo(false);
+    if (err) {
+      setError(err);
+      return;
+    }
+    toast(t("auth.demoEnterSuccess"), "success");
+  };
+
   return (
     <div className="flex h-full items-center justify-center p-4">
       <div className="w-full max-w-sm space-y-6">
@@ -82,10 +97,27 @@ export function Login() {
               <p className="text-xs text-red-500">{fieldErrors.password}</p>
             )}
           </div>
-          <Button type="submit" className="w-full" disabled={loggingIn}>
+          <Button type="submit" className="w-full" disabled={loggingIn || enteringDemo}>
             {loggingIn ? t("auth.loggingIn") : t("auth.login")}
           </Button>
         </form>
+
+        <div className="relative flex items-center justify-center">
+          <span className="absolute inset-x-0 h-px bg-border" />
+          <span className="relative bg-background px-2 text-xs text-muted-foreground">{t("auth.demoDivider")}</span>
+        </div>
+
+        <Button
+          type="button"
+          variant="secondary"
+          className="w-full"
+          onClick={handleEnterDemo}
+          disabled={loggingIn || enteringDemo}
+        >
+          <Sparkles className="mr-2 h-4 w-4" />
+          {enteringDemo ? t("auth.demoEntering") : t("auth.enterDemo")}
+        </Button>
+        <p className="text-center text-xs text-muted-foreground">{t("auth.demoHint")}</p>
 
         {error && <p className="text-center text-sm text-red-500">{error}</p>}
 

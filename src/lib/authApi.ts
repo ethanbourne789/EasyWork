@@ -26,7 +26,10 @@ export const authApi = {
     invoke<LocalUser>("auth_register", { email, password, display_name }),
   login: (email: string, password: string) =>
     invoke<LocalUser>("auth_login", { email, password }),
-  getUser: (user_id: string) => invoke<LocalUser>("auth_get_user", { user_id }),
+  getUser: async (user_id: string) => {
+    if (!user_id) throw new Error("auth_get_user: user_id 为空");
+    return invoke<LocalUser>("auth_get_user", { user_id });
+  },
   updateProfile: (user_id: string, display_name?: string, avatar_data?: string, clear_avatar?: boolean) =>
     invoke<LocalUser>("auth_update_profile", { user_id, display_name, avatar_data, clear_avatar }),
   changePassword: (user_id: string, current_password: string, new_password: string) =>

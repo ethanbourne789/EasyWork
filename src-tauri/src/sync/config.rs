@@ -7,7 +7,7 @@ pub fn create_sync_tables(conn: &Connection) -> rusqlite::Result<()> {
         CREATE TABLE IF NOT EXISTS sync_config (
             id TEXT PRIMARY KEY,
             enabled INTEGER NOT NULL DEFAULT 0,
-            provider TEXT NOT NULL DEFAULT 'supabase',
+            provider TEXT NOT NULL DEFAULT 'custom',
             connection_string TEXT NOT NULL DEFAULT '',
             database_name TEXT NOT NULL DEFAULT '',
             last_sync_at TEXT,

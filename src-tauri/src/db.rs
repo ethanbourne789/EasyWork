@@ -1,7 +1,7 @@
 use rusqlite::{Connection, params};
 use std::path::Path;
 
-const SCHEMA_VERSION: i32 = 5;
+const SCHEMA_VERSION: i32 = 6;
 
 pub fn init_db(db_path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(db_path)?;
@@ -63,6 +63,11 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         migrate_v5(conn)?;
     }
 
+    // v6：budgets 表补 updated_at 列（budget_list_all/budget_update SQL 引用）
+    if current < 6 {
+        migrate_v6(conn)?;
+    }
+
     conn.execute(
         "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?1)",
         params![SCHEMA_VERSION],
@@ -100,6 +105,15 @@ fn migrate_v4(conn: &Connection) -> rusqlite::Result<()> {
         );
         CREATE INDEX IF NOT EXISTS idx_note_note_tags_note ON note_note_tags(note_id);
         CREATE INDEX IF NOT EXISTS idx_note_note_tags_tag ON note_note_tags(tag_id);
+    "#)?;
+    Ok(())
+}
+
+/// v6 增量迁移：budgets 表补 updated_at 列（Rust 端 budget_* 命令读取/更新该列）。
+/// ALTER ADD COLUMN 对历史库安全；全新库 create_all_tables 同步包含该列。
+fn migrate_v6(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(r#"
+        ALTER TABLE budgets ADD COLUMN updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
     "#)?;
     Ok(())
 }
@@ -232,7 +246,8 @@ fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
             rollover INTEGER NOT NULL DEFAULT 0,
             scope TEXT DEFAULT 'category',
             year_month TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
         );
         CREATE INDEX idx_budgets_year_month ON budgets(year_month DESC);
 
