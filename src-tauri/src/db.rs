@@ -1,0 +1,300 @@
+use rusqlite::{Connection, params};
+use std::path::Path;
+
+const SCHEMA_VERSION: i32 = 3;
+
+pub fn init_db(db_path: &Path) -> rusqlite::Result<Connection> {
+    let conn = Connection::open(db_path)?;
+    conn.execute_batch("PRAGMA journal_mode=WAL; PRAGMA foreign_keys=ON;")?;
+    migrate(&conn)?;
+    // crate::sync::config::create_sync_tables(&conn)?;
+    Ok(conn)
+}
+
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let current: i32 = conn.query_row(
+        "SELECT value FROM app_meta WHERE key='schema_version'",
+        [], |row| row.get(0)
+    ).unwrap_or_else(|_| 0i32);
+
+    if current == SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    if current == 0 {
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value INTEGER);
+        "#)?;
+    }
+
+    conn.execute_batch(r#"
+        DROP TABLE IF EXISTS calendar_events;
+        DROP TABLE IF EXISTS calendar_subscriptions;
+        DROP TABLE IF EXISTS note_tags;
+        DROP TABLE IF EXISTS note_folders;
+        DROP TABLE IF EXISTS notes;
+        DROP TABLE IF EXISTS budgets;
+        DROP TABLE IF EXISTS task_tags;
+        DROP TABLE IF EXISTS subtasks;
+        DROP TABLE IF EXISTS transactions;
+        DROP TABLE IF EXISTS categories;
+        DROP TABLE IF EXISTS accounts;
+        DROP TABLE IF EXISTS tasks;
+        DROP TABLE IF EXISTS tags;
+
+        CREATE TABLE tasks (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            description TEXT,
+            status TEXT NOT NULL DEFAULT 'todo',
+            priority TEXT NOT NULL DEFAULT 'medium',
+            due_date TEXT,
+            recurrence_rule TEXT,
+            recurrence_next TEXT,
+            parent_task_id TEXT REFERENCES tasks(id) ON DELETE CASCADE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_tasks_status ON tasks(status, sort_order);
+        CREATE INDEX idx_tasks_due_date ON tasks(due_date) WHERE due_date IS NOT NULL;
+
+        CREATE TABLE subtasks (
+            id TEXT PRIMARY KEY,
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            title TEXT NOT NULL,
+            done INTEGER NOT NULL DEFAULT 0,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_subtasks_task ON subtasks(task_id, sort_order);
+
+        CREATE TABLE tags (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE task_tags (
+            task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
+            tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            PRIMARY KEY (task_id, tag_id)
+        );
+
+        CREATE TABLE accounts (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            balance_cents INTEGER NOT NULL DEFAULT 0,
+            currency TEXT NOT NULL DEFAULT 'CNY',
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE categories (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            type TEXT NOT NULL,
+            icon TEXT,
+            parent_id TEXT REFERENCES categories(id),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE transactions (
+            id TEXT PRIMARY KEY,
+            type TEXT NOT NULL,
+            amount_cents INTEGER NOT NULL,
+            currency TEXT NOT NULL DEFAULT 'CNY',
+            category_id TEXT REFERENCES categories(id),
+            account_id TEXT NOT NULL REFERENCES accounts(id),
+            transfer_account_id TEXT REFERENCES accounts(id),
+            date TEXT NOT NULL,
+            description TEXT,
+            receipt_path TEXT,
+            task_id TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_transactions_date ON transactions(date DESC);
+        CREATE INDEX idx_transactions_account ON transactions(account_id, date DESC);
+        CREATE INDEX idx_transactions_category ON transactions(category_id, date DESC);
+
+        CREATE TABLE budgets (
+            id TEXT PRIMARY KEY,
+            category_id TEXT REFERENCES categories(id),
+            amount_cents INTEGER NOT NULL,
+            period TEXT NOT NULL,
+            period_start TEXT NOT NULL,
+            period_end TEXT NOT NULL,
+            rollover INTEGER NOT NULL DEFAULT 0,
+            scope TEXT DEFAULT 'category',
+            year_month TEXT,
+            created_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_budgets_year_month ON budgets(year_month DESC);
+
+        CREATE TABLE note_folders (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT,
+            parent_id TEXT REFERENCES note_folders(id),
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL
+        );
+
+        CREATE TABLE notes (
+            id TEXT PRIMARY KEY,
+            title TEXT NOT NULL,
+            content TEXT NOT NULL,
+            folder_id TEXT REFERENCES note_folders(id),
+            is_pinned INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_notes_folder ON notes(folder_id);
+        CREATE INDEX idx_notes_updated ON notes(updated_at DESC);
+
+        CREATE TABLE note_tags (
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            tag_name TEXT NOT NULL,
+            PRIMARY KEY (note_id, tag_name)
+        );
+
+        CREATE TABLE calendar_subscriptions (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            provider TEXT NOT NULL DEFAULT 'ics',
+            url TEXT NOT NULL,
+            username TEXT,
+            password TEXT,
+            color TEXT NOT NULL DEFAULT '#8b5cf6',
+            enabled INTEGER NOT NULL DEFAULT 1,
+            last_synced_at TEXT,
+            last_error TEXT,
+            event_count INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+
+        CREATE TABLE calendar_events (
+            id TEXT PRIMARY KEY,
+            subscription_id TEXT REFERENCES calendar_subscriptions(id),
+            title TEXT NOT NULL,
+            description TEXT,
+            start_at TEXT NOT NULL,
+            end_at TEXT NOT NULL,
+            all_day INTEGER NOT NULL DEFAULT 0,
+            location TEXT,
+            color TEXT,
+            source TEXT NOT NULL DEFAULT 'local',
+            external_uid TEXT,
+            organizer TEXT,
+            reminder_minutes INTEGER,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
+        );
+        CREATE INDEX idx_calendar_events_start ON calendar_events(start_at);
+    "#)?;
+
+    if current < 3 {
+        conn.execute_batch(r#"
+            ALTER TABLE tasks ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE tasks ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE subtasks ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE subtasks ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE tags ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE tags ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE task_tags ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE task_tags ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE accounts ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE accounts ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE categories ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE categories ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE transactions ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE transactions ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE budgets ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE budgets ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE notes ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE notes ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE note_folders ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE note_folders ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE note_tags ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE note_tags ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE calendar_events ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE calendar_events ADD COLUMN sync_device_id TEXT;
+            ALTER TABLE calendar_subscriptions ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE calendar_subscriptions ADD COLUMN sync_device_id TEXT;
+        "#).ok();
+
+        conn.execute_batch(r#"
+            CREATE TRIGGER IF NOT EXISTS tasks_sync_touch AFTER UPDATE ON tasks
+            BEGIN
+                UPDATE tasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS subtasks_sync_touch AFTER UPDATE ON subtasks
+            BEGIN
+                UPDATE subtasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS tags_sync_touch AFTER UPDATE ON tags
+            BEGIN
+                UPDATE tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS accounts_sync_touch AFTER UPDATE ON accounts
+            BEGIN
+                UPDATE accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS categories_sync_touch AFTER UPDATE ON categories
+            BEGIN
+                UPDATE categories SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS transactions_sync_touch AFTER UPDATE ON transactions
+            BEGIN
+                UPDATE transactions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS notes_sync_touch AFTER UPDATE ON notes
+            BEGIN
+                UPDATE notes SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS note_folders_sync_touch AFTER UPDATE ON note_folders
+            BEGIN
+                UPDATE note_folders SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS calendar_events_sync_touch AFTER UPDATE ON calendar_events
+            BEGIN
+                UPDATE calendar_events SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS calendar_subscriptions_sync_touch AFTER UPDATE ON calendar_subscriptions
+            BEGIN
+                UPDATE calendar_subscriptions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+        "#).ok();
+    }
+
+    conn.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?1)",
+        params![SCHEMA_VERSION]
+    )?;
+    Ok(())
+}

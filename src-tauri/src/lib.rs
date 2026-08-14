@@ -1,5 +1,8 @@
 pub mod mail;
 pub mod commands;
+pub mod db;
+pub mod sync;
+pub mod calendar_sync;
 
 #[cfg(test)]
 mod tests;

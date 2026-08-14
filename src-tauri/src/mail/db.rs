@@ -1,8 +1,8 @@
 use rusqlite::{Connection, params};
 use std::path::Path;
-use crate::mail::error::{MailError, MailResult};
+use crate::mail::error::MailResult;
 
-const SCHEMA_VERSION: &str = "1";
+const SCHEMA_VERSION: &str = "2";
 
 pub fn init_db(db_path: &Path) -> MailResult<Connection> {
     let conn = Connection::open(db_path)?;
@@ -19,6 +19,12 @@ fn migrate(conn: &Connection) -> MailResult<()> {
 
     if current == SCHEMA_VERSION {
         return Ok(());
+    }
+
+    if current == "0" {
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS mail_meta (key TEXT PRIMARY KEY, value TEXT);
+        "#)?;
     }
 
     conn.execute_batch(r#"
@@ -79,6 +85,23 @@ fn migrate(conn: &Connection) -> MailResult<()> {
             created_at TEXT NOT NULL, updated_at TEXT NOT NULL
         );
     "#)?;
+
+    if current.as_str() < "2" {
+        conn.execute_batch(r#"
+            ALTER TABLE email_accounts ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
+            ALTER TABLE email_accounts ADD COLUMN sync_device_id TEXT;
+        "#).ok();
+
+        conn.execute_batch(r#"
+            CREATE TRIGGER IF NOT EXISTS email_accounts_sync_touch AFTER UPDATE ON email_accounts
+            BEGIN
+                UPDATE email_accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+        "#).ok();
+    }
+
+    // crate::sync::config::create_sync_tables(conn)?;
 
     conn.execute(
         "INSERT OR REPLACE INTO mail_meta (key, value) VALUES ('schema_version', ?1)",
