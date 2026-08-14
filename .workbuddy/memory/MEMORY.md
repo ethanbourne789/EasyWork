@@ -1,7 +1,7 @@
 # EasyWork 项目长期记忆
 
 ## 产品定位
-EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任务、邮箱、笔记、记账、仪表盘。React 19 + Vite + Tailwind v4 + shadcn/ui(new-york) + TanStack Router + Supabase。
+EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任务、邮箱、笔记、记账、仪表盘。React 19 + Vite + Tailwind v4 + shadcn/ui(new-york) + TanStack Router。数据 local-first（本地 SQLite + 可选 PostgreSQL 云同步）。
 
 ## UI 设计方向（2026-08-07 确定）
 - 品牌主色 Iris 鸢尾靛 `oklch(56% 0.17 264)`（单一强调色）。暖调中性灰（色相 70 微彩度，避开死灰）。
@@ -13,7 +13,7 @@ EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任�
 ## 已知架构事实（2026-08-14 更新：local-first 已落地）
 - **local-first 数据架构（2026-08-14 实施）**：任务/笔记/记账/日历的业务数据**全部写入本地 SQLite**（`AppData/easywork.db`），经 `src-tauri/src/business.rs` 的 Tauri 命令读写；前端 hooks 走 api 层，不再直连 Supabase。
 - **认证已本地化（2026-08-14 晚）**：authStore 不再用 Supabase Auth；users 表（argon2 哈希）+ 5 个 auth_* 命令；登录态持久化 localStorage `easywork:user_id`；登录/注册/改密/资料/头像全本地（头像 base64 data URL）。注册成功即自动登录（无邮箱确认）。
-- **Supabase 残留（有意保留）**：`realtime/useRealtimeSync.ts`（postgres_changes 订阅）、`mail/migrateFromSupabase.ts`、`src/lib/supabase.ts`；`authErrors.ts` 业务不再引用（测试仍覆盖）。
+- **Supabase 云后端已彻底移除（2026-08-14 深夜）**：整个 `supabase/` 目录（migrations/functions/config/seed）已删除并归档到 `docs/archive/supabase-legacy/`；`src/lib/supabase.ts`、`src/features/realtime/*`、`mail/migrateFromSupabase.ts`、`src/types/database.types.ts` 全部删除；`package.json` 移除 `@supabase/supabase-js`；CSP 收紧为 `connect-src 'self'`。业务代码零 Supabase 调用。云同步能力改用 `src-tauri/src/sync/*`（tokio-postgres 直连任意 PG，支持 supabase/aiven/render/custom provider）。原 Supabase 权限坑笔记仅供参考，新项目默认不再依赖 Supabase。
 - 本地 schema（db.rs，SCHEMA_VERSION=4）：业务表含 `sync_modified_at`/`sync_device_id` 列 + UPDATE 触发器；v4 加了 `budgets.carry_over_cents`、`notes.content_text/cover_url`、`note_tag_master`/`note_note_tags` 表。云端 PostgreSQL 同步表在 `sync/schema.rs` 保持一致。
 - 邮件模块：独立本地库 `AppData/mail/easywork-mail.db`（mail 命令），密码存 keyring，IMAP/SMTP 走 rustls 平台 CA。
 - **Tauri IPC「未传 vs 显式 null」不可区分**：需要清除字段时用 `null_fields: string[]` 参数（task due_date/recurrence_rule、note folder_id、note_folder parent_id 已支持）。
