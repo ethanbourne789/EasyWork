@@ -26,6 +26,16 @@ export interface SyncStatus {
   sync_error: string | null;
   device_id: string;
   device_name: string;
+  pending_conflicts: number;
+}
+
+export interface SyncConflict {
+  id: string;
+  table_name: string;
+  pk_value: string;
+  local_snapshot: string;
+  remote_snapshot: string;
+  detected_at: string;
 }
 
 export interface SyncLogEntry {
@@ -82,4 +92,7 @@ export const syncApi = {
   getStatus: () => invoke<SyncStatus>("sync_status"),
   getLog: (limit?: number) => invoke<SyncLogEntry[]>("sync_log_get", { limit }),
   setDeviceName: (name: string) => invoke<void>("sync_set_device_name", { name }),
+  listConflicts: () => invoke<SyncConflict[]>("sync_conflicts_list"),
+  resolveConflict: (id: string, keepLocal: boolean) =>
+    invoke<void>("sync_conflict_resolve", { id, keepLocal }),
 };

@@ -2,6 +2,7 @@ import { Outlet } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { Sidebar } from "@/components/layout/Sidebar";
 import { MobileTabBar } from "@/components/layout/MobileTabBar";
+import { MobileNavDrawer } from "@/components/layout/MobileNavDrawer";
 import { GlobalSearchDialog } from "@/components/layout/GlobalSearchDialog";
 import { NetworkStatus } from "@/components/NetworkStatus";
 import { useAuthStore } from "@/features/auth/authStore";
@@ -14,6 +15,11 @@ export function AppLayout() {
     <div className="flex h-full">
       <Sidebar />
       <div className="flex flex-1 flex-col min-w-0">
+        <header className="md:hidden flex items-center justify-between border-b bg-card px-4 h-14 shrink-0">
+          <MobileNavDrawer />
+          <span className="font-display text-lg font-semibold">EasyWork</span>
+          <div className="w-9" />
+        </header>
         <main className="flex-1 overflow-auto pb-16 md:pb-0">
           <Outlet />
         </main>

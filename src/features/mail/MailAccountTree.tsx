@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Button } from "@/components/ui/button";
 import { Avatar } from "@/components/ui/avatar";
@@ -69,6 +70,7 @@ export function MailAccountTree({
   selectedFolderId,
   onFolderSelect,
 }: MailAccountTreeProps) {
+  const { t } = useTranslation();
   const { data: accounts = [], isLoading: accountsLoading, isError: accountsError, refetch } = useEmailAccounts();
   const { data: unifiedUnread = 0 } = useUnifiedUnread();
   const [expandedAccounts, setExpandedAccounts] = useState<Record<string, boolean>>({});
@@ -80,15 +82,15 @@ export function MailAccountTree({
 
   if (accountsLoading) {
     return (
-      <div className="p-4 text-sm text-muted-foreground">加载中...</div>
+      <div className="p-4 text-sm text-muted-foreground">{t("common.loading")}</div>
     );
   }
 
   if (accountsError) {
     return (
       <div className="space-y-2 p-4 text-center">
-        <p className="text-sm text-destructive">邮箱账号加载失败</p>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <p className="text-sm text-destructive">{t("mail.loadFailed")}</p>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t("common.retry")}</Button>
       </div>
     );
   }
@@ -108,7 +110,7 @@ export function MailAccountTree({
           )}
         >
           <Inbox className="h-4 w-4 shrink-0" />
-          <span className="flex-1 truncate text-left">统一收件箱</span>
+          <span className="flex-1 truncate text-left">{t("mail.unifiedInbox")}</span>
           {unifiedUnread > 0 && (
             <span className="rounded-full bg-primary px-1.5 py-0.5 text-xs font-medium text-primary-foreground">
               {unifiedUnread}
@@ -137,7 +139,7 @@ export function MailAccountTree({
           onClick={() => setAddOpen(true)}
         >
           <Plus className="h-4 w-4" />
-          添加账号
+          {t("mail.addAccount")}
         </Button>
       </div>
       <AddAccountDialog open={addOpen} onOpenChange={setAddOpen} />
@@ -151,6 +153,7 @@ interface AddAccountDialogProps {
 }
 
 function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
+  const { t } = useTranslation();
   const createAccount = useCreateEmailAccount();
   const [email, setEmail] = useState("");
   const [displayName, setDisplayName] = useState("");
@@ -196,11 +199,11 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
   const handleSubmit = async () => {
     const trimmed = email.trim();
     if (!trimmed) {
-      setError("请输入邮箱地址");
+      setError(t("mail.enterEmail"));
       return;
     }
     if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) {
-      setError("邮箱地址格式不正确");
+      setError(t("mail.invalidEmailAddress"));
       return;
     }
     setError("");
@@ -218,7 +221,7 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
       });
       handleClose();
     } catch {
-      setError("创建失败，请重试");
+      setError(t("mail.createFailed"));
     }
   };
 
@@ -227,12 +230,12 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
       <DialogContent>
         <DialogClose onClose={handleClose} />
         <DialogHeader>
-          <DialogTitle>添加邮箱账号</DialogTitle>
+          <DialogTitle>{t("mail.addAccount")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
             <label className="text-sm text-muted-foreground">
-              邮箱地址 <span className="text-red-500">*</span>
+              {t("mail.email")} <span className="text-destructive">*</span>
             </label>
             <Input
               value={email}
@@ -241,35 +244,35 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">显示名称</label>
+            <label className="text-sm text-muted-foreground">{t("mail.displayName")}</label>
             <Input
               value={displayName}
               onChange={(e) => setDisplayName(e.target.value)}
-              placeholder="可选"
+              placeholder={t("common.optional")}
             />
           </div>
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">登录用户名</label>
+            <label className="text-sm text-muted-foreground">{t("mail.loginUsername")}</label>
             <Input
               value={username}
               onChange={(e) => setUsername(e.target.value)}
-              placeholder="多数邮箱与邮箱地址相同，可选"
+              placeholder={t("mail.loginUsernamePlaceholder")}
             />
           </div>
           <div className="space-y-1">
             <label className="text-sm text-muted-foreground">
-              密码 / 授权码 <span className="text-red-500">*</span>
+              {t("mail.passwordOrAuthCode")} <span className="text-destructive">*</span>
             </label>
             <Input
               type="password"
               value={password}
               onChange={(e) => setPassword(e.target.value)}
-              placeholder="IMAP/SMTP 密码或邮箱授权码"
+              placeholder={t("mail.passwordPlaceholder")}
             />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">IMAP 服务器</label>
+              <label className="text-sm text-muted-foreground">{t("mail.imapServer")}</label>
               <Input
                 value={imapHost}
                 onChange={(e) => setImapHost(e.target.value)}
@@ -277,7 +280,7 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">IMAP 端口</label>
+              <label className="text-sm text-muted-foreground">{t("mail.imapPort")}</label>
               <Input
                 type="number"
                 value={imapPort}
@@ -288,7 +291,7 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">SMTP 服务器</label>
+              <label className="text-sm text-muted-foreground">{t("mail.smtpServer")}</label>
               <Input
                 value={smtpHost}
                 onChange={(e) => setSmtpHost(e.target.value)}
@@ -296,7 +299,7 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">SMTP 端口</label>
+              <label className="text-sm text-muted-foreground">{t("mail.smtpPort")}</label>
               <Input
                 type="number"
                 value={smtpPort}
@@ -312,20 +315,20 @@ function AddAccountDialog({ open, onOpenChange }: AddAccountDialogProps) {
               onChange={(e) => setUseSsl(e.target.checked)}
               className="h-4 w-4"
             />
-            使用 SSL/TLS
+            {t("mail.useSslTls")}
           </label>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
           <Button variant="outline" size="sm" onClick={handleClose}>
-            取消
+            {t("common.cancel")}
           </Button>
           <Button
             size="sm"
             onClick={handleSubmit}
             disabled={createAccount.isPending}
           >
-            {createAccount.isPending ? "创建中..." : "创建"}
+            {createAccount.isPending ? t("mail.creating") : t("common.create")}
           </Button>
         </DialogFooter>
       </DialogContent>
@@ -348,6 +351,7 @@ function AccountSection({
   selectedFolderId,
   onFolderSelect,
 }: AccountSectionProps) {
+  const { t } = useTranslation();
   const { data: folders = [] } = useEmailFolders(account.id);
   const { data: unreadCounts = {} } = useFolderUnreadCounts();
   const renameFolder = useRenameFolder();
@@ -380,9 +384,9 @@ function AccountSection({
   const handleDelete = async (f: EmailFolder) => {
     setMenuId(null);
     const ok = await confirm({
-      title: "删除文件夹",
-      description: `确定删除文件夹「${f.name}」吗？该文件夹下的本地邮件缓存也会被删除。`,
-      confirmText: "删除",
+      title: t("mail.deleteFolder"),
+      description: t("mail.deleteFolderWithCacheConfirm", { name: f.name }),
+      confirmText: t("common.delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -392,9 +396,9 @@ function AccountSection({
   const handleDeleteAccount = async () => {
     setMenuId(null);
     const ok = await confirm({
-      title: "删除邮箱账号",
-      description: `确定删除邮箱账号「${displayName}」吗？该账号下的所有本地邮件缓存也会被删除。`,
-      confirmText: "删除",
+      title: t("mail.deleteAccount"),
+      description: t("mail.deleteAccountWithCacheConfirm", { name: displayName }),
+      confirmText: t("common.delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -422,7 +426,7 @@ function AccountSection({
             e.stopPropagation();
             setMenuId((p) => (p === account.id ? null : account.id));
           }}
-          aria-label="管理账号"
+          aria-label={t("mail.manageAccount")}
           className="ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded opacity-0 hover:bg-background/60 group-hover:opacity-100"
         >
           <MoreVertical className="h-4 w-4" />
@@ -438,15 +442,15 @@ function AccountSection({
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
             >
               <Pencil className="h-3.5 w-3.5" />
-              编辑
+              {t("common.edit")}
             </button>
             <button
               type="button"
               onClick={handleDeleteAccount}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-red-600 hover:bg-accent"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-destructive hover:bg-accent"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              删除
+              {t("common.delete")}
             </button>
           </div>
         </>
@@ -479,24 +483,24 @@ function AccountSection({
       <Dialog open={!!renameTarget} onOpenChange={(o) => !o && setRenameTarget(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>重命名文件夹</DialogTitle>
+            <DialogTitle>{t("mail.renameFolder")}</DialogTitle>
           </DialogHeader>
           <DialogClose onClose={() => setRenameTarget(null)} />
           <div className="space-y-3">
             <Input
               value={renameName}
               onChange={(e) => setRenameName(e.target.value)}
-              placeholder="文件夹名称"
+              placeholder={t("mail.folderNamePlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") submitRename();
               }}
             />
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setRenameTarget(null)}>
-                取消
+                {t("common.cancel")}
               </Button>
               <Button onClick={submitRename} disabled={!renameName.trim() || renameFolder.isPending}>
-                {renameFolder.isPending ? "保存中..." : "保存"}
+                {renameFolder.isPending ? t("common.saving") : t("common.save")}
               </Button>
             </div>
           </div>
@@ -529,6 +533,7 @@ function FolderItem({
   onRename,
   onDelete,
 }: FolderItemProps) {
+  const { t } = useTranslation();
   const Icon = folderIconMap[folder.name] || MailIcon;
 
   return (
@@ -555,7 +560,7 @@ function FolderItem({
             e.stopPropagation();
             onMenuClick();
           }}
-          aria-label="管理文件夹"
+          aria-label={t("mail.manageFolder")}
           className="ml-0.5 flex h-7 w-7 shrink-0 items-center justify-center rounded hover:bg-background/60"
         >
           <MoreVertical className="h-4 w-4" />
@@ -571,15 +576,15 @@ function FolderItem({
               className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm hover:bg-accent"
             >
               <Pencil className="h-3.5 w-3.5" />
-              重命名
+              {t("mail.rename")}
             </button>
             <button
               type="button"
               onClick={onDelete}
-              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-red-600 hover:bg-accent"
+              className="flex w-full items-center gap-2 rounded px-2 py-1.5 text-sm text-destructive hover:bg-accent"
             >
               <Trash2 className="h-3.5 w-3.5" />
-              删除
+              {t("common.delete")}
             </button>
           </div>
         </>
@@ -595,6 +600,7 @@ interface EditAccountDialogProps {
 }
 
 function EditAccountDialog({ account, open, onOpenChange }: EditAccountDialogProps) {
+  const { t } = useTranslation();
   const updateAccount = useUpdateEmailAccount();
   const [email, setEmail] = useState(account.email);
   const [displayName, setDisplayName] = useState(account.display_name ?? "");
@@ -624,8 +630,8 @@ function EditAccountDialog({ account, open, onOpenChange }: EditAccountDialogPro
 
   const handleSubmit = async () => {
     const trimmed = email.trim();
-    if (!trimmed) { setError("请输入邮箱地址"); return; }
-    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError("邮箱地址格式不正确"); return; }
+    if (!trimmed) { setError(t("mail.enterEmail")); return; }
+    if (!/^[^\s@]+@[^\s@]+\.[^\s@]+$/.test(trimmed)) { setError(t("mail.invalidEmailAddress")); return; }
     setError("");
     try {
       await updateAccount.mutateAsync({
@@ -642,7 +648,7 @@ function EditAccountDialog({ account, open, onOpenChange }: EditAccountDialogPro
       });
       onOpenChange(false);
     } catch {
-      setError("更新失败，请重试");
+      setError(t("mail.updateFailed"));
     }
   };
 
@@ -651,55 +657,55 @@ function EditAccountDialog({ account, open, onOpenChange }: EditAccountDialogPro
       <DialogContent>
         <DialogClose onClose={() => onOpenChange(false)} />
         <DialogHeader>
-          <DialogTitle>编辑邮箱账号</DialogTitle>
+          <DialogTitle>{t("mail.editAccount")}</DialogTitle>
         </DialogHeader>
         <div className="space-y-3">
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">邮箱地址 <span className="text-red-500">*</span></label>
+            <label className="text-sm text-muted-foreground">{t("mail.email")} <span className="text-destructive">*</span></label>
             <Input value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
           </div>
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">显示名称</label>
-            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder="可选" />
+            <label className="text-sm text-muted-foreground">{t("mail.displayName")}</label>
+            <Input value={displayName} onChange={(e) => setDisplayName(e.target.value)} placeholder={t("common.optional")} />
           </div>
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">登录用户名</label>
-            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder="多数邮箱与邮箱地址相同，可选" />
+            <label className="text-sm text-muted-foreground">{t("mail.loginUsername")}</label>
+            <Input value={username} onChange={(e) => setUsername(e.target.value)} placeholder={t("mail.loginUsernamePlaceholder")} />
           </div>
           <div className="space-y-1">
-            <label className="text-sm text-muted-foreground">密码 / 授权码</label>
-            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder="留空则不修改" />
+            <label className="text-sm text-muted-foreground">{t("mail.passwordOrAuthCode")}</label>
+            <Input type="password" value={password} onChange={(e) => setPassword(e.target.value)} placeholder={t("mail.passwordOptionalPlaceholder")} />
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">IMAP 服务器</label>
+              <label className="text-sm text-muted-foreground">{t("mail.imapServer")}</label>
               <Input value={imapHost} onChange={(e) => setImapHost(e.target.value)} placeholder="imap.example.com" />
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">IMAP 端口</label>
+              <label className="text-sm text-muted-foreground">{t("mail.imapPort")}</label>
               <Input type="number" value={imapPort} onChange={(e) => setImapPort(e.target.value)} placeholder="993" />
             </div>
           </div>
           <div className="grid grid-cols-2 gap-3">
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">SMTP 服务器</label>
+              <label className="text-sm text-muted-foreground">{t("mail.smtpServer")}</label>
               <Input value={smtpHost} onChange={(e) => setSmtpHost(e.target.value)} placeholder="smtp.example.com" />
             </div>
             <div className="space-y-1">
-              <label className="text-sm text-muted-foreground">SMTP 端口</label>
+              <label className="text-sm text-muted-foreground">{t("mail.smtpPort")}</label>
               <Input type="number" value={smtpPort} onChange={(e) => setSmtpPort(e.target.value)} placeholder="465" />
             </div>
           </div>
           <label className="flex items-center gap-2 text-sm">
             <input type="checkbox" checked={useSsl} onChange={(e) => setUseSsl(e.target.checked)} className="h-4 w-4" />
-            使用 SSL/TLS
+            {t("mail.useSslTls")}
           </label>
-          {error && <p className="text-sm text-red-500">{error}</p>}
+          {error && <p className="text-sm text-destructive">{error}</p>}
         </div>
         <DialogFooter>
-          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>取消</Button>
+          <Button variant="outline" size="sm" onClick={() => onOpenChange(false)}>{t("common.cancel")}</Button>
           <Button size="sm" onClick={handleSubmit} disabled={updateAccount.isPending}>
-            {updateAccount.isPending ? "保存中..." : "保存"}
+            {updateAccount.isPending ? t("common.saving") : t("common.save")}
           </Button>
         </DialogFooter>
       </DialogContent>

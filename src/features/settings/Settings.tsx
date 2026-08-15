@@ -13,33 +13,17 @@ import { TOAST_DURATION } from "@/lib/constants";
 import { formatDateLocal } from "@/lib/dateUtils";
 import { useEmailAccounts } from "@/features/mail/useMail";
 import { requestNotificationPermission, fireBudgetWarnings } from "@/lib/notify";
+import { getNotifySettings, setNotifySettings, setStoredLanguage, type NotifySettings } from "@/lib/storage";
 import { getAppVersion, isTauri, getAutostartStatus, setAutostart, getCloseBehavior, setCloseBehavior } from "@/lib/tauri";
 import { useProfile, useUpdateProfile } from "./useProfile";
 import { ChangePasswordDialog } from "./ChangePasswordDialog";
+import { BackupPasswordDialog } from "./BackupPasswordDialog";
 import { SyncSettings } from "./SyncSettings";
 import { confirm } from "@/lib/confirm";
 import { useTranslation } from "react-i18next";
 
-const NOTIFY_KEY = "easywork:notifications";
-
-interface NotifySettings {
-  task_reminder: boolean;
-  email_notify: boolean;
-  budget_warning: boolean;
-}
-
-const defaultNotify: NotifySettings = {
-  task_reminder: true,
-  email_notify: true,
-  budget_warning: false,
-};
-
 function loadNotify(): NotifySettings {
-  try {
-    return { ...defaultNotify, ...JSON.parse(localStorage.getItem(NOTIFY_KEY) || "") };
-  } catch {
-    return defaultNotify;
-  }
+  return getNotifySettings();
 }
 
 export function Settings() {
@@ -66,12 +50,16 @@ export function Settings() {
   const [autostartEnabled, setAutostartEnabled] = useState(false);
   const [closeOnExit, setCloseOnExit] = useState(false);
   const [passwordDialogOpen, setPasswordDialogOpen] = useState(false);
+  // 备份导出/导入密码弹窗（导出可选加密，导入对加密备份要求输入密码）
+  const [exportPwdOpen, setExportPwdOpen] = useState(false);
+  const [importPwdOpen, setImportPwdOpen] = useState(false);
+  const [pendingImport, setPendingImport] = useState<unknown>(null);
   // 消费 Tauri 真实命令（修复 #6 空壳）：桌面端显示真实版本，Web 端显示回退值
   useEffect(() => {
-    getAppVersion().then(setAppVersion);
+    getAppVersion().then(setAppVersion).catch(() => setAppVersion(""));
     if (isTauri()) {
-      getAutostartStatus().then(setAutostartEnabled);
-      getCloseBehavior().then(setCloseOnExit);
+      getAutostartStatus().then(setAutostartEnabled).catch(() => setAutostartEnabled(false));
+      getCloseBehavior().then(setCloseOnExit).catch(() => setCloseOnExit(false));
     }
   }, []);
   // 个人资料：从 Supabase profiles 加载一次，作为可编辑初始值（之后以本地编辑为准）
@@ -113,7 +101,7 @@ export function Settings() {
       });
       flashSaved("profile");
     } catch (err) {
-      toast(t('settings.saveFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
+      toast(t('settings.saveFailed') + String(err ?? t('settings.unknownError')), "error");
     }
   };
 
@@ -135,7 +123,7 @@ export function Settings() {
       });
       setAvatarUrl(dataUrl);
     } catch (err) {
-      toast(t('settings.avatarUploadFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
+      toast(t('settings.avatarUploadFailed') + String(err ?? t('settings.unknownError')), "error");
     } finally {
       setUploadingAvatar(false);
       if (avatarInputRef.current) avatarInputRef.current.value = "";
@@ -143,7 +131,7 @@ export function Settings() {
   };
 
   const handleSaveNotify = async () => {
-    localStorage.setItem(NOTIFY_KEY, JSON.stringify(notify));
+    setNotifySettings(notify);
     // 开启通知时申请系统通知权限，并按需立即检查预算超支（修复 P2 #9 通知无消费）
     await requestNotificationPermission();
     if (notify.budget_warning) {
@@ -152,11 +140,18 @@ export function Settings() {
     flashSaved("notifications");
   };
 
-  const handleExportData = async () => {
+  const handleExportData = () => {
+    // 打开密码弹窗：留空导出未加密备份，填写则导出加密备份
+    setExportPwdOpen(true);
+  };
+
+  const doExport = async (password: string) => {
     try {
       if (!isTauri()) throw new Error(t('sync.desktopOnly'));
       const { invoke } = await import("@tauri-apps/api/core");
-      const dump = await invoke<Record<string, unknown[]>>("data_export_all");
+      const dump = await invoke<Record<string, unknown>>("data_export_all", {
+        password: password || null,
+      });
       const blob = new Blob([JSON.stringify(dump, null, 2)], { type: "application/json" });
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
@@ -167,7 +162,35 @@ export function Settings() {
       toast(t('settings.exportSuccess'), "success");
     } catch (err) {
       console.error("导出数据失败:", err);
-      toast(t('settings.exportFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
+      toast(t('settings.exportFailed') + String(err ?? t('settings.unknownError')), "error");
+    }
+  };
+
+  const handleExportLogs = async () => {
+    try {
+      if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+      const { invoke } = await import("@tauri-apps/api/core");
+      const path = await invoke<string>("export_logs");
+      toast(`诊断日志已导出到：${path}`, "success");
+    } catch (err) {
+      console.error("导出日志失败:", err);
+      toast(`导出日志失败：${String(err ?? "未知错误")}`, "error");
+    }
+  };
+
+  const doImport = async (data: unknown, password?: string) => {
+    if (await confirm({
+      title: t('settings.importData'),
+      description: t('settings.importDataConfirm'),
+      confirmText: t('settings.import'),
+      destructive: true,
+    })) {
+      if (!isTauri()) throw new Error(t('sync.desktopOnly'));
+      const { invoke } = await import("@tauri-apps/api/core");
+      await invoke("data_import_all", { data, password: password || null });
+      // 用失效刷新替代整页 reload，避免丢失前端内存状态
+      await qc.invalidateQueries();
+      toast(t('settings.importSuccess'), "success");
     }
   };
 
@@ -179,19 +202,13 @@ export function Settings() {
       try {
         const parsed = JSON.parse(String(reader.result));
         if (!parsed || typeof parsed !== "object") throw new Error("格式错误");
-        if (await confirm({
-          title: t('settings.importData'),
-          description: t('settings.importDataConfirm'),
-          confirmText: t('settings.import'),
-          destructive: true,
-        })) {
-          if (!isTauri()) throw new Error(t('sync.desktopOnly'));
-          const { invoke } = await import("@tauri-apps/api/core");
-          await invoke("data_import_all", { data: parsed });
-          // 用失效刷新替代整页 reload，避免丢失前端内存状态
-          await qc.invalidateQueries();
-          toast(t('settings.importSuccess'), "success");
+        // 加密备份：先弹窗索取密码，再走覆盖确认与导入
+        if (parsed.encrypted === true) {
+          setPendingImport(parsed);
+          setImportPwdOpen(true);
+          return;
         }
+        await doImport(parsed);
       } catch {
         toast(t('settings.importFailed'), "error");
       } finally {
@@ -430,7 +447,7 @@ export function Settings() {
                   variant={i18n.language.startsWith("zh") ? "default" : "outline"}
                   onClick={() => {
                     i18n.changeLanguage("zh-CN");
-                    localStorage.setItem("language", "zh-CN");
+                    setStoredLanguage("zh-CN");
                   }}
                 >
                   {t('settings.chinese')}
@@ -439,7 +456,7 @@ export function Settings() {
                   variant={i18n.language.startsWith("en") ? "default" : "outline"}
                   onClick={() => {
                     i18n.changeLanguage("en-US");
-                    localStorage.setItem("language", "en-US");
+                    setStoredLanguage("en-US");
                   }}
                 >
                   {t('settings.english')}
@@ -557,6 +574,13 @@ export function Settings() {
                 <Button onClick={handleExportData}>{t('settings.export')}</Button>
               </div>
               <div className="rounded-lg border p-4 space-y-2">
+                <h3 className="font-medium">导出诊断日志</h3>
+                <p className="text-sm text-muted-foreground">
+                  将最近 7 天的日志导出到指定目录，用于排查同步或邮件问题。
+                </p>
+                <Button variant="outline" onClick={handleExportLogs}>导出日志</Button>
+              </div>
+              <div className="rounded-lg border p-4 space-y-2">
                 <h3 className="font-medium">{t('settings.importData')}</h3>
                 <p className="text-sm text-muted-foreground">
                   {t('settings.importDataDesc')}
@@ -619,6 +643,35 @@ export function Settings() {
       </div>
 
       <ChangePasswordDialog open={passwordDialogOpen} onOpenChange={setPasswordDialogOpen} />
+      <BackupPasswordDialog
+        open={exportPwdOpen}
+        mode="export"
+        onOpenChange={setExportPwdOpen}
+        onConfirm={(password) => {
+          setExportPwdOpen(false);
+          doExport(password);
+        }}
+      />
+      <BackupPasswordDialog
+        open={importPwdOpen}
+        mode="import"
+        onOpenChange={(open) => {
+          setImportPwdOpen(open);
+          if (!open) setPendingImport(null);
+        }}
+        onConfirm={(password) => {
+          setImportPwdOpen(false);
+          const data = pendingImport;
+          setPendingImport(null);
+          doImport(data, password).catch((err) => {
+            console.error("导入数据失败:", err);
+            toast(
+              typeof err === "string" && err ? err : t('settings.importFailed'),
+              "error"
+            );
+          });
+        }}
+      />
     </div>
   );
 }

@@ -15,7 +15,7 @@
 
 | 组件 | 版本 / 位置 | 状态 |
 |---|---|---|
-| EasyWork.exe（release，内置 CDP 9222） | `release-green/EasyWork.exe` | ✅ 已构建（含 additionalBrowserArgs + CSP 修复） |
+| EasyWork.exe（release，内置 CDP 9222） | `release-green/EasyWork.exe` | ✅ E2E 构建需用 `pnpm run build:e2e`（tauri-e2e.conf.json 含 additionalBrowserArgs）；生产 green 构建不再携带 CDP 端口 |
 | Playwright + chromium | node_modules + `ms-playwright/chromium-1234` | ✅ |
 | tauri-driver（官方备选） | `C:\Users\ethan\.cargo\bin\tauri-driver.exe` v2.0.6 | ✅ |
 | msedgedriver | `C:\Users\ethan\bin\msedgedriver\msedgedriver.exe` v151.0.4129.78 | ✅ 与 WebView2 151.0.4129.78 匹配 |
@@ -30,7 +30,7 @@
 
 ### 应用启动要求
 
-- `tauri.conf.json` windows[0] 已加 `"additionalBrowserArgs": "--remote-debugging-port=9222"`
+- E2E 构建使用 `src-tauri/tauri-e2e.conf.json`，为 windows[0] 附加 `"additionalBrowserArgs": "--remote-debugging-port=9222"`；生产 `tauri.conf.json` 不再携带该端口，避免本地任意进程通过 CDP 接管 WebView。
 - ⚠️ **端口占用坑（已实测）**：旧实例残留的 `msedgewebview2.exe` 会占住 9222 → 新实例自动落到 9223。
   启动脚本必须先杀残留进程，或动态探测 9222/9223/9224。
 - ⚠️ **CSP 坑（已修复）**：原 `connect-src 'self'` 未含 Tauri IPC 端点 → release 版所有命令被 CSP 拦截。

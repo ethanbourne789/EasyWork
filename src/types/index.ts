@@ -266,10 +266,14 @@ export interface EmailAttachment {
   filename: Option<string>;
   mime_type: Option<string>;
   size: Option<number>;
-  /** 本地附件存储路径（绝对路径或 file:// URL） */
+  /** 本地缓存路径；为空字符串表示尚未按需从 IMAP 拉取 */
   file_path: string;
   is_inline: boolean;
   content_id: Option<string>;
+  /** MIME part 编号（如 "1.2"），后端用于 IMAP 按需拉取 */
+  part_id: Option<string>;
+  /** true = 大附件待按需下载（同步时仅存元数据） */
+  pending_download: boolean;
   created_at: string;
 }
 

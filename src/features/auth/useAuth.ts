@@ -1,13 +1,13 @@
 import { useEffect } from "react";
 import { useAuthStore } from "@/features/auth/authStore";
+import { getDemoFlag } from "@/lib/storage";
 
 /**
  * 认证同步（local-first）。
- * 启动时从 localStorage 读取本地登录用户 id，再从本地库拉取资料；
+ * 启动时从本地持久化读取登录用户 id，再从本地库拉取资料；
  * 若为演示会话，则重新播种「近 1 个月」演示数据（每次打开都是最新）。
  * 无本地会话则清空。不再依赖 Supabase Auth。
  */
-const DEMO_KEY = "easywork:demo_mode";
 
 export function useAuth() {
   const user = useAuthStore((s) => s.user);
@@ -15,13 +15,7 @@ export function useAuth() {
 
   useEffect(() => {
     let active = true;
-    const isDemo = (() => {
-      try {
-        return localStorage.getItem(DEMO_KEY) === "1";
-      } catch {
-        return false;
-      }
-    })();
+    const isDemo = getDemoFlag();
 
     const resume = isDemo
       ? useAuthStore.getState().enterDemo()

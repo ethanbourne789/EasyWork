@@ -1,4 +1,5 @@
-use mail_parser::{MessageParser, MimeHeaders};
+use std::collections::HashMap;
+use mail_parser::{MessageParser, MessagePart, MimeHeaders, PartType};
 use crate::mail::error::{MailError, MailResult};
 
 /// 附件实体（含内联图片）：由 do_sync 落盘到 attachments_dir 并写入 email_attachments 表
@@ -9,6 +10,11 @@ pub struct ParsedAttachment {
     pub is_inline: bool,
     pub content_id: Option<String>,
     pub data: Vec<u8>,
+    /// 超过大小阈值、未保留原始字节；用户打开邮件时需按需从 IMAP 拉取
+    pub needs_download: bool,
+    /// MIME part 编号（如 "1.2"），用于 IMAP BODY.PEEK[{part_id}] 按需拉取；
+    /// 无法确定时为 None（调用方回退整封拉取）
+    pub part_id: Option<String>,
 }
 
 pub struct ParsedMail {
@@ -27,6 +33,16 @@ pub struct ParsedMail {
 }
 
 pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
+    parse_message_inner(raw, None)
+}
+
+/// 懒解析：附件超过 max_attach_bytes 时仅保留元数据，data 置空并标记 needs_download。
+/// 小附件行为与 parse_message 完全一致。
+pub fn parse_message_lazy(raw: &[u8], max_attach_bytes: usize) -> MailResult<ParsedMail> {
+    parse_message_inner(raw, Some(max_attach_bytes))
+}
+
+fn parse_message_inner(raw: &[u8], max_attach_bytes: Option<usize>) -> MailResult<ParsedMail> {
     let parsed = MessageParser::default()
         .parse(raw)
         .ok_or_else(|| MailError::new("PARSE_ERROR", "无法解析邮件"))?;
@@ -66,12 +82,18 @@ pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
         .or_else(|| body_html.as_ref().map(|h| html_to_text(h).chars().take(200).collect()));
 
     // 提取附件实体（含内联图片）。attachment 迭代器覆盖非 text/html 的 part。
+    // 这里直接遍历 message.attachments（扁平 parts 索引），以便同时拿到
+    // 各附件在扁平 parts 中的序号，用于查 MIME part 路径表。
+    let part_paths = compute_part_paths(&parsed.parts);
     let mut attachments: Vec<ParsedAttachment> = Vec::new();
-    for part in parsed.attachments() {
+    for &att_id in &parsed.attachments {
+        let Some(part) = parsed.part(att_id) else { continue };
         let data = part.contents();
         if data.is_empty() {
             continue;
         }
+        let size = data.len();
+        let lazy = max_attach_bytes.is_some_and(|max| size > max);
         let is_inline = part.content_disposition().map(|d| d.is_inline()).unwrap_or(false);
         // 文件名优先级：Content-Disposition filename > Content-Type name
         let filename = part
@@ -87,10 +109,12 @@ pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
         attachments.push(ParsedAttachment {
             filename,
             mime_type,
-            size: data.len(),
+            size,
             is_inline,
             content_id,
-            data: data.to_vec(),
+            part_id: part_paths.get(&att_id).cloned(),
+            needs_download: lazy,
+            data: if lazy { Vec::new() } else { data.to_vec() },
         });
     }
 
@@ -107,6 +131,44 @@ pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
         attachments,
         date: parsed.date().map(|d| d.to_rfc3339()),
     })
+}
+
+/// 计算每封邮件扁平 parts 的 MIME part 路径（扁平索引 -> IMAP section path，如 "1.2"）。
+/// mail-parser 的 parts 是扁平数组，multipart 容器的 body 携带其直接子部件索引，
+/// 依此递归即可还原树形编号，供 IMAP BODY.PEEK[{part_id}] 按需拉取附件。
+fn compute_part_paths(parts: &[MessagePart]) -> HashMap<u32, String> {
+    let mut out = HashMap::new();
+    if let Some(root) = parts.first() {
+        match &root.body {
+            PartType::Multipart(children) => assign_part_paths(parts, children, "", &mut out),
+            // 非 multipart 的邮件整体就是第 1 个 part（不产生附件，仅兜底）
+            _ => {
+                out.insert(0, "1".to_string());
+            }
+        }
+    }
+    out
+}
+
+fn assign_part_paths(
+    parts: &[MessagePart],
+    children: &[u32],
+    prefix: &str,
+    out: &mut HashMap<u32, String>,
+) {
+    for (i, &child_id) in children.iter().enumerate() {
+        let path = if prefix.is_empty() {
+            (i + 1).to_string()
+        } else {
+            format!("{}.{}", prefix, i + 1)
+        };
+        out.insert(child_id, path.clone());
+        if let Some(child) = parts.get(child_id as usize) {
+            if let PartType::Multipart(grandchildren) = &child.body {
+                assign_part_paths(parts, grandchildren, &path, out);
+            }
+        }
+    }
 }
 
 /// 去 HTML 标签 + 压缩空白：body_text 缺失时用于生成预览文本

@@ -1,4 +1,5 @@
 import { useState, useRef, useCallback, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Signature, Plus, Trash2, Edit2, Star, X, Bold, Italic, List, Link } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -25,6 +26,7 @@ interface EmailSignatureDialogProps {
 }
 
 export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialogProps) {
+  const { t } = useTranslation();
   const { data: signatures = [] } = useEmailSignatures();
   const createSignature = useCreateEmailSignature();
   const updateSignature = useUpdateEmailSignature();
@@ -75,13 +77,13 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
   };
 
   const execLink = () => {
-    const url = prompt("输入链接 URL：", "https://");
+    const url = prompt(t("mail.linkUrlPlaceholder"), "https://");
     if (url) execCmd("createLink", url);
   };
 
   const handleSave = async () => {
     if (!name.trim() || !htmlContent.trim() || htmlContent === "<br>") {
-      toast("签名名称和内容不能为空", "error");
+      toast(t("mail.signatureAndContentRequired"), "error");
       return;
     }
     try {
@@ -109,9 +111,9 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
 
   const handleDelete = async (id: string) => {
     const ok = await confirm({
-      title: "删除签名",
-      description: "确定要删除这个邮件签名吗？",
-      confirmText: "删除",
+      title: t("mail.deleteSignature"),
+      description: t("mail.deleteSignatureConfirm"),
+      confirmText: t("common.delete"),
       destructive: true,
     });
     if (!ok) return;
@@ -145,7 +147,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>邮件签名</DialogTitle>
+          <DialogTitle>{t("mail.emailSignatures")}</DialogTitle>
         </DialogHeader>
         <DialogClose onClose={() => onOpenChange(false)} />
 
@@ -154,7 +156,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {signatures.length === 0 && !creating && !editingId && (
               <p className="text-sm text-muted-foreground text-center py-4">
-                暂无签名，点击下方按钮创建
+                {t("mail.noSignatures")}
               </p>
             )}
             {signatures.map((sig) => (
@@ -167,7 +169,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                   <div className="flex items-center gap-2">
                     <span className="font-medium truncate">{sig.name}</span>
                     {sig.is_default && (
-                      <span className="text-xs text-primary font-medium">默认</span>
+                      <span className="text-xs text-primary font-medium">{t("mail.defaultLabel")}</span>
                     )}
                   </div>
                   <div className="text-xs text-muted-foreground mt-1 line-clamp-3">
@@ -181,7 +183,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => handleSetDefault(sig.id)}
-                      title="设为默认"
+                      title={t("mail.setDefault")}
                     >
                       <Star className="h-3.5 w-3.5" />
                     </Button>
@@ -211,15 +213,15 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
           {(creating || editingId) && (
             <div className="space-y-3 border-t pt-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium">签名名称</label>
+                <label className="text-sm font-medium">{t("mail.signatureName")}</label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="例如：工作签名"
+                  placeholder={t("mail.signatureNameExample")}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">签名内容</label>
+                <label className="text-sm font-medium">{t("mail.signatureContent")}</label>
                 {/* 富文本工具栏 */}
                 <div className="flex items-center gap-1 rounded-t-md border border-b-0 bg-muted/30 p-1">
                   <Button
@@ -227,7 +229,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                     variant="ghost"
                     className="h-7 w-7 p-0"
                     onClick={() => execCmd("bold")}
-                    title="加粗"
+                    title={t("mail.bold")}
                   >
                     <Bold className="h-3.5 w-3.5" />
                   </Button>
@@ -236,7 +238,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                     variant="ghost"
                     className="h-7 w-7 p-0"
                     onClick={() => execCmd("italic")}
-                    title="斜体"
+                    title={t("mail.italic")}
                   >
                     <Italic className="h-3.5 w-3.5" />
                   </Button>
@@ -245,7 +247,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                     variant="ghost"
                     className="h-7 w-7 p-0"
                     onClick={() => execCmd("insertUnorderedList")}
-                    title="列表"
+                    title={t("mail.list")}
                   >
                     <List className="h-3.5 w-3.5" />
                   </Button>
@@ -254,7 +256,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                     variant="ghost"
                     className="h-7 w-7 p-0"
                     onClick={execLink}
-                    title="链接"
+                    title={t("mail.link")}
                   >
                     <Link className="h-3.5 w-3.5" />
                   </Button>
@@ -265,7 +267,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                   suppressContentEditableWarning
                   onInput={handleEditorInput}
                   className="min-h-[120px] rounded-b-md border p-3 text-sm focus:outline-none focus:ring-2 focus:ring-primary prose prose-sm max-w-none"
-                  data-placeholder="输入签名内容..."
+                  data-placeholder={t("mail.signatureContentPlaceholder")}
                 />
               </div>
               <label className="flex items-center gap-2 cursor-pointer">
@@ -275,18 +277,18 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                   onChange={(e) => setIsDefault(e.target.checked)}
                   className="h-4 w-4 rounded border-border text-primary focus:ring-primary"
                 />
-                <span className="text-sm">设为默认签名</span>
+                <span className="text-sm">{t("mail.setAsDefaultSignature")}</span>
               </label>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={handleCancelEdit}>
-                  <X className="h-4 w-4 mr-1" /> 取消
+                  <X className="h-4 w-4 mr-1" /> {t("common.cancel")}
                 </Button>
                 <Button
                   size="sm"
                   onClick={handleSave}
                   disabled={createSignature.isPending || updateSignature.isPending}
                 >
-                  {editingId ? "更新" : "创建"}
+                  {editingId ? t("mail.update") : t("mail.create")}
                 </Button>
               </div>
             </div>
@@ -295,7 +297,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
           {/* 新建按钮 */}
           {!creating && !editingId && (
             <Button variant="outline" className="w-full gap-2" onClick={handleNew}>
-              <Plus className="h-4 w-4" /> 新建签名
+              <Plus className="h-4 w-4" /> {t("mail.newSignature")}
             </Button>
           )}
         </div>

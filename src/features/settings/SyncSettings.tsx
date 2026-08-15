@@ -2,10 +2,11 @@ import { useTranslation } from "react-i18next";
 import { SyncStatusCard } from "./SyncStatusCard";
 import { SyncConfigForm } from "./SyncConfigForm";
 import { SyncLogViewer } from "./SyncLogViewer";
+import { SyncConflictPanel } from "./SyncConflictPanel";
 import { isTauri } from "@/lib/tauri";
 
 /**
- * 云端同步主面板：状态卡片 + 配置表单 + 同步日志。
+ * 云端同步主面板：状态卡片 + 冲突裁决 + 配置表单 + 同步日志。
  * 仅在桌面端（Tauri）可用；Web 端提示不可用。
  */
 export function SyncSettings() {
@@ -28,6 +29,11 @@ export function SyncSettings() {
       </div>
 
       <SyncStatusCard />
+
+      <div className="rounded-lg border p-4 space-y-4">
+        <h3 className="font-medium">{t("sync.conflicts")}</h3>
+        <SyncConflictPanel />
+      </div>
 
       <div className="rounded-lg border p-4 space-y-4">
         <h3 className="font-medium">{t("sync.provider")}</h3>

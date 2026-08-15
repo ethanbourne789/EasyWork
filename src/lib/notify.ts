@@ -4,6 +4,11 @@
  */
 import { format } from "date-fns";
 import { financeApi } from "@/features/finance/financeApi";
+import {
+  getBudgetWarnCooldown,
+  getNotifySettings,
+  setBudgetWarnCooldown,
+} from "@/lib/storage";
 import { NOTIFICATION_COOLDOWN } from "@/lib/constants";
 
 export function notificationsSupported(): boolean {
@@ -30,14 +35,6 @@ export function notify(title: string, body?: string): boolean {
   }
 }
 
-const NOTIFY_KEY = "easywork:notifications";
-const NOTIFY_DEFAULT = {
-  task_reminder: true,
-  email_notify: true,
-  budget_warning: false,
-};
-
-const BUDGET_WARN_KEY = "easywork:budget-warn-cooldown";
 const BUDGET_WARN_COOLDOWN_MS = NOTIFICATION_COOLDOWN;
 
 export function loadNotifyPref(): {
@@ -45,13 +42,7 @@ export function loadNotifyPref(): {
   email_notify: boolean;
   budget_warning: boolean;
 } {
-  try {
-    const raw = localStorage.getItem(NOTIFY_KEY);
-    if (raw) return { ...NOTIFY_DEFAULT, ...JSON.parse(raw) };
-  } catch {
-    /* ignore */
-  }
-  return NOTIFY_DEFAULT;
+  return getNotifySettings();
 }
 
 /**
@@ -110,20 +101,13 @@ export async function fireBudgetWarnings(): Promise<string[]> {
     const signature = `${currentMonth}|${overBudgetIds.join(",")}`;
 
     let shouldNotify = overBudgetIds.length > 0;
-    try {
-      const raw = localStorage.getItem(BUDGET_WARN_KEY);
-      if (raw) {
-        const { signature: lastSig, ts } = JSON.parse(raw) as {
-          signature: string;
-          ts: number;
-        };
-        const withinCooldown =
-          typeof ts === "number" && Date.now() - ts < BUDGET_WARN_COOLDOWN_MS;
-        // 集合未变化且仍在冷却期内 → 跳过
-        if (signature === lastSig && withinCooldown) shouldNotify = false;
-      }
-    } catch {
-      /* 读取冷却记录失败则用默认行为 */
+    const cooldown = getBudgetWarnCooldown();
+    if (cooldown) {
+      const { signature: lastSig, ts } = cooldown;
+      const withinCooldown =
+        typeof ts === "number" && Date.now() - ts < BUDGET_WARN_COOLDOWN_MS;
+      // 集合未变化且仍在冷却期内 → 跳过
+      if (signature === lastSig && withinCooldown) shouldNotify = false;
     }
 
     if (shouldNotify && overBudgetIds.length > 0) {
@@ -138,14 +122,7 @@ export async function fireBudgetWarnings(): Promise<string[]> {
         notify("预算超支提醒", `${name} 已超支 ¥${(spent - effective).toFixed(2)}`);
         warned.push(name);
       }
-      try {
-        localStorage.setItem(
-          BUDGET_WARN_KEY,
-          JSON.stringify({ signature, ts: Date.now() })
-        );
-      } catch {
-        /* 写入冷却记录失败不影响提醒 */
-      }
+      setBudgetWarnCooldown({ signature, ts: Date.now() });
     }
   } catch {
     /* 通知失败不影响主流程 */

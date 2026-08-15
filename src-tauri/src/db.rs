@@ -1,7 +1,7 @@
 use rusqlite::{Connection, params};
 use std::path::Path;
 
-const SCHEMA_VERSION: i32 = 7;
+const SCHEMA_VERSION: i32 = 12;
 
 pub fn init_db(db_path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(db_path)?;
@@ -16,16 +16,23 @@ pub fn init_db(db_path: &Path) -> rusqlite::Result<Connection> {
 /// - 已有业务表但缺 app_meta 版本行（历史异常库）：返回 SCHEMA_VERSION，
 ///   跳过破坏性迁移，避免误删数据。
 fn schema_version(conn: &Connection) -> i32 {
-    conn.query_row(
+    match conn.query_row(
         "SELECT value FROM app_meta WHERE key='schema_version'",
         [], |row| row.get(0),
-    ).unwrap_or_else(|_| {
-        let has_tables: bool = conn.query_row(
-            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('tasks','notes','accounts'))",
-            [], |row| row.get(0),
-        ).unwrap_or(false);
-        if has_tables { SCHEMA_VERSION } else { 0 }
-    })
+    ) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => {
+            let has_tables: bool = conn.query_row(
+                "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name IN ('tasks','notes','accounts'))",
+                [], |row| row.get(0),
+            ).unwrap_or(false);
+            if has_tables { SCHEMA_VERSION } else { 0 }
+        }
+        Err(e) => {
+            tracing::warn!("读取 schema 版本失败，按全新库处理: {}", e);
+            0
+        }
+    }
 }
 
 /// v7 增量迁移：note_folders 表补 updated_at 列。
@@ -43,58 +50,6 @@ fn migrate_v7(conn: &Connection) -> rusqlite::Result<()> {
         conn.execute_batch("ALTER TABLE note_folders ADD COLUMN updated_at TEXT;")?;
     }
     conn.execute_batch("UPDATE note_folders SET updated_at = COALESCE(updated_at, created_at);")?;
-    Ok(())
-}
-
-/// 版本化迁移入口（M1 修复）：
-/// - 仅全新库（version=0）执行 DROP + CREATE 建表；
-/// - 已有数据库一律走增量迁移（ALTER），绝不再 DROP 业务表；
-/// - 未来 schema 变更：在此追加 `if current < N { ... }` 块并提升 SCHEMA_VERSION。
-fn migrate(conn: &Connection) -> rusqlite::Result<()> {
-    let current = schema_version(conn);
-    if current >= SCHEMA_VERSION {
-        return Ok(());
-    }
-
-    if current == 0 {
-        conn.execute_batch(
-            "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value INTEGER);",
-        )?;
-        create_all_tables(conn)?;
-    }
-
-    // v3：为业务表补充云端同步元数据列与更新触发器（历史库 ALTER-only）
-    if current < 3 {
-        add_sync_columns_and_triggers(conn)?;
-    }
-
-    // v4：local-first 业务迁移
-    //  - budgets.carry_over_cents：结转金额（分，可负），替代旧 rollover bool 语义
-    //  - notes.content_text / cover_url：全文预览与封面（前端 Note 模型需要）
-    //  - note_tag_master / note_note_tags：独立笔记标签 + 关联表（前端 NoteTag/NoteNoteTag 模型）
-    if current < 4 {
-        migrate_v4(conn)?;
-    }
-
-    // v5：本地账号体系（local-first 认证，替代 Supabase Auth）
-    if current < 5 {
-        migrate_v5(conn)?;
-    }
-
-    // v6：budgets 表补 updated_at 列（budget_list_all/budget_update SQL 引用）
-    if current < 6 {
-        migrate_v6(conn)?;
-    }
-
-    // v7：note_folders 表补 updated_at 列（note_folder_create/update SQL 引用）
-    if current < 7 {
-        migrate_v7(conn)?;
-    }
-
-    conn.execute(
-        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?1)",
-        params![SCHEMA_VERSION],
-    )?;
     Ok(())
 }
 
@@ -202,7 +157,8 @@ fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
             title TEXT NOT NULL,
             done INTEGER NOT NULL DEFAULT 0,
             sort_order INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );
         CREATE INDEX idx_subtasks_task ON subtasks(task_id, sort_order);
 
@@ -210,12 +166,14 @@ fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
             id TEXT PRIMARY KEY,
             name TEXT NOT NULL,
             color TEXT,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );
 
         CREATE TABLE task_tags (
             task_id TEXT NOT NULL REFERENCES tasks(id) ON DELETE CASCADE,
             tag_id TEXT NOT NULL REFERENCES tags(id) ON DELETE CASCADE,
+            updated_at TEXT NOT NULL,
             PRIMARY KEY (task_id, tag_id)
         );
 
@@ -433,5 +391,472 @@ fn add_sync_columns_and_triggers(conn: &Connection) -> rusqlite::Result<()> {
             WHERE id = NEW.id;
         END;
     "#)?;
+    Ok(())
+}
+
+/// v8 增量迁移：补齐 5 张表的 UPDATE 触发器。
+/// v3 只建了 10 张业务表触发器，但 budgets / task_tags / note_tags 已有 sync 列却无触发器；
+/// v4 新建的 note_tag_master / note_note_tags 也无触发器。
+fn migrate_v8(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(r#"
+        CREATE TRIGGER IF NOT EXISTS budgets_sync_touch AFTER UPDATE ON budgets
+        BEGIN
+            UPDATE budgets SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS task_tags_sync_touch AFTER UPDATE ON task_tags
+        BEGIN
+            UPDATE task_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE task_id = NEW.task_id AND tag_id = NEW.tag_id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_tags_sync_touch AFTER UPDATE ON note_tags
+        BEGIN
+            UPDATE note_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE note_id = NEW.note_id AND tag_name = NEW.tag_name;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_tag_master_sync_touch AFTER UPDATE ON note_tag_master
+        BEGIN
+            UPDATE note_tag_master SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_note_tags_sync_touch AFTER UPDATE ON note_note_tags
+        BEGIN
+            UPDATE note_note_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE note_id = NEW.note_id AND tag_id = NEW.tag_id;
+        END;
+    "#)?;
+
+    // 将日历订阅密码从 SQLite 明文迁移到系统密钥库（仅对历史库执行一次）。
+    // keyring 写入失败时保留原值，避免阻断升级。
+    if let Ok(mut stmt) = conn.prepare("SELECT id, password FROM calendar_subscriptions WHERE password IS NOT NULL AND password != ''") {
+        let rows: Vec<(String, String)> = {
+            if let Ok(rows) = stmt.query_map([], |row| Ok((row.get::<_, String>(0)?, row.get::<_, String>(1)?))) {
+                rows.filter_map(|r| r.ok()).collect()
+            } else {
+                Vec::new()
+            }
+        };
+        drop(stmt);
+        for (id, password) in rows {
+            if crate::calendar_creds::save_password(&id, &password).is_ok() {
+                let _ = conn.execute(
+                    "UPDATE calendar_subscriptions SET password = '' WHERE id = ?1",
+                    params![id],
+                );
+            }
+        }
+    }
+
+    // 将同步配置连接串从 SQLite 明文迁移到系统密钥库。
+    if let Ok(cs) = conn.query_row(
+        "SELECT connection_string FROM sync_config WHERE id = 'default' AND connection_string IS NOT NULL AND connection_string != ''",
+        [],
+        |row| row.get::<_, String>(0),
+    ) {
+        if crate::sync::creds::save_connection_string(&cs).is_ok() {
+            let _ = conn.execute(
+                "UPDATE sync_config SET connection_string = '' WHERE id = 'default'",
+                [],
+            );
+        }
+    }
+
+    Ok(())
+}
+
+/// v9 增量迁移：业务表 UPDATE 触发器增加 mute 开关。
+/// 同步下载时临时禁用触发器，使云端 sync_modified_at 能原样写回本地，避免下载回环。
+fn migrate_v9(conn: &Connection) -> rusqlite::Result<()> {
+    // 先删除历史无 mute 条件的触发器。
+    for trigger in [
+        "tasks_sync_touch", "subtasks_sync_touch", "tags_sync_touch",
+        "accounts_sync_touch", "categories_sync_touch", "transactions_sync_touch",
+        "notes_sync_touch", "note_folders_sync_touch",
+        "calendar_events_sync_touch", "calendar_subscriptions_sync_touch",
+        "budgets_sync_touch", "task_tags_sync_touch", "note_tags_sync_touch",
+        "note_tag_master_sync_touch", "note_note_tags_sync_touch",
+    ] {
+        conn.execute(
+            &format!("DROP TRIGGER IF EXISTS {}", trigger),
+            [],
+        )?;
+    }
+
+    // 创建带 WHEN 条件的触发器：sync_mute_triggers.muted = 0 时才刷新 sync_modified_at。
+    conn.execute_batch(r#"
+        CREATE TRIGGER IF NOT EXISTS tasks_sync_touch AFTER UPDATE ON tasks
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE tasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS subtasks_sync_touch AFTER UPDATE ON subtasks
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE subtasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS tags_sync_touch AFTER UPDATE ON tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS accounts_sync_touch AFTER UPDATE ON accounts
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS categories_sync_touch AFTER UPDATE ON categories
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE categories SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS transactions_sync_touch AFTER UPDATE ON transactions
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE transactions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS budgets_sync_touch AFTER UPDATE ON budgets
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE budgets SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS notes_sync_touch AFTER UPDATE ON notes
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE notes SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_folders_sync_touch AFTER UPDATE ON note_folders
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE note_folders SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_tags_sync_touch AFTER UPDATE ON note_tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE note_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE note_id = NEW.note_id AND tag_name = NEW.tag_name;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_tag_master_sync_touch AFTER UPDATE ON note_tag_master
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE note_tag_master SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_note_tags_sync_touch AFTER UPDATE ON note_note_tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE note_note_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE note_id = NEW.note_id AND tag_id = NEW.tag_id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS task_tags_sync_touch AFTER UPDATE ON task_tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE task_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE task_id = NEW.task_id AND tag_id = NEW.tag_id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS calendar_events_sync_touch AFTER UPDATE ON calendar_events
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE calendar_events SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS calendar_subscriptions_sync_touch AFTER UPDATE ON calendar_subscriptions
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            UPDATE calendar_subscriptions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+            WHERE id = NEW.id;
+        END;
+    "#)?;
+    Ok(())
+}
+
+/// v10 增量迁移：删除传播的 tombstone 机制。
+/// - 本地业务表 DELETE 时写入 sync_tombstones（记录表名与主键）。
+/// - 同步上传/下载时额外处理 tombstones，使删除能传播到其他设备。
+fn migrate_v10(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(r#"
+        -- 触发器 WHEN 子句依赖此表，需在创建触发器前确保存在（create_sync_tables 会在之后再次确保）。
+        CREATE TABLE IF NOT EXISTS sync_mute_triggers (
+            id INTEGER PRIMARY KEY CHECK (id = 0),
+            muted INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO sync_mute_triggers (id, muted) VALUES (0, 0);
+
+        CREATE TABLE IF NOT EXISTS sync_tombstones (
+            table_name TEXT NOT NULL,
+            pk_value TEXT NOT NULL,
+            deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            sync_device_id TEXT,
+            synced_at TEXT,
+            PRIMARY KEY (table_name, pk_value)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at);
+        CREATE INDEX IF NOT EXISTS idx_sync_tombstones_synced_at ON sync_tombstones(synced_at);
+
+        CREATE TRIGGER IF NOT EXISTS tasks_sync_tombstone AFTER DELETE ON tasks
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('tasks', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS subtasks_sync_tombstone AFTER DELETE ON subtasks
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('subtasks', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS tags_sync_tombstone AFTER DELETE ON tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('tags', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS task_tags_sync_tombstone AFTER DELETE ON task_tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('task_tags', json_array(OLD.task_id, OLD.tag_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS accounts_sync_tombstone AFTER DELETE ON accounts
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('accounts', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS categories_sync_tombstone AFTER DELETE ON categories
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('categories', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS transactions_sync_tombstone AFTER DELETE ON transactions
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('transactions', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS budgets_sync_tombstone AFTER DELETE ON budgets
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('budgets', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS notes_sync_tombstone AFTER DELETE ON notes
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('notes', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_folders_sync_tombstone AFTER DELETE ON note_folders
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('note_folders', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_tags_sync_tombstone AFTER DELETE ON note_tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('note_tags', json_array(OLD.note_id, OLD.tag_name), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_tag_master_sync_tombstone AFTER DELETE ON note_tag_master
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('note_tag_master', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS note_note_tags_sync_tombstone AFTER DELETE ON note_note_tags
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('note_note_tags', json_array(OLD.note_id, OLD.tag_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS calendar_events_sync_tombstone AFTER DELETE ON calendar_events
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('calendar_events', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+
+        CREATE TRIGGER IF NOT EXISTS calendar_subscriptions_sync_tombstone AFTER DELETE ON calendar_subscriptions
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN
+            INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+            VALUES ('calendar_subscriptions', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+        END;
+    "#)?;
+    Ok(())
+}
+
+/// v11 增量迁移：为 subtasks / tags / task_tags 补 updated_at 列，
+/// 使云同步冲突解决从「无条件覆盖」升级为「last-write-wins」。
+fn migrate_v11(conn: &Connection) -> rusqlite::Result<()> {
+    // SQLite 无 ADD COLUMN IF NOT EXISTS；先探测再 ALTER。
+    let has_subtasks_updated_at: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('subtasks') WHERE name='updated_at')",
+        [], |r| r.get(0),
+    )?;
+    if !has_subtasks_updated_at {
+        conn.execute_batch("ALTER TABLE subtasks ADD COLUMN updated_at TEXT;")?;
+    }
+    conn.execute_batch("UPDATE subtasks SET updated_at = COALESCE(updated_at, created_at);")?;
+
+    let has_tags_updated_at: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('tags') WHERE name='updated_at')",
+        [], |r| r.get(0),
+    )?;
+    if !has_tags_updated_at {
+        conn.execute_batch("ALTER TABLE tags ADD COLUMN updated_at TEXT;")?;
+    }
+    conn.execute_batch("UPDATE tags SET updated_at = COALESCE(updated_at, created_at);")?;
+
+    let has_task_tags_updated_at: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('task_tags') WHERE name='updated_at')",
+        [], |r| r.get(0),
+    )?;
+    if !has_task_tags_updated_at {
+        conn.execute_batch("ALTER TABLE task_tags ADD COLUMN updated_at TEXT;")?;
+    }
+    conn.execute_batch("UPDATE task_tags SET updated_at = COALESCE(updated_at, sync_modified_at);")?;
+
+    Ok(())
+}
+
+/// v12 增量迁移：日历事件提醒。
+/// - 为历史库补全 reminder_minutes 列（全新库 create_all_tables 已包含）。
+/// - 已有事件未设置提醒时，默认提前 15 分钟提醒。
+/// - 新建 calendar_event_reminders 表，记录已发送提醒，防止重复通知。
+fn migrate_v12(conn: &Connection) -> rusqlite::Result<()> {
+    let has_col: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('calendar_events') WHERE name='reminder_minutes')",
+        [], |r| r.get(0),
+    )?;
+    if !has_col {
+        conn.execute_batch("ALTER TABLE calendar_events ADD COLUMN reminder_minutes INTEGER;")?;
+    }
+    conn.execute_batch("UPDATE calendar_events SET reminder_minutes = 15 WHERE reminder_minutes IS NULL;")?;
+
+    conn.execute_batch(r#"
+        CREATE TABLE IF NOT EXISTS calendar_event_reminders (
+            event_id TEXT PRIMARY KEY,
+            reminded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+    "#)?;
+    Ok(())
+}
+
+/// 版本化迁移入口（M1 修复）：
+/// - 仅全新库（version=0）执行 DROP + CREATE 建表；
+/// - 已有数据库一律走增量迁移（ALTER），绝不再 DROP 业务表；
+/// - 未来 schema 变更：在此追加 `if current < N { ... }` 块并提升 SCHEMA_VERSION。
+fn migrate(conn: &Connection) -> rusqlite::Result<()> {
+    let current = schema_version(conn);
+    if current >= SCHEMA_VERSION {
+        return Ok(());
+    }
+
+    if current == 0 {
+        conn.execute_batch(
+            "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value INTEGER);",
+        )?;
+        create_all_tables(conn)?;
+    }
+
+    // v3：为业务表补充云端同步元数据列与更新触发器（历史库 ALTER-only）
+    if current < 3 {
+        add_sync_columns_and_triggers(conn)?;
+    }
+
+    // v4：local-first 业务迁移
+    //  - budgets.carry_over_cents：结转金额（分，可负），替代旧 rollover bool 语义
+    //  - notes.content_text / cover_url：全文预览与封面（前端 Note 模型需要）
+    //  - note_tag_master / note_note_tags：独立笔记标签 + 关联表（前端 NoteTag/NoteNoteTag 模型）
+    if current < 4 {
+        migrate_v4(conn)?;
+    }
+
+    // v5：本地账号体系（local-first 认证，替代 Supabase Auth）
+    if current < 5 {
+        migrate_v5(conn)?;
+    }
+
+    // v6：budgets 表补 updated_at 列（budget_list_all/budget_update SQL 引用）
+    if current < 6 {
+        migrate_v6(conn)?;
+    }
+
+    // v7：note_folders 表补 updated_at 列（note_folder_create/update SQL 引用）
+    if current < 7 {
+        migrate_v7(conn)?;
+    }
+
+    // v8：为 v3/v4 遗漏的 5 张表补 UPDATE 触发器，否则本地更新不会刷新 sync_modified_at，云同步漏数据。
+    if current < 8 {
+        migrate_v8(conn)?;
+    }
+
+    // v9：业务表 UPDATE 触发器增加 mute 开关，同步下载时临时禁触发，避免下载回环。
+    if current < 9 {
+        migrate_v9(conn)?;
+    }
+
+    // v10：新增 sync_tombstones 表与 DELETE 触发器，实现删除传播的 tombstone 机制。
+    if current < 10 {
+        migrate_v10(conn)?;
+    }
+
+    // v11：subtasks / tags / task_tags 补 updated_at 列，实现 LWW 冲突解决。
+    if current < 11 {
+        migrate_v11(conn)?;
+    }
+
+    // v12：日历事件提醒列与提醒记录表。
+    if current < 12 {
+        migrate_v12(conn)?;
+    }
+
+    conn.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?1)",
+        params![SCHEMA_VERSION],
+    )?;
     Ok(())
 }

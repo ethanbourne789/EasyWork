@@ -82,7 +82,7 @@ export function Login() {
               aria-invalid={!!fieldErrors.email}
             />
             {fieldErrors.email && (
-              <p className="text-xs text-red-500">{fieldErrors.email}</p>
+              <p className="text-xs text-destructive">{fieldErrors.email}</p>
             )}
           </div>
           <div className="space-y-1">
@@ -94,7 +94,7 @@ export function Login() {
               aria-invalid={!!fieldErrors.password}
             />
             {fieldErrors.password && (
-              <p className="text-xs text-red-500">{fieldErrors.password}</p>
+              <p className="text-xs text-destructive">{fieldErrors.password}</p>
             )}
           </div>
           <Button type="submit" className="w-full" disabled={loggingIn || enteringDemo}>
@@ -119,7 +119,7 @@ export function Login() {
         </Button>
         <p className="text-center text-xs text-muted-foreground">{t("auth.demoHint")}</p>
 
-        {error && <p className="text-center text-sm text-red-500">{error}</p>}
+        {error && <p className="text-center text-sm text-destructive">{error}</p>}
 
         <div className="space-y-2 text-center text-sm text-muted-foreground">
           <p>

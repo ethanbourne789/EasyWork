@@ -41,6 +41,7 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             done INTEGER NOT NULL DEFAULT 0,
             sort_order INTEGER NOT NULL DEFAULT 0,
             created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
             sync_modified_at TEXT NOT NULL,
             sync_device_id TEXT NOT NULL
         );
@@ -51,6 +52,7 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             name TEXT NOT NULL,
             color TEXT,
             created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
             sync_modified_at TEXT NOT NULL,
             sync_device_id TEXT NOT NULL
         );
@@ -59,6 +61,7 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
         CREATE TABLE IF NOT EXISTS task_tags (
             task_id TEXT NOT NULL,
             tag_id TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
             sync_modified_at TEXT NOT NULL,
             sync_device_id TEXT NOT NULL,
             PRIMARY KEY (task_id, tag_id)
@@ -309,6 +312,15 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             PRIMARY KEY (contact_id, group_id)
         );
         CREATE INDEX IF NOT EXISTS idx_contact_group_members_sync_modified ON contact_group_members(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS sync_tombstones (
+            table_name TEXT NOT NULL,
+            pk_value TEXT NOT NULL,
+            deleted_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL,
+            PRIMARY KEY (table_name, pk_value)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at);
     "#;
 
     client.batch_execute(schema).await

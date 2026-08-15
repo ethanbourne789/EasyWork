@@ -36,14 +36,14 @@ export function useMailEvents() {
       queryClient.invalidateQueries({ queryKey: ["emails"] });
     }).then((fn) => {
       if (fn) unlisteners.push(fn);
-    });
+    }).catch(() => {});
 
     safeTauriListen("mail://new-mail", () => {
       queryClient.invalidateQueries({ queryKey: ["emails"] });
       queryClient.invalidateQueries({ queryKey: ["email"] });
     }).then((fn) => {
       if (fn) unlisteners.push(fn);
-    });
+    }).catch(() => {});
 
     return () => {
       for (const unlisten of unlisteners) unlisten();

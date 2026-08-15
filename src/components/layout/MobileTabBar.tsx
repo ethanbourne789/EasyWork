@@ -1,6 +1,6 @@
 import { Link, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
-import { LayoutDashboard, ListChecks, Mail, NotebookText, CalendarDays, Settings, Search } from "lucide-react";
+import { LayoutDashboard, ListChecks, Mail, NotebookText } from "lucide-react";
 import { cn } from "@/lib/utils";
 
 /** 移动端记账 Tab 图标：人民币符号 ¥（与桌面端侧边栏及原型保持一致） */
@@ -18,8 +18,6 @@ const TAB_ROUTES = [
   { to: "/mail", key: "nav.mail", icon: Mail },
   { to: "/notes", key: "nav.notes", icon: NotebookText },
   { to: "/finance", key: "nav.finance", icon: YenIcon },
-  { to: "/calendar", key: "nav.calendar", icon: CalendarDays },
-  { to: "/settings", key: "nav.settings", icon: Settings },
 ];
 
 export function MobileTabBar() {
@@ -37,7 +35,7 @@ export function MobileTabBar() {
             aria-label={label}
             aria-current={active ? "page" : undefined}
             className={cn(
-              "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px]",
+              "flex flex-1 flex-col items-center justify-center gap-0.5 text-[11px]",
               "h-full min-h-[44px] min-w-[44px] select-none transition-colors",
               "active:bg-accent/60",
               active ? "text-brand-700" : "text-muted-foreground"
@@ -48,19 +46,6 @@ export function MobileTabBar() {
           </Link>
         );
       })}
-      <button
-        type="button"
-        aria-label={t("nav.search")}
-        onClick={() => window.dispatchEvent(new CustomEvent("ew:search"))}
-        className={cn(
-          "flex flex-1 flex-col items-center justify-center gap-0.5 text-[10px]",
-          "h-full min-h-[44px] min-w-[44px] select-none transition-colors",
-          "active:bg-accent/60 text-muted-foreground"
-        )}
-      >
-        <Search size={20} />
-        {t("nav.search")}
-      </button>
     </nav>
   );
 }

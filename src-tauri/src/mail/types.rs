@@ -68,9 +68,14 @@ pub struct EmailAttachment {
     pub filename: Option<String>,
     pub mime_type: Option<String>,
     pub size: Option<i64>,
+    /// 本地缓存路径；为空字符串表示尚未按需从 IMAP 拉取
     pub file_path: String,
     pub is_inline: bool,
     pub content_id: Option<String>,
+    /// MIME part 编号（如 "1.2"），用于 IMAP BODY.PEEK[{part_id}] 按需拉取
+    pub part_id: Option<String>,
+    /// 1 = 大附件待按需下载（同步时仅存元数据）
+    pub pending_download: bool,
     pub created_at: String,
 }
 

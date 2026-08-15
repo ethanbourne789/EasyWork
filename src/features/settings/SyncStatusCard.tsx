@@ -69,6 +69,12 @@ export function SyncStatusCard() {
               ? formatDateLocal(new Date(status.last_sync_at))
               : t("sync.never")}
           </div>
+          {!!status?.pending_conflicts && (
+            <div className="inline-flex items-center gap-1 font-medium text-warning">
+              <AlertTriangle size={13} />
+              {t("sync.pendingConflicts", { count: status.pending_conflicts })}
+            </div>
+          )}
         </div>
       </div>
       <Button

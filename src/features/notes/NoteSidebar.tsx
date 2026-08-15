@@ -1,4 +1,5 @@
 import { useState, useMemo } from 'react';
+import { useTranslation } from 'react-i18next';
 import { ChevronRight, ChevronDown, Folder, FolderPlus, FilePlus, MoreVertical, Pencil, Trash2, FileText, Inbox, X, Plus } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { Button } from '@/components/ui/button';
@@ -75,6 +76,7 @@ function FolderItem({
   onDelete,
   onMenuToggle,
 }: FolderItemProps) {
+  const { t } = useTranslation();
   const hasChildren = node.children.length > 0;
   const isExpanded = expanded[node.id] ?? true;
   const isSelected = selectedId === node.id;
@@ -157,7 +159,7 @@ function FolderItem({
                   }}
                 >
                   <Pencil className="h-3.5 w-3.5" />
-                  重命名
+                  {t("notes.renameFolder")}
                 </button>
                 <button
                   type="button"
@@ -169,7 +171,7 @@ function FolderItem({
                   }}
                 >
                   <Trash2 className="h-3.5 w-3.5" />
-                  删除
+                  {t("notes.delete")}
                 </button>
               </div>
             </>
@@ -212,6 +214,7 @@ export function NoteSidebar({
   searchQuery,
   onSearchChange,
 }: NoteSidebarProps) {
+  const { t } = useTranslation();
   const { data: folders = [] } = useFolders();
   const { data: tags = [] } = useNoteTags();
   const createFolder = useCreateFolder();
@@ -254,9 +257,9 @@ export function NoteSidebar({
 
   const handleDeleteFolder = async (id: string) => {
     const ok = await confirm({
-      title: "删除文件夹",
-      description: '确定删除此文件夹？其中的笔记将移至"未分类"。',
-      confirmText: "删除",
+      title: t("notes.deleteFolder"),
+      description: t("notes.deleteFolderConfirm"),
+      confirmText: t("notes.delete"),
       destructive: true,
     });
     if (ok) {
@@ -266,12 +269,12 @@ export function NoteSidebar({
   };
 
   const handleCreateFolder = () => {
-    createFolder.mutate({ name: '新建文件夹' });
+    createFolder.mutate({ name: t('notes.newFolderDefault') });
   };
 
   const handleCreateNote = () => {
     createNote.mutate({
-      title: '无标题笔记',
+      title: t('notes.untitledNote'),
       folder_id: selectedFolderId ?? undefined,
     });
   };
@@ -284,7 +287,7 @@ export function NoteSidebar({
           size="icon"
           className="h-8 w-8 shrink-0"
           onClick={handleCreateNote}
-          title="新建笔记"
+          title={t('notes.newNote')}
         >
           <FilePlus className="h-4 w-4" />
         </Button>
@@ -293,12 +296,12 @@ export function NoteSidebar({
           size="icon"
           className="h-8 w-8 shrink-0"
           onClick={handleCreateFolder}
-          title="新建文件夹"
+          title={t('notes.newFolder')}
         >
           <FolderPlus className="h-4 w-4" />
         </Button>
         <Input
-          placeholder="搜索笔记..."
+          placeholder={t('notes.searchPlaceholder')}
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="h-8 flex-1"
@@ -315,7 +318,7 @@ export function NoteSidebar({
             onClick={() => onSelectFolder(null)}
           >
             <Inbox className="h-4 w-4 shrink-0" />
-            <span>所有笔记</span>
+            <span>{t('notes.allNotes')}</span>
           </div>
 
           <Separator className="my-2" />
@@ -345,7 +348,7 @@ export function NoteSidebar({
 
           {/* 标签筛选区（NF-2：笔记标签按标签筛选 + CRUD） */}
           <div className="mb-1 flex items-center justify-between px-2">
-            <span className="text-xs font-semibold text-muted-foreground">标签</span>
+            <span className="text-xs font-semibold text-muted-foreground">{t('notes.tags')}</span>
             <button
               type="button"
               className="flex h-5 w-5 items-center justify-center rounded text-muted-foreground hover:bg-background/50"
@@ -353,7 +356,7 @@ export function NoteSidebar({
                 setNewTagName('');
                 setCreatingTag(true);
               }}
-              title="新建标签"
+              title={t('notes.newTag')}
             >
               <Plus className="h-3 w-3" />
             </button>
@@ -383,13 +386,13 @@ export function NoteSidebar({
                   <button
                     type="button"
                     className="opacity-0 transition-opacity hover:text-destructive group-hover/tag:opacity-100"
-                    title="删除标签"
+                    title={t('notes.deleteTag')}
                     onClick={async (e) => {
                       e.stopPropagation();
                       const ok = await confirm({
-                        title: "删除标签",
-                        description: `删除标签"${tag.name}"？关联将一并移除。`,
-                        confirmText: "删除",
+                        title: t('notes.deleteTag'),
+                        description: t('notes.deleteTagConfirm', { name: tag.name }),
+                        confirmText: t('notes.delete'),
                         destructive: true,
                       });
                       if (ok) deleteTag.mutate(tag.id);
@@ -404,7 +407,7 @@ export function NoteSidebar({
               <input
                 autoFocus
                 className="w-20 rounded-full border bg-background px-2 py-0.5 text-xs outline-none"
-                placeholder="标签名"
+                placeholder={t('notes.tagNamePlaceholder')}
                 value={newTagName}
                 onChange={(e) => setNewTagName(e.target.value)}
                 onBlur={() => {
@@ -421,16 +424,16 @@ export function NoteSidebar({
               />
             )}
             {tags.length === 0 && !creatingTag && (
-              <span className="px-2 text-xs text-muted-foreground">暂无标签</span>
+              <span className="px-2 text-xs text-muted-foreground">{t('notes.noTags')}</span>
             )}
           </div>
 
           {folders.length === 0 && (
             <div className="flex flex-col items-center gap-2 py-8 text-center text-sm text-muted-foreground">
               <FileText className="h-8 w-8" />
-              <div>暂无文件夹</div>
+              <div>{t('notes.noFolders')}</div>
               <Button variant="outline" size="sm" onClick={handleCreateFolder}>
-                新建文件夹
+                {t('notes.newFolder')}
               </Button>
             </div>
           )}

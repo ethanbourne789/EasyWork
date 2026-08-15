@@ -1,5 +1,6 @@
 use async_imap::Session;
 use async_imap::types::NameAttribute;
+use async_imap::imap_proto::types::{MessageSection, SectionPath};
 use tokio::net::TcpStream;
 use tokio_rustls::client::TlsStream;
 use rustls_platform_verifier::ConfigVerifierExt;
@@ -7,6 +8,12 @@ use crate::mail::error::{MailError, MailResult};
 use futures::StreamExt;
 
 type ImapSession = Session<TlsStream<TcpStream>>;
+
+/// 按需拉取的单个 MIME part：.MIME 头部（含 Content-Transfer-Encoding）与编码后的 body 字节
+pub struct FetchedPart {
+    pub mime_headers: Vec<u8>,
+    pub body: Vec<u8>,
+}
 
 pub struct ImapAdapter {
     session: ImapSession,
@@ -88,6 +95,59 @@ impl ImapAdapter {
             return Err(MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", last_err.unwrap_or_default())));
         }
         Ok(result)
+    }
+
+    /// 按需拉取单个 MIME part：重选文件夹后一次 UID FETCH 同时取
+    /// `BODY.PEEK[{part_id}.MIME]`（part 的 MIME 头部）与 `BODY.PEEK[{part_id}]`（编码后的 body 字节）。
+    pub async fn fetch_attachment(&mut self, folder: &str, uid: u32, part_id: &str) -> MailResult<FetchedPart> {
+        self.select_folder(folder).await?;
+        // part_id 形如 "1.2"，解析为 BODY[1.2] 的数值路径
+        let path: Vec<u32> = part_id
+            .split('.')
+            .filter_map(|s| s.trim().parse::<u32>().ok())
+            .collect();
+        if path.is_empty() {
+            return Err(MailError::new("IMAP_FETCH", "无效的附件 part 编号"));
+        }
+        let query = format!("(BODY.PEEK[{}.MIME] BODY.PEEK[{}])", part_id, part_id);
+        let mut stream = self.session.uid_fetch(uid.to_string(), query).await
+            .map_err(|e| MailError::new("IMAP_FETCH", &format!("拉取附件失败: {}", e)))?;
+        let mime_path = SectionPath::Part(path.clone(), Some(MessageSection::Mime));
+        let body_path = SectionPath::Part(path, None);
+        let mut mime_headers: Option<Vec<u8>> = None;
+        let mut body: Option<Vec<u8>> = None;
+        while let Some(msg) = stream.next().await {
+            let msg = msg.map_err(|e| MailError::new("IMAP_FETCH", &format!("拉取附件失败: {}", e)))?;
+            if mime_headers.is_none() {
+                if let Some(h) = msg.section(&mime_path) {
+                    mime_headers = Some(h.to_vec());
+                }
+            }
+            if body.is_none() {
+                if let Some(b) = msg.section(&body_path) {
+                    body = Some(b.to_vec());
+                }
+            }
+        }
+        let body = body.ok_or_else(|| MailError::new("IMAP_FETCH", "未获取到附件数据"))?;
+        Ok(FetchedPart {
+            mime_headers: mime_headers.unwrap_or_default(),
+            body,
+        })
+    }
+
+    /// 整封拉取原始邮件（RFC822），用于 part_id 缺失或按 part 拉取失败时的兜底。
+    pub async fn fetch_full(&mut self, folder: &str, uid: u32) -> MailResult<Vec<u8>> {
+        self.select_folder(folder).await?;
+        let mut stream = self.session.uid_fetch(uid.to_string(), "(RFC822)").await
+            .map_err(|e| MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", e)))?;
+        while let Some(msg) = stream.next().await {
+            let msg = msg.map_err(|e| MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", e)))?;
+            if let Some(raw) = msg.body() {
+                return Ok(raw.to_vec());
+            }
+        }
+        Err(MailError::new("IMAP_FETCH", "未获取到邮件数据"))
     }
 
     pub async fn search_alive_uids(&mut self, from_uid: u32) -> MailResult<Vec<u32>> {

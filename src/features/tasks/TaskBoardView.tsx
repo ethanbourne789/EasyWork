@@ -269,9 +269,10 @@ export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
 
   return (
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
-      {/* 窄屏横向滚动，列不被压扁（每列 min-w-[260px]） */}
-      <div className="flex h-full flex-col gap-3.5 overflow-x-auto md:flex-row md:gap-3.5 p-0 pb-2">
-        {getColumnDefs(t).map((col) => {
+      {/* 窄屏横向滚动，列不被压扁（每列 min-w-[260px]）；两侧渐变提示可滚动 */}
+      <div className="relative">
+        <div className="flex h-full flex-col gap-3.5 overflow-x-auto md:flex-row md:gap-3.5 p-0 pb-2">
+          {getColumnDefs(t).map((col) => {
           const columnTasks = tasks.filter((t2) => t2.status === col.status);
           return (
             <DroppableColumn
@@ -285,6 +286,10 @@ export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
             />
           );
         })}
+        </div>
+        {/* 小屏横滚视觉提示 */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-background to-transparent md:hidden" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-background to-transparent md:hidden" />
       </div>
 
       <DragOverlay>

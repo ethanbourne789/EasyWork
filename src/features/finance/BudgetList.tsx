@@ -9,6 +9,7 @@ import {
   useDeleteBudget,
 } from './useFinance';
 import { fireBudgetWarnings } from '@/lib/notify';
+import { getBudgetWarnedAt, setBudgetWarnedAt } from '@/lib/storage';
 import { formatMoney, roundMoney } from '@/lib/money';
 import { getCurrentUserId } from '@/features/auth/authStore';
 import { MS_PER_DAY } from '@/lib/constants';
@@ -197,11 +198,11 @@ export function BudgetList() {
   );
 
   useEffect(() => {
-    const lastWarned = localStorage.getItem("budget_warned_at");
+    const lastWarned = getBudgetWarnedAt();
     const now = Date.now();
-    if (!lastWarned || now - parseInt(lastWarned) > MS_PER_DAY) {
+    if (!lastWarned || now - lastWarned > MS_PER_DAY) {
       fireBudgetWarnings();
-      localStorage.setItem("budget_warned_at", String(now));
+      setBudgetWarnedAt(now);
     }
   }, []);
 

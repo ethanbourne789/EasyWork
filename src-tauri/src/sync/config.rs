@@ -1,7 +1,7 @@
 use rusqlite::{Connection, params};
 use super::*;
 
-/// 创建同步相关的数据库表（sync_config, sync_log, device_info），如果表已存在则跳过。
+/// 创建同步相关的数据库表（sync_config, sync_log, device_info, sync_mute_triggers），如果表已存在则跳过。
 pub fn create_sync_tables(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(r#"
         CREATE TABLE IF NOT EXISTS sync_config (
@@ -34,6 +34,25 @@ pub fn create_sync_tables(conn: &Connection) -> rusqlite::Result<()> {
             device_name TEXT NOT NULL,
             created_at TEXT NOT NULL
         );
+
+        CREATE TABLE IF NOT EXISTS sync_mute_triggers (
+            id INTEGER PRIMARY KEY CHECK (id = 0),
+            muted INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO sync_mute_triggers (id, muted) VALUES (0, 0);
+
+        -- 云同步冲突记录：本地与云端同时修改同一行且内容不一致时暂存，由用户在 UI 中决定保留哪一方。
+        CREATE TABLE IF NOT EXISTS sync_conflicts (
+            id TEXT PRIMARY KEY,
+            table_name TEXT NOT NULL,
+            pk_value TEXT NOT NULL,
+            local_snapshot TEXT NOT NULL,
+            remote_snapshot TEXT NOT NULL,
+            detected_at TEXT NOT NULL,
+            resolved INTEGER NOT NULL DEFAULT 0,
+            UNIQUE (table_name, pk_value)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_conflicts_resolved ON sync_conflicts(resolved, detected_at);
     "#)
 }
 
@@ -43,6 +62,7 @@ fn now_rfc3339() -> String {
 }
 
 /// 从 sync_config 表中读取 id='default' 的同步配置，如果没有配置则返回 None。
+/// 连接串保存在系统密钥库中，表中仅留空占位。
 pub fn get_sync_config(conn: &Connection) -> rusqlite::Result<Option<SyncConfig>> {
     let mut stmt = conn.prepare(
         "SELECT id, enabled, provider, connection_string, database_name, \
@@ -50,7 +70,7 @@ pub fn get_sync_config(conn: &Connection) -> rusqlite::Result<Option<SyncConfig>
          FROM sync_config WHERE id = 'default'"
     )?;
     let result = stmt.query_map(params![], |row| {
-        Ok(SyncConfig {
+        let mut cfg = SyncConfig {
             id: row.get(0)?,
             enabled: row.get::<_, i32>(1)? != 0,
             provider: row.get(2)?,
@@ -60,7 +80,14 @@ pub fn get_sync_config(conn: &Connection) -> rusqlite::Result<Option<SyncConfig>
             sync_error: row.get(6)?,
             created_at: row.get(7)?,
             updated_at: row.get(8)?,
-        })
+        };
+        // 如果表中连接串为空，尝试从系统密钥库回填。
+        if cfg.connection_string.is_empty() {
+            if let Some(cs) = super::creds::get_connection_string() {
+                cfg.connection_string = cs;
+            }
+        }
+        Ok(cfg)
     });
     match result {
         Ok(rows) => {
@@ -76,33 +103,43 @@ pub fn get_sync_config(conn: &Connection) -> rusqlite::Result<Option<SyncConfig>
 }
 
 /// 将同步配置写入 sync_config 表，使用 INSERT OR REPLACE 实现Upsert（id='default'）。
-pub fn save_sync_config(conn: &Connection, config: &SyncConfig) -> rusqlite::Result<()> {
+/// 连接串不写入 SQLite，而是保存到系统密钥库，避免随备份导出外泄。
+pub fn save_sync_config(conn: &Connection, config: &SyncConfig) -> Result<(), String> {
+    let connection_string = config.connection_string.clone();
+    if let Err(e) = super::creds::save_connection_string(&connection_string) {
+        return Err(e);
+    }
+    let mut db_config = config.clone();
+    db_config.connection_string = String::new();
     conn.execute(
         "INSERT OR REPLACE INTO sync_config \
          (id, enabled, provider, connection_string, database_name, \
           last_sync_at, sync_error, created_at, updated_at) \
          VALUES (?1, ?2, ?3, ?4, ?5, ?6, ?7, ?8, ?9)",
         params![
-            config.id,
-            config.enabled as i32,
-            config.provider,
-            config.connection_string,
-            config.database_name,
-            config.last_sync_at,
-            config.sync_error,
-            config.created_at,
-            config.updated_at,
+            db_config.id,
+            db_config.enabled as i32,
+            db_config.provider,
+            db_config.connection_string,
+            db_config.database_name,
+            db_config.last_sync_at,
+            db_config.sync_error,
+            db_config.created_at,
+            db_config.updated_at,
         ],
-    )?;
+    )
+    .map_err(|e| e.to_string())?;
     Ok(())
 }
 
-/// 删除 sync_config 表中的默认同步配置。
-pub fn delete_sync_config(conn: &Connection) -> rusqlite::Result<()> {
+/// 删除 sync_config 表中的默认同步配置，并清除密钥库中的连接串。
+pub fn delete_sync_config(conn: &Connection) -> Result<(), String> {
     conn.execute(
         "DELETE FROM sync_config WHERE id = 'default'",
         params![],
-    )?;
+    )
+    .map_err(|e| e.to_string())?;
+    super::creds::delete_connection_string()?;
     Ok(())
 }
 
@@ -254,6 +291,25 @@ pub fn update_last_sync_at(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute(
         "UPDATE sync_config SET last_sync_at = ?1, sync_error = NULL, updated_at = ?1 WHERE id = 'default'",
         params![n],
+    )?;
+    Ok(())
+}
+
+/// 在同步下载期间临时禁用业务表的 sync_modified_at UPDATE 触发器，
+/// 以便写入云端同步时间戳而不触发本地更新时间戳，避免下载回环。
+pub fn mute_sync_triggers(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_mute_triggers (id, muted) VALUES (0, 1)",
+        [],
+    )?;
+    Ok(())
+}
+
+/// 恢复业务表的 sync_modified_at UPDATE 触发器。
+pub fn unmute_sync_triggers(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute(
+        "INSERT OR REPLACE INTO sync_mute_triggers (id, muted) VALUES (0, 0)",
+        [],
     )?;
     Ok(())
 }

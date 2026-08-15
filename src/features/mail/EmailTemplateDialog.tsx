@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { FileText, Plus, Trash2, Edit2, X } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -27,6 +28,7 @@ interface EmailTemplateDialogProps {
 }
 
 export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTemplateDialogProps) {
+  const { t } = useTranslation();
   const { data: templates = [] } = useEmailTemplates();
   const createTemplate = useCreateEmailTemplate();
   const updateTemplate = useUpdateEmailTemplate();
@@ -56,7 +58,7 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
 
   const handleSave = async () => {
     if (!name.trim() || !body.trim()) {
-      toast("模板名称和内容不能为空", "error");
+      toast(t("mail.templateAndContentRequired"), "error");
       return;
     }
     try {
@@ -109,7 +111,7 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="max-w-lg">
         <DialogHeader>
-          <DialogTitle>邮件模板</DialogTitle>
+          <DialogTitle>{t("mail.emailTemplates")}</DialogTitle>
         </DialogHeader>
         <DialogClose onClose={() => onOpenChange(false)} />
 
@@ -118,20 +120,20 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
           <div className="space-y-2 max-h-60 overflow-y-auto">
             {templates.length === 0 && !creating && !editingId && (
               <p className="text-sm text-muted-foreground text-center py-4">
-                暂无模板，点击下方按钮创建
+                {t("mail.noTemplates")}
               </p>
             )}
-            {templates.map((t) => (
+            {templates.map((template) => (
               <div
-                key={t.id}
+                key={template.id}
                 className="flex items-center gap-2 rounded-lg border p-3 hover:bg-muted/50 transition-colors"
               >
                 <FileText className="h-4 w-4 shrink-0 text-muted-foreground" />
                 <div className="flex-1 min-w-0">
-                  <div className="font-medium truncate">{t.name}</div>
-                  {t.subject && (
+                  <div className="font-medium truncate">{template.name}</div>
+                  {template.subject && (
                     <div className="text-xs text-muted-foreground truncate">
-                      主题：{t.subject}
+                      {t("mail.subjectLabel")}{template.subject}
                     </div>
                   )}
                 </div>
@@ -141,27 +143,27 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
                       variant="ghost"
                       size="sm"
                       onClick={() => {
-                        onSelect(t);
+                        onSelect(template);
                         onOpenChange(false);
                       }}
                     >
-                      使用
+                      {t("mail.useTemplate")}
                     </Button>
                   )}
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8"
-                    onClick={() => handleEdit(t)}
-                  >
-                    <Edit2 className="h-3.5 w-3.5" />
-                  </Button>
-                  <Button
-                    variant="ghost"
-                    size="icon"
-                    className="h-8 w-8 text-destructive"
-                    onClick={() => handleDelete(t.id)}
-                  >
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8"
+                      onClick={() => handleEdit(template)}
+                    >
+                      <Edit2 className="h-3.5 w-3.5" />
+                    </Button>
+                    <Button
+                      variant="ghost"
+                      size="icon"
+                      className="h-8 w-8 text-destructive"
+                      onClick={() => handleDelete(template.id)}
+                    >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>
                 </div>
@@ -173,40 +175,40 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
           {(creating || editingId) && (
             <div className="space-y-3 border-t pt-3">
               <div className="space-y-1">
-                <label className="text-sm font-medium">模板名称</label>
+                <label className="text-sm font-medium">{t("mail.templateName")}</label>
                 <Input
                   value={name}
                   onChange={(e) => setName(e.target.value)}
-                  placeholder="例如：会议邀请"
+                  placeholder={t("mail.templateNameExample")}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">主题（可选）</label>
+                <label className="text-sm font-medium">{t("mail.subjectOptional")}</label>
                 <Input
                   value={subject}
                   onChange={(e) => setSubject(e.target.value)}
-                  placeholder="邮件主题模板"
+                  placeholder={t("mail.subjectTemplatePlaceholder")}
                 />
               </div>
               <div className="space-y-1">
-                <label className="text-sm font-medium">正文</label>
+                <label className="text-sm font-medium">{t("mail.body")}</label>
                 <Textarea
                   value={body}
                   onChange={(e) => setBody(e.target.value)}
-                  placeholder="邮件正文内容..."
+                  placeholder={t("mail.templateBodyPlaceholder")}
                   className="min-h-[120px]"
                 />
               </div>
               <div className="flex gap-2 justify-end">
                 <Button variant="outline" size="sm" onClick={handleCancelEdit}>
-                  <X className="h-4 w-4 mr-1" /> 取消
+                  <X className="h-4 w-4 mr-1" /> {t("common.cancel")}
                 </Button>
                 <Button
                   size="sm"
                   onClick={handleSave}
                   disabled={createTemplate.isPending || updateTemplate.isPending}
                 >
-                  {editingId ? "更新" : "创建"}
+                  {editingId ? t("mail.update") : t("mail.create")}
                 </Button>
               </div>
             </div>
@@ -215,7 +217,7 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
           {/* 新建按钮 */}
           {!creating && !editingId && (
             <Button variant="outline" className="w-full gap-2" onClick={handleNew}>
-              <Plus className="h-4 w-4" /> 新建模板
+              <Plus className="h-4 w-4" /> {t("mail.newTemplate")}
             </Button>
           )}
         </div>

@@ -60,19 +60,9 @@ gui-test-screenshots/
 scripts/mail-e2e-shots/
 e2e-screenshots/
 
-# 根目录临时调试脚本（如有需要应移入 scripts/ 并明确用途）
-capture-console.js
-diag.mjs
-finance-audit.mjs
-smoke.mjs
-debug-caldav.mjs
-debug-caldav2.mjs
-debug-caldav3.mjs
-debug-caldav4.mjs
-debug-caldav5.mjs
-debug-db-state.mjs
-test-caldav-discovery.mjs
-test-calendar-subscription.mjs
+# Playwright 报告与产物
+playwright-report/
+test-results/
 
 # IDE/编辑器
 .idea/

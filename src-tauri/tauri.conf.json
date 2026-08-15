@@ -18,8 +18,7 @@
         "width": 1200,
         "height": 800,
         "minWidth": 360,
-        "minHeight": 480,
-        "additionalBrowserArgs": "--remote-debugging-port=9222"
+        "minHeight": 480
       }
     ],
     "security": {
@@ -28,8 +27,7 @@
         "enable": true,
         "scope": [
           "$DOCUMENT/EasyWork/mail/attachments/**",
-          "$APPCONFIG/**",
-          "**"
+          "$APPCONFIG/**"
         ]
       }
     }

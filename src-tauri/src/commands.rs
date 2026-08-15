@@ -11,6 +11,7 @@ use crate::mail::smtp::{SmtpParams, build_raw, send_mail};
 use crate::mail::types::*;
 use crate::mail::contacts;
 use crate::sync::{SyncConfig, SyncStatus, SyncLogEntry, ConnectionTestResult, SyncResult as CloudSyncResult};
+use mail_parser::MessageParser;
 
 pub struct AppState {
     pub service: MailService,
@@ -527,6 +528,125 @@ pub async fn mail_download_attachment(app: AppHandle, state: State<'_, AppState>
     Ok(dest.to_string_lossy().into_owned())
 }
 
+/// 按需下载大附件：同步时只存元数据（file_path 为空），用户点击附件时从 IMAP
+/// 拉取对应 MIME part 解码后写入本地缓存，回写 file_path 并返回该路径。
+#[tauri::command]
+pub async fn email_attachment_download(state: State<'_, AppState>, email_id: String, attachment_id: String) -> Result<String, MailError> {
+    let (att, email) = {
+        let db = state.service.db.lock().await;
+        let att = db_queries::get_attachment(&db, &attachment_id)?;
+        let email = db_queries::get_message(&db, &email_id)?;
+        (att, email)
+    };
+
+    // 已存在本地缓存则直接返回
+    if !att.file_path.is_empty() {
+        return Ok(att.file_path);
+    }
+    if att.email_id != email_id {
+        return Err(MailError::new("VALIDATION", "附件不属于该邮件"));
+    }
+
+    let uid = email.uid.ok_or_else(|| MailError::new("NOT_FOUND", "邮件缺少 UID，无法从服务端拉取附件"))? as u32;
+    let folder_path = {
+        let db = state.service.db.lock().await;
+        let fid = email.folder_id.clone().ok_or_else(|| MailError::new("NOT_FOUND", "邮件缺少文件夹信息"))?;
+        let p: Option<String> = db.query_row(
+            "SELECT imap_path FROM email_folders WHERE id = ?1",
+            rusqlite::params![fid], |row| row.get(0)
+        ).ok();
+        p.ok_or_else(|| MailError::new("NOT_FOUND", "邮件所在文件夹不存在"))?
+    };
+
+    let account = {
+        let db = state.service.db.lock().await;
+        db_queries::get_account(&db, &email.account_id)?
+    };
+    let password = CredentialStore::get_password(&email.account_id)?;
+    let username = account.username.as_deref().unwrap_or(&account.email);
+    let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
+
+    // 附件在邮件附件列表中的序号 i，用于保持 {email_id}_{i} 的落盘命名
+    let index = {
+        let db = state.service.db.lock().await;
+        let all = db_queries::list_attachments_for_email(&db, &email_id)?;
+        all.iter().position(|a| a.id == attachment_id)
+            .ok_or_else(|| MailError::new("NOT_FOUND", "附件记录不存在"))?
+    };
+
+    // 按 MIME part 拉取并解码；part_id 缺失或拉取失败时回退整封拉取再解析
+    let data = if let Some(pid) = att.part_id.as_deref() {
+        match imap.fetch_attachment(&folder_path, uid, pid).await {
+            Ok(fetched) => match decode_fetched_part(&fetched.mime_headers, &fetched.body) {
+                Ok(bytes) if !bytes.is_empty() => bytes,
+                _ => {
+                    tracing::warn!("[attachment] part 解码失败，回退整封拉取 email={} part={}", email_id, pid);
+                    fetch_and_extract(&mut imap, &folder_path, uid, index).await?
+                }
+            },
+            Err(e) => {
+                tracing::warn!("[attachment] part 拉取失败，回退整封拉取 email={} err={}", email_id, e.message);
+                fetch_and_extract(&mut imap, &folder_path, uid, index).await?
+            }
+        }
+    } else {
+        fetch_and_extract(&mut imap, &folder_path, uid, index).await?
+    };
+
+    let disk_name = format!("{}_{}", email_id, index);
+    let path = state.service.attachments_dir.join(&disk_name);
+    std::fs::write(&path, &data)
+        .map_err(|e| MailError::new("IO_ERROR", &format!("附件写入失败: {}", e)))?;
+    let path_str = path.to_string_lossy().into_owned();
+
+    {
+        let db = state.service.db.lock().await;
+        db_queries::mark_attachment_downloaded(&db, &attachment_id, &path_str)?;
+    }
+    Ok(path_str)
+}
+
+/// 拉取整封邮件并解析出第 index 个附件的解码字节
+async fn fetch_and_extract(imap: &mut ImapAdapter, folder: &str, uid: u32, index: usize) -> Result<Vec<u8>, MailError> {
+    let raw = imap.fetch_full(folder, uid).await?;
+    let parsed = crate::mail::mime::parse_message(&raw)?;
+    parsed.attachments.into_iter().nth(index)
+        .map(|att| att.data)
+        .ok_or_else(|| MailError::new("NOT_FOUND", "未在邮件中解析到该附件"))
+}
+
+/// 用按需拉取的 part 头部 + body 组装合成消息，交给 mail-parser 按
+/// Content-Transfer-Encoding 解码，得到与同步时一致的原始附件字节。
+fn decode_fetched_part(mime_headers: &[u8], body: &[u8]) -> Result<Vec<u8>, MailError> {
+    if body.is_empty() {
+        return Err(MailError::new("PARSE_ERROR", "附件数据为空"));
+    }
+    let mut raw = Vec::with_capacity(mime_headers.len() + body.len() + 8);
+    raw.extend_from_slice(mime_headers);
+    // 保证头部与正文之间恰好一个空行（.MIME 返回的头部通常以单个 CRLF 结尾）
+    if mime_headers.ends_with(b"\r\n\r\n") || mime_headers.ends_with(b"\n\n") {
+        // 已含空行
+    } else if mime_headers.ends_with(b"\r\n") {
+        raw.extend_from_slice(b"\r\n");
+    } else if mime_headers.ends_with(b"\n") {
+        raw.extend_from_slice(b"\n");
+    } else {
+        raw.extend_from_slice(b"\r\n\r\n");
+    }
+    raw.extend_from_slice(body);
+    let parsed = MessageParser::default().parse(&raw)
+        .ok_or_else(|| MailError::new("PARSE_ERROR", "无法解析附件数据"))?;
+    let mut out: Option<Vec<u8>> = None;
+    for part in parsed.attachments() {
+        let data = part.contents();
+        if !data.is_empty() {
+            out = Some(data.to_vec());
+            break;
+        }
+    }
+    out.ok_or_else(|| MailError::new("PARSE_ERROR", "附件数据为空"))
+}
+
 #[tauri::command]
 pub fn get_autostart_status(app: tauri::AppHandle) -> Result<bool, String> {
     use tauri_plugin_autostart::ManagerExt;
@@ -649,7 +769,7 @@ pub async fn sync_trigger(state: State<'_, AppState>) -> Result<CloudSyncResult,
         .map_err(|e| e)
 }
 
-/// 返回当前同步状态（启用开关、上次同步时间、错误信息、设备 ID/名称）。
+/// 返回当前同步状态（启用开关、上次同步时间、错误信息、设备 ID/名称、待处理冲突数）。
 #[tauri::command]
 pub async fn sync_status(state: State<'_, AppState>) -> Result<SyncStatus, String> {
     let db = state.db.lock().await;
@@ -657,13 +777,68 @@ pub async fn sync_status(state: State<'_, AppState>) -> Result<SyncStatus, Strin
     let device_id = crate::sync::config::get_device_id(&db).map_err(|e| e.to_string())?;
     let device_name = crate::sync::config::get_device_name(&db)
         .unwrap_or_else(|_| "EasyWork Device".to_string());
+    let pending_conflicts: i64 = db.query_row(
+        "SELECT COUNT(*) FROM sync_conflicts WHERE resolved = 0",
+        [],
+        |r| r.get(0),
+    ).unwrap_or(0);
     Ok(SyncStatus {
         enabled: cfg.as_ref().map(|c| c.enabled).unwrap_or(false),
         last_sync_at: cfg.as_ref().and_then(|c| c.last_sync_at.clone()),
         sync_error: cfg.as_ref().and_then(|c| c.sync_error.clone()),
         device_id,
         device_name,
+        pending_conflicts,
     })
+}
+
+/// 列出未解决的云同步冲突。
+#[tauri::command]
+pub async fn sync_conflicts_list(state: State<'_, AppState>) -> Result<Vec<crate::sync::SyncConflict>, String> {
+    let db = state.db.lock().await;
+    let mut stmt = db.prepare(
+        "SELECT id, table_name, pk_value, local_snapshot, remote_snapshot, detected_at \
+         FROM sync_conflicts WHERE resolved = 0 ORDER BY detected_at"
+    ).map_err(|e| e.to_string())?;
+    let rows = stmt.query_map([], |r| {
+        Ok(crate::sync::SyncConflict {
+            id: r.get(0)?,
+            table_name: r.get(1)?,
+            pk_value: r.get(2)?,
+            local_snapshot: r.get(3)?,
+            remote_snapshot: r.get(4)?,
+            detected_at: r.get(5)?,
+        })
+    }).map_err(|e| e.to_string())?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(|e| e.to_string())
+}
+
+/// 解决一条云同步冲突。
+/// - keep_local = true：保留本地版本（仅删除冲突记录，本地行不动）。
+/// - keep_local = false：采用云端版本（将云端快照写回本地，并标记为本地已同步，避免再次拉取）。
+#[tauri::command]
+pub async fn sync_conflict_resolve(
+    state: State<'_, AppState>,
+    id: String,
+    keep_local: bool,
+) -> Result<(), String> {
+    let db = state.db.lock().await;
+    let conflict = db.query_row(
+        "SELECT table_name, pk_value, remote_snapshot FROM sync_conflicts WHERE id = ?1 AND resolved = 0",
+        rusqlite::params![id],
+        |r| Ok((r.get::<_, String>(0)?, r.get::<_, String>(1)?, r.get::<_, String>(2)?)),
+    ).map_err(|e| format!("冲突不存在或已解决: {}", e))?;
+    let (table, pk_value, remote_snapshot) = conflict;
+
+    if !keep_local {
+        crate::sync::engine::apply_conflict_remote(&db, &table, &pk_value, &remote_snapshot)?;
+    }
+
+    db.execute(
+        "UPDATE sync_conflicts SET resolved = 1 WHERE id = ?1",
+        rusqlite::params![id],
+    ).map_err(|e| e.to_string())?;
+    Ok(())
 }
 
 /// 查询最近的同步日志（默认 20 条，封顶 200）。

@@ -64,7 +64,7 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
       onOpenChange(false);
       toast(t('settings.changePasswordSuccess'), "success");
     } catch (err) {
-      toast(t('settings.changePasswordFailed') + (err instanceof Error ? err.message : t('settings.unknownError')), "error");
+      toast(t('settings.changePasswordFailed') + String(err ?? t('settings.unknownError')), "error");
     } finally {
       setChanging(false);
     }

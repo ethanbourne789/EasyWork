@@ -3,6 +3,7 @@ pub mod commands;
 pub mod db;
 pub mod sync;
 pub mod calendar_sync;
+pub mod calendar_creds;
 pub mod business;
 
 #[cfg(test)]
@@ -13,12 +14,17 @@ use std::sync::atomic::{AtomicBool, Ordering};
 use tauri::Manager;
 use tauri::menu::{Menu, MenuItem};
 use tauri::tray::{TrayIconBuilder, TrayIconEvent};
+use tauri_plugin_dialog::DialogExt;
 use tauri_plugin_autostart::MacosLauncher;
 use tauri_plugin_autostart::ManagerExt;
+
+type TracingGuard = tracing_appender::non_blocking::WorkerGuard;
 
 #[derive(Clone)]
 pub struct AppSharedState {
     pub close_behavior: Arc<AtomicBool>,
+    #[allow(dead_code)]
+    pub tracing_guard: Arc<TracingGuard>,
 }
 
 /// 应用数据根目录（本次会话解析结果，供各模块共享）。
@@ -97,6 +103,45 @@ fn app_version() -> String {
     env!("CARGO_PKG_VERSION").to_string()
 }
 
+/// 导出日志目录到用户选择的目录。
+#[tauri::command]
+async fn export_logs(app: tauri::AppHandle) -> Result<String, String> {
+    let data_root = app.state::<DataRoot>().0.clone();
+    let logs_dir = data_root.join("logs");
+    if !logs_dir.exists() {
+        return Err("暂无日志文件".into());
+    }
+    let dialog = app.dialog();
+    let default_dir = app.path().document_dir().unwrap_or_else(|_| std::path::PathBuf::from("."));
+    let picked = dialog
+        .file()
+        .set_directory(default_dir)
+        .blocking_pick_folder();
+    let Some(target) = picked else {
+        return Err("未选择导出目录".into());
+    };
+    let target_path = match target {
+        tauri_plugin_dialog::FilePath::Path(p) => p,
+        tauri_plugin_dialog::FilePath::Url(u) => {
+            return Err(format!("不支持的目录格式: {}", u));
+        }
+    };
+    let export_dir = target_path.join(format!(
+        "easywork-logs-{}",
+        chrono::Local::now().format("%Y%m%d-%H%M%S")
+    ));
+    std::fs::create_dir_all(&export_dir).map_err(|e| e.to_string())?;
+    for entry in std::fs::read_dir(&logs_dir).map_err(|e| e.to_string())? {
+        let entry = entry.map_err(|e| e.to_string())?;
+        let src = entry.path();
+        if src.is_file() {
+            let dst = export_dir.join(entry.file_name());
+            std::fs::copy(&src, &dst).map_err(|e| e.to_string())?;
+        }
+    }
+    Ok(export_dir.to_string_lossy().to_string())
+}
+
 #[cfg_attr(mobile, tauri::mobile_entry_point)]
 pub fn run() {
     if let Err(e) = tauri::Builder::default()
@@ -156,9 +201,26 @@ pub fn run() {
                 db: Arc::new(tokio::sync::Mutex::new(app_conn)),
             });
 
+            let logs_dir = data_root.join("logs");
+            std::fs::create_dir_all(&logs_dir)?;
+            let log_file = tracing_appender::rolling::daily(&logs_dir, "easywork.log");
+            let (non_blocking, log_guard) = tracing_appender::non_blocking(log_file);
+            // 保留 guard 在 AppSharedState 中，避免 appender 被提前 drop。
+            let _ = tracing_subscriber::fmt()
+                .with_writer(non_blocking)
+                .with_ansi(false)
+                .with_thread_ids(true)
+                .with_file(true)
+                .with_line_number(true)
+                .with_target(false)
+                .with_max_level(tracing::Level::INFO)
+                .try_init();
+
             let close_behavior = Arc::new(AtomicBool::new(false));
+            let tracing_guard = Arc::new(log_guard);
             app.manage(AppSharedState {
                 close_behavior: close_behavior.clone(),
+                tracing_guard: tracing_guard.clone(),
             });
 
             #[cfg(desktop)]
@@ -209,6 +271,24 @@ pub fn run() {
                             &cloud_mail_db,
                         ).await {
                             tracing::warn!("云端同步下载失败: {}", e);
+                        }
+                    }
+                });
+            }
+
+            // 日历事件提醒后台任务：每 60 秒检查一次，到点发送系统通知。
+            // 已提醒事件写入 calendar_event_reminders，天然幂等。
+            {
+                let reminder_app = app.handle().clone();
+                tauri::async_runtime::spawn(async move {
+                    use tokio::time::{sleep, Duration};
+                    loop {
+                        sleep(Duration::from_secs(60)).await;
+                        if let Err(e) = business::check_event_reminders(
+                            reminder_app.clone(),
+                            reminder_app.state::<commands::AppState>(),
+                        ).await {
+                            tracing::warn!("日历提醒检查失败: {}", e);
                         }
                     }
                 });
@@ -265,6 +345,7 @@ pub fn run() {
         })
         .invoke_handler(tauri::generate_handler![
             app_version,
+            export_logs,
             commands::mail_list_accounts,
             commands::mail_list_folders,
             commands::mail_list_messages,
@@ -302,6 +383,7 @@ pub fn run() {
             commands::contact_import_vcf,
             commands::mail_list_attachments,
             commands::mail_download_attachment,
+            commands::email_attachment_download,
             commands::get_autostart_status,
             commands::set_autostart,
             commands::get_close_behavior,
@@ -312,6 +394,8 @@ pub fn run() {
             commands::sync_test_connection,
             commands::sync_trigger,
             commands::sync_status,
+            commands::sync_conflicts_list,
+            commands::sync_conflict_resolve,
             commands::sync_log_get,
             commands::sync_set_device_name,
             // ---- local-first 业务命令（任务/笔记/记账/日历）----
@@ -376,6 +460,7 @@ pub fn run() {
             business::calendar_subscription_update,
             business::calendar_subscription_delete,
             business::calendar_sync_subscription,
+            business::check_event_reminders,
             business::data_export_all,
             business::data_import_all,
             business::data_clear_all,

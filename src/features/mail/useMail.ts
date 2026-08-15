@@ -152,6 +152,24 @@ export function useEmailAttachments(emailId?: string) {
   });
 }
 
+/**
+ * 按需下载大附件：先从 IMAP 拉取到本地缓存，再弹出系统保存对话框。
+ * 返回用户选择的保存路径（取消时为空字符串）。
+ */
+export function useEmailAttachmentDownload() {
+  const qc = useQueryClient();
+  return useSafeMutation({
+    mutationFn: async ({ emailId, attachmentId }: { emailId: string; attachmentId: string }) => {
+      // 后端命令会把拉取的附件写入本地缓存并回写 file_path/pending_download
+      await mailApi.emailAttachmentDownload(emailId, attachmentId);
+      return mailApi.downloadAttachment(attachmentId);
+    },
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: ["email-attachments"] });
+    },
+  });
+}
+
 export function useMarkAsRead() {
   const qc = useQueryClient();
   return useSafeMutation({

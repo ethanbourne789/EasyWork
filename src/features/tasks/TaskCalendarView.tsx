@@ -77,9 +77,10 @@ export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
         </div>
       </div>
 
-      <div className="flex-1 overflow-x-auto">
-        <div className="grid grid-cols-7 gap-2 h-full min-w-[560px]">
-        {weekDays.map((date, idx) => {
+      <div className="relative flex-1">
+        <div className="flex-1 overflow-x-auto">
+          <div className="grid grid-cols-7 gap-2 h-full min-w-[560px]">
+          {weekDays.map((date, idx) => {
           const dayTasks = getTasksForDate(date);
           return (
             <div
@@ -112,7 +113,7 @@ export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
                         "p-2 rounded-md border text-xs cursor-pointer transition-all hover:shadow-md",
                         task.status === 'done' ? 'opacity-50 bg-muted/30' : 'bg-card',
                         task.priority === 'urgent' && 'border-l-2 border-l-destructive',
-                        task.priority === 'high' && 'border-l-2 border-l-orange-500'
+                        task.priority === 'high' && 'border-l-2 border-l-warning'
                       )}
                     >
                       <div className={cn("font-medium truncate", task.status === 'done' && 'line-through')}>
@@ -133,7 +134,11 @@ export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
             </div>
           );
         })}
+          </div>
         </div>
+        {/* 小屏横滚视觉提示 */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-background to-transparent sm:hidden" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-background to-transparent sm:hidden" />
       </div>
     </div>
   );

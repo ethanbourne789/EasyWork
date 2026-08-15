@@ -1,6 +1,7 @@
 // e2e-tauri/helpers.mjs
 // E2E 测试公共工具：CDP 连接、错误收集、演示登录、导航、断言
-// 依赖：EasyWork.exe 已启动且内置 additionalBrowserArgs=--remote-debugging-port=9222
+// 依赖：EasyWork.exe 已使用 tauri-e2e.conf.json 构建（带 --remote-debugging-port=9222）
+// 生产构建（tauri.conf.json）不再携带该调试端口，避免任意本地进程通过 CDP 接管 WebView。
 
 import { chromium } from 'playwright';
 

@@ -8,9 +8,14 @@ use crate::mail::creds::CredentialStore;
 use crate::mail::db_queries;
 use crate::mail::events::emit_progress;
 use crate::mail::imap::{ImapAdapter, calc_fetch_range};
-use crate::mail::mime::{parse_message, infer_folder_type, folder_display_name, sanitize_html};
+use crate::mail::mime::{parse_message_lazy, infer_folder_type, folder_display_name, sanitize_html};
 use crate::mail::types::*;
 use crate::mail::error::{MailError, MailResult};
+
+/// 比较 IMAP flag 是否与目标语义匹配（忽略大小写与标准反斜杠前缀）。
+fn imap_flag_eq(flag: &str, target: &str) -> bool {
+    flag.trim_start_matches('\\').eq_ignore_ascii_case(target)
+}
 
 pub struct MailService {
     pub db: Arc<Mutex<Connection>>,
@@ -99,19 +104,24 @@ impl MailService {
                             }
                         };
                         let total = messages.len() as i64;
-                        let mut done = 0i64;
 
+                        // 阶段一：在 async 锁外完成解析与附件落盘，避免同步 IO 阻塞其他邮件命令。
+                        // 懒解析：>5MB 的大附件仅保留元数据并标记待下载，不落盘、不驻留内存，
+                        // 用户打开邮件点击附件时再从 IMAP 按需拉取（见 commands::email_attachment_download）。
+                        const LAZY_ATTACH_BYTES: usize = 5 * 1024 * 1024;
+                        let _ = std::fs::create_dir_all(&*self.attachments_dir);
+                        let mut prepared: Vec<(Email, Vec<EmailAttachment>)> = Vec::with_capacity(messages.len());
                         for (uid, body, msg_flags) in messages {
-                            // 单封邮件解析失败只跳过该封，不中断整轮同步
-                            let parsed = match parse_message(&body) {
+                            let parsed = match parse_message_lazy(&body, LAZY_ATTACH_BYTES) {
                                 Ok(p) => p,
                                 Err(e) => {
                                     tracing::warn!("[do_sync] 跳过无法解析的邮件 folder={} uid={} err={}", path, uid, e.message);
                                     continue;
                                 }
                             };
-                            let is_read = msg_flags.iter().any(|f| f.contains("Seen"));
-                            let is_starred = msg_flags.iter().any(|f| f.contains("Flagged"));
+                            // IMAP 标准 flag 形如 \Seen、\Flagged；做大小写不敏感、忽略反斜杠前缀的精确匹配
+                            let is_read = msg_flags.iter().any(|f| imap_flag_eq(f, "Seen"));
+                            let is_starred = msg_flags.iter().any(|f| imap_flag_eq(f, "Flagged"));
 
                             let email = Email {
                                 id: uuid::Uuid::new_v4().to_string(),
@@ -135,60 +145,64 @@ impl MailService {
                                 account_name: account.display_name.clone(),
                             };
 
-                            {
-                                let db = self.db.lock().await;
-                                db_queries::upsert_email(&db, &email)?;
-                                // 先清旧附件记录（磁盘文件由下面锁外清理）
-                                let old = db_queries::delete_attachments_for_email(&db, &email.id)?;
-                                drop(db);
-                                for o in &old {
-                                    let _ = std::fs::remove_file(&o.file_path);
-                                }
-                            }
-
-                            // 附件落盘：uuid+序号 命名磁盘文件（不信任邮件头文件名，防路径注入）
-                            const MAX_ATTACH_BYTES: usize = 30 * 1024 * 1024;
-                            let _ = std::fs::create_dir_all(&*self.attachments_dir);
-                            for (i, att) in parsed.attachments.iter().enumerate() {
-                                if att.data.len() > MAX_ATTACH_BYTES {
-                                    tracing::warn!("附件超限跳过 email={} name={:?} size={}",
-                                        email.id, att.filename, att.data.len());
-                                    continue;
-                                }
+                            let mut atts = Vec::new();
+                            for (i, att) in parsed.attachments.into_iter().enumerate() {
+                                // 待下载的大附件：不落盘，仅写入占位记录（file_path 为空、pending_download=1）
                                 let disk_name = format!("{}_{}", email.id, i);
-                                let path = self.attachments_dir.join(&disk_name);
-                                if let Err(e) = std::fs::write(&path, &att.data) {
-                                    tracing::warn!("附件落盘失败 email={} idx={} err={}", email.id, i, e);
-                                    continue;
-                                }
-                                let rec = EmailAttachment {
+                                let file_path = if att.needs_download {
+                                    String::new()
+                                } else {
+                                    let path = self.attachments_dir.join(&disk_name);
+                                    if let Err(e) = std::fs::write(&path, &att.data) {
+                                        tracing::warn!("附件落盘失败 email={} idx={} err={}", email.id, i, e);
+                                        continue;
+                                    }
+                                    path.to_string_lossy().into_owned()
+                                };
+                                atts.push(EmailAttachment {
                                     id: uuid::Uuid::new_v4().to_string(),
                                     email_id: email.id.clone(),
-                                    filename: att.filename.clone(),
-                                    mime_type: att.mime_type.clone(),
-                                    size: Some(att.data.len() as i64),
-                                    file_path: path.to_string_lossy().into_owned(),
+                                    filename: att.filename,
+                                    mime_type: att.mime_type,
+                                    size: Some(att.size as i64),
+                                    file_path,
                                     is_inline: att.is_inline,
-                                    content_id: att.content_id.clone(),
+                                    content_id: att.content_id,
+                                    part_id: att.part_id,
+                                    pending_download: att.needs_download,
                                     created_at: chrono::Utc::now().to_rfc3339(),
-                                };
-                                {
-                                    let db = self.db.lock().await;
-                                    db_queries::insert_attachment(&db, &rec)?;
-                                }
+                                });
                             }
-                            inserted += 1;
-                            fetched += 1;
-                            done += 1;
-                            emit_progress(app, SyncProgress::Folder {
-                                account_id: account_id.into(), path: path.clone(), done, total
-                            });
+                            prepared.push((email, atts));
                         }
 
+                        // 阶段二：单事务批量写入 SQLite，把每封邮件的多次持锁压缩为一次。
+                        let mut old_attachments: Vec<EmailAttachment> = Vec::new();
                         {
                             let db = self.db.lock().await;
-                            update_folder_cursor(&db, account_id, &folder_id, end, uid_validity)?;
+                            let tx = db.unchecked_transaction()?;
+                            for (email, atts) in &prepared {
+                                db_queries::upsert_email(&tx, email)?;
+                                let old = db_queries::delete_attachments_for_email(&tx, &email.id)?;
+                                old_attachments.extend(old);
+                                for att in atts {
+                                    db_queries::insert_attachment(&tx, att)?;
+                                }
+                            }
+                            update_folder_cursor(&tx, account_id, &folder_id, end, uid_validity)?;
+                            tx.commit()?;
                         }
+                        // 锁外清理旧附件文件，避免 IO 阻塞其他邮件命令。
+                        for old in old_attachments {
+                            let _ = std::fs::remove_file(&old.file_path);
+                        }
+
+                        let done = prepared.len() as i64;
+                        inserted += done;
+                        fetched += total;
+                        emit_progress(app, SyncProgress::Folder {
+                            account_id: account_id.into(), path: path.clone(), done, total
+                        });
                     }
                 }
                 Err(e) => {

@@ -275,26 +275,45 @@ pub fn set_account_signature(conn: &Connection, account_id: &str, signature_id: 
 
 pub fn list_attachments(conn: &Connection, email_id: &str) -> MailResult<Vec<EmailAttachment>> {
     let mut stmt = conn.prepare(
-        "SELECT * FROM email_attachments WHERE email_id = ?1 ORDER BY created_at"
+        "SELECT * FROM email_attachments WHERE email_id = ?1 ORDER BY created_at, rowid"
     )?;
-    let rows = stmt.query_map(params![email_id], |row| {
-        Ok(EmailAttachment {
-            id: row.get("id")?, email_id: row.get("email_id")?,
-            filename: row.get("filename")?, mime_type: row.get("mime_type")?,
-            size: row.get("size")?, file_path: row.get("file_path")?,
-            is_inline: row.get::<_, i64>("is_inline")? != 0,
-            content_id: row.get("content_id")?, created_at: row.get("created_at")?,
-        })
-    })?;
+    let rows = stmt.query_map(params![email_id], map_attachment)?;
     rows.collect::<Result<Vec<_>, _>>().map_err(MailError::from)
+}
+
+/// 某封邮件的附件列表（`list_attachments` 的别名，语义更明确）
+pub fn list_attachments_for_email(conn: &Connection, email_id: &str) -> MailResult<Vec<EmailAttachment>> {
+    list_attachments(conn, email_id)
+}
+
+fn map_attachment(row: &rusqlite::Row) -> rusqlite::Result<EmailAttachment> {
+    Ok(EmailAttachment {
+        id: row.get("id")?, email_id: row.get("email_id")?,
+        filename: row.get("filename")?, mime_type: row.get("mime_type")?,
+        size: row.get("size")?, file_path: row.get("file_path")?,
+        is_inline: row.get::<_, i64>("is_inline")? != 0,
+        content_id: row.get("content_id")?, part_id: row.get("part_id")?,
+        pending_download: row.get::<_, i64>("pending_download")? != 0,
+        created_at: row.get("created_at")?,
+    })
 }
 
 pub fn insert_attachment(conn: &Connection, att: &EmailAttachment) -> MailResult<()> {
     conn.execute(
-        "INSERT INTO email_attachments (id, email_id, filename, mime_type, size, file_path, is_inline, content_id, created_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        "INSERT INTO email_attachments (id, email_id, filename, mime_type, size, file_path, is_inline, content_id, part_id, pending_download, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11)",
         params![att.id, att.email_id, att.filename, att.mime_type, att.size, att.file_path,
-                att.is_inline as i64, att.content_id, att.created_at],
+                att.is_inline as i64, att.content_id, att.part_id, att.pending_download as i64,
+                att.created_at],
+    )?;
+    Ok(())
+}
+
+/// 按需下载完成后回写本地路径并清除待下载标记
+pub fn mark_attachment_downloaded(conn: &Connection, id: &str, file_path: &str) -> MailResult<()> {
+    conn.execute(
+        "UPDATE email_attachments SET file_path = ?1, pending_download = 0 WHERE id = ?2",
+        params![file_path, id],
     )?;
     Ok(())
 }
@@ -307,15 +326,8 @@ pub fn delete_attachments_for_email(conn: &Connection, email_id: &str) -> MailRe
 }
 
 pub fn get_attachment(conn: &Connection, id: &str) -> MailResult<EmailAttachment> {
-    conn.query_row("SELECT * FROM email_attachments WHERE id = ?1", params![id], |row| {
-        Ok(EmailAttachment {
-            id: row.get("id")?, email_id: row.get("email_id")?,
-            filename: row.get("filename")?, mime_type: row.get("mime_type")?,
-            size: row.get("size")?, file_path: row.get("file_path")?,
-            is_inline: row.get::<_, i64>("is_inline")? != 0,
-            content_id: row.get("content_id")?, created_at: row.get("created_at")?,
-        })
-    }).map_err(|_| MailError::new("NOT_FOUND", "附件不存在"))
+    conn.query_row("SELECT * FROM email_attachments WHERE id = ?1", params![id], map_attachment)
+        .map_err(|_| MailError::new("NOT_FOUND", "附件不存在"))
 }
 
 pub fn list_templates(conn: &Connection) -> MailResult<Vec<EmailTemplate>> {

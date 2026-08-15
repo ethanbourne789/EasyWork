@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Pencil, FolderPlus, RefreshCw, Menu, PenSquare, Users, Mail as MailIcon } from "lucide-react";
 import { ModuleFab } from "@/components/layout/ModuleFab";
 import { Button } from "@/components/ui/button";
@@ -30,6 +31,7 @@ import { useSyncProgress } from "./useSyncProgress";
 import type { Email } from "@/types";
 
 export function Mail() {
+  const { t } = useTranslation();
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>();
 
   // 进入邮箱页应直接看到邮件，而不是停在「请选择一个文件夹」空态。
@@ -170,12 +172,12 @@ export function Mail() {
           )}
           <div>
             <h1 className="font-display text-lg font-semibold leading-tight md:text-[28px]">
-              {mainView === "mail" ? "邮箱" : "联系人"}
+              {mainView === "mail" ? t("mail.title") : t("mail.contactsTitle")}
             </h1>
             <p className="hidden text-xs text-muted-foreground md:block">
               {mainView === "mail"
-                ? `${accounts.length} 个账户 · ${totalUnread} 封未读`
-                : "管理联系人、分组与 VCF 导入导出"}
+                ? t("mail.accountsUnread", { accounts: accounts.length, unread: totalUnread })
+                : t("mail.contactsSubtitle")}
             </p>
           </div>
         </div>
@@ -186,20 +188,20 @@ export function Mail() {
             size="sm"
             className="gap-1"
             onClick={() => setMainView("mail")}
-            aria-label="切换到邮箱视图"
+            aria-label={t("mail.switchToMailView")}
           >
             <MailIcon className="h-4 w-4" />
-            <span className="hidden sm:inline">邮件</span>
+            <span className="hidden sm:inline">{t("mail.mailView")}</span>
           </Button>
           <Button
             variant={mainView === "contacts" ? "secondary" : "ghost"}
             size="sm"
             className="gap-1"
             onClick={() => setMainView("contacts")}
-            aria-label="切换到联系人视图"
+            aria-label={t("mail.switchToContactsView")}
           >
             <Users className="h-4 w-4" />
-            <span className="hidden sm:inline">联系人</span>
+            <span className="hidden sm:inline">{t("mail.contactsTitle")}</span>
           </Button>
           {mainView === "mail" && (
             <>
@@ -211,11 +213,11 @@ export function Mail() {
                 disabled={syncMail.isPending || isSyncing}
               >
                 <RefreshCw className={syncMail.isPending || isSyncing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-                <span className="hidden sm:inline">{syncMail.isPending || isSyncing ? "收取中..." : "收取邮件"}</span>
+                <span className="hidden sm:inline">{syncMail.isPending || isSyncing ? t("mail.syncing") : t("mail.syncMail")}</span>
               </Button>
               <Button variant="ghost" size="sm" className="gap-1" onClick={handleCompose}>
                 <PenSquare className="h-4 w-4" />
-                <span className="hidden sm:inline">写信</span>
+                <span className="hidden sm:inline">{t("mail.compose")}</span>
               </Button>
             </>
           )}
@@ -251,7 +253,7 @@ export function Mail() {
           width="w-[260px]"
         >
           <DrawerHeader>
-            <DrawerTitle>文件夹</DrawerTitle>
+            <DrawerTitle>{t("mail.folders")}</DrawerTitle>
             <DrawerClose onClose={() => setDrawerOpen(false)} />
           </DrawerHeader>
           <div className="h-[calc(100vh-56px)] overflow-y-auto">
@@ -270,8 +272,8 @@ export function Mail() {
           />
         </aside>
 
-        {/* 移动端文件夹切换下拉（保留兜底，非必需时隐藏） */}
-        <div className="w-full border-b p-3 md:hidden">
+        {/* 平板/小桌面端文件夹切换下拉（lg 以上用左侧账户树，md-lg 用下拉兜底） */}
+        <div className="w-full border-b p-3 md:block lg:hidden">
           <Select
             value={selectedFolderId ?? ""}
             onChange={(e) => {
@@ -280,7 +282,7 @@ export function Mail() {
             }}
             className="w-full"
           >
-            <option value="">选择文件夹</option>
+            <option value="">{t("mail.selectFolder")}</option>
             {(folders ?? []).map((f) => (
               <option key={f.id} value={f.id}>
                 {f.name}
@@ -317,8 +319,8 @@ export function Mail() {
       <ModuleFab
         mainIcon={Pencil}
         actions={[
-          { label: "写邮件", icon: Pencil, onClick: handleCompose },
-          { label: "新建文件夹", icon: FolderPlus, onClick: openFolderDialog },
+          { label: t("mail.compose"), icon: Pencil, onClick: handleCompose },
+          { label: t("mail.newFolder"), icon: FolderPlus, onClick: openFolderDialog },
         ]}
       />
       )}
@@ -332,12 +334,12 @@ export function Mail() {
       <Dialog open={folderDialogOpen} onOpenChange={setFolderDialogOpen}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>新建文件夹</DialogTitle>
+            <DialogTitle>{t("mail.newFolder")}</DialogTitle>
           </DialogHeader>
           <DialogClose onClose={() => setFolderDialogOpen(false)} />
           <div className="space-y-3">
             <div className="space-y-1">
-              <label className="text-sm font-medium">所属账户</label>
+              <label className="text-sm font-medium">{t("mail.belongingAccount")}</label>
               <Select
                 value={newFolderAccount}
                 onChange={(e) => setNewFolderAccount(e.target.value)}
@@ -350,11 +352,11 @@ export function Mail() {
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">文件夹名称</label>
+              <label className="text-sm font-medium">{t("mail.folderName")}</label>
               <Input
                 value={newFolderName}
                 onChange={(e) => setNewFolderName(e.target.value)}
-                placeholder="例如：项目归档"
+                placeholder={t("mail.folderNameExample")}
                 onKeyDown={(e) => {
                   if (e.key === "Enter") submitFolder();
                 }}
@@ -362,13 +364,13 @@ export function Mail() {
             </div>
             <div className="flex justify-end gap-2">
               <Button variant="outline" onClick={() => setFolderDialogOpen(false)}>
-                取消
+                {t("common.cancel")}
               </Button>
               <Button
                 onClick={submitFolder}
                 disabled={!newFolderName.trim() || !newFolderAccount || createFolder.isPending}
               >
-                {createFolder.isPending ? "创建中..." : "创建"}
+                {createFolder.isPending ? t("mail.creating") : t("common.create")}
               </Button>
             </div>
           </div>

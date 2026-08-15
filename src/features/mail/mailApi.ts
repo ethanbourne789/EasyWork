@@ -236,6 +236,11 @@ export const mailApi = {
     const invoke = await getInvoke();
     return invoke<string>("mail_download_attachment", { id });
   },
+  /** 按需从 IMAP 拉取大附件到本地缓存，返回本地缓存路径 */
+  emailAttachmentDownload: async (emailId: string, attachmentId: string) => {
+    const invoke = await getInvoke();
+    return invoke<string>("email_attachment_download", { emailId, attachmentId });
+  },
   /** FTS5 全文搜索（标题/发件人/正文） */
   search: async (query: string, limit = 50) => {
     const invoke = await getInvoke();

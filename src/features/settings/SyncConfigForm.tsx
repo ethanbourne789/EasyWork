@@ -79,7 +79,7 @@ export function SyncConfigForm() {
       // 保存后自动触发首次同步（新设备连接场景）
       if (values.enabled) trigger.mutate();
     } catch (e) {
-      toast(`${t("sync.saveFailed")} ${e instanceof Error ? e.message : ""}`, "error");
+      toast(`${t("sync.saveFailed")} ${String(e ?? "")}`, "error");
     }
   };
 
@@ -112,7 +112,7 @@ export function SyncConfigForm() {
         toast(t("sync.configDeleted"), "success");
         reset({ enabled: false, provider: "custom", connection_string: "", database_name: "", device_name: "" });
       } catch (e) {
-        toast(`${t("sync.saveFailed")} ${e instanceof Error ? e.message : ""}`, "error");
+        toast(`${t("sync.saveFailed")} ${String(e ?? "")}`, "error");
       }
     }
   };

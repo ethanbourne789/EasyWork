@@ -1,8 +1,10 @@
 import { useState, useEffect } from "react";
+import { useTranslation } from "react-i18next";
 import { Button } from "@/components/ui/button";
 import { Textarea } from "@/components/ui/textarea";
 import { Input } from "@/components/ui/input";
 import { Select } from "@/components/ui/select";
+import { Dialog, DialogContent } from "@/components/ui/dialog";
 import { X, Send, Save, FileText, Signature } from "lucide-react";
 import { useSendEmail, useSaveDraft, useEmailAccounts, useUpdateDraft, useDeleteEmail } from "./useMail";
 import { useEmailSignatures, useEmailTemplates } from "./useEmailTemplates";
@@ -56,6 +58,7 @@ interface MailComposerProps {
 }
 
 export function MailComposer({ open, onClose, draftId, initialData }: MailComposerProps) {
+  const { t } = useTranslation();
   const [to, setTo] = useState(initialData?.to || "");
   const [cc, setCc] = useState(initialData?.cc || "");
   const [subject, setSubject] = useState(initialData?.subject || "");
@@ -119,10 +122,10 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
   const handleClose = async () => {
     if (hasUnsavedChanges) {
       const ok = await confirm({
-        title: "关闭编辑器",
-        description: "有未保存的更改，确定要关闭吗？",
-        confirmText: "放弃并关闭",
-        cancelText: "继续编辑",
+        title: t("mail.closeEditor"),
+        description: t("common.discardMessage"),
+        confirmText: t("common.close"),
+        cancelText: t("mail.continueEditing"),
         destructive: true,
       });
       if (!ok) return;
@@ -132,23 +135,23 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
 
   const handleSend = async () => {
     if (!to.trim()) {
-      toast("请输入收件人", "error");
+      toast(t("mail.enterRecipient"), "error");
       return;
     }
     if (!subject.trim()) {
-      toast("请输入主题", "error");
+      toast(t("mail.enterSubject"), "error");
       return;
     }
 
     const invalid = [...invalidAddresses(to), ...invalidAddresses(cc)];
     if (invalid.length) {
-      toast(`收件人地址格式不正确：${invalid.join("、")}`, "error");
+      toast(t("mail.invalidAddress", { addresses: invalid.join("、") }), "error");
       return;
     }
 
     const accountId = selectedAccountId ?? accounts[0]?.id;
     if (!accountId) {
-      toast("没有可用的邮箱账号", "error");
+      toast(t("mail.noAccount"), "error");
       return;
     }
 
@@ -172,10 +175,10 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
       try {
         await deleteEmail.mutateAsync(draftId);
       } catch {
-        toast("邮件已发送，但草稿清理失败", "info");
+        toast(t("mail.draftCleanupFailed"), "info");
       }
     }
-    notify("邮件已发送", subject || undefined);
+    notify(t("mail.sent"), subject || undefined);
     onClose();
   };
 
@@ -187,7 +190,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
 
     const invalid = [...invalidAddresses(to), ...invalidAddresses(cc)];
     if (invalid.length) {
-      toast(`收件人地址格式不正确：${invalid.join("、")}`, "error");
+      toast(t("mail.invalidAddress", { addresses: invalid.join("、") }), "error");
       return;
     }
 
@@ -223,13 +226,11 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
     setBody(template.body ?? "");
   };
 
-  if (!open) return null;
-
   return (
-    <div className="fixed inset-0 z-50 flex items-center justify-center bg-black/50">
-      <div className="flex h-[80vh] w-full max-w-2xl flex-col rounded-lg bg-background shadow-xl">
+    <Dialog open={open} onOpenChange={handleClose} ariaLabel={t("mail.writeMail")}>
+      <DialogContent className="flex h-[80vh] max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border bg-background p-0 shadow-xl">
         <div className="flex items-center justify-between border-b p-3">
-          <h3 className="text-sm font-medium">{draftId ? "编辑草稿" : "撰写邮件"}</h3>
+          <h3 className="text-sm font-medium">{draftId ? t("mail.editDraft") : t("mail.writeMail")}</h3>
           <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose}>
             <X className="h-4 w-4" />
           </Button>
@@ -242,7 +243,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             onClick={() => setTemplateDialogOpen(true)}
           >
             <FileText className="h-3.5 w-3.5" />
-            模板
+            {t("mail.template")}
           </Button>
           <Button
             variant="outline"
@@ -251,12 +252,12 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             onClick={() => setSignatureDialogOpen(true)}
           >
             <Signature className="h-3.5 w-3.5" />
-            签名
+            {t("mail.signature")}
           </Button>
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto p-4">
           <div className="flex items-center gap-2">
-            <label className="w-16 shrink-0 text-sm text-muted-foreground">发件账号</label>
+            <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.fromAccount")}</label>
             <div className="flex flex-1 items-center gap-2">
               <Select
                 value={selectedAccountId ?? accounts[0]?.id ?? ""}
@@ -270,19 +271,19 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
                 ))}
               </Select>
               {hasSignature && (
-                <span className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-50 dark:text-brand-700" title="该账号已绑定签名">
+                <span className="shrink-0 rounded bg-brand-50 px-1.5 py-0.5 text-[10px] font-medium text-brand-700 dark:bg-brand-50 dark:text-brand-700" title={t("mail.accountBoundSignature")}>
                   <Signature className="mr-0.5 inline-block h-3 w-3" />
-                  签名
+                  {t("mail.signature")}
                 </span>
               )}
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="w-16 shrink-0 text-sm text-muted-foreground">收件人</label>
+            <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.to")}</label>
             <Input
               value={to}
               onChange={(e) => setTo(e.target.value)}
-              placeholder="输入邮箱地址，多个地址用逗号分隔"
+              placeholder={t("mail.toPlaceholder")}
               className="flex-1"
               list="mail-contact-suggestions"
             />
@@ -298,41 +299,41 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
                 onClick={() => setShowCc(true)}
                 className="shrink-0"
               >
-                添加抄送
+                {t("mail.addCc")}
               </Button>
             )}
           </div>
           {showCc && (
             <div className="flex items-center gap-2">
-              <label className="w-16 shrink-0 text-sm text-muted-foreground">抄送</label>
+              <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.cc")}</label>
               <Input
                 value={cc}
                 onChange={(e) => setCc(e.target.value)}
-                placeholder="输入抄送地址，多个地址用逗号分隔"
+                placeholder={t("mail.ccPlaceholder")}
                 className="flex-1"
                 list="mail-contact-suggestions"
               />
             </div>
           )}
           <div className="flex items-center gap-2">
-            <label className="w-16 shrink-0 text-sm text-muted-foreground">主题</label>
+            <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.subject")}</label>
             <Input
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
-              placeholder="输入邮件主题"
+              placeholder={t("mail.subjectPlaceholder")}
               className="flex-1"
             />
           </div>
           <Textarea
             value={body}
             onChange={(e) => setBody(e.target.value)}
-            placeholder="输入邮件内容..."
+            placeholder={t("mail.bodyPlaceholder")}
             className="min-h-[200px] flex-1"
           />
         </div>
         <div className="flex items-center justify-end gap-2 border-t p-3">
           {draftSaved && (
-            <span className="mr-auto text-sm text-success">草稿已保存</span>
+            <span className="mr-auto text-sm text-success">{t("mail.draftSaved")}</span>
           )}
           <Button
             variant="outline"
@@ -342,7 +343,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             disabled={sendEmail.isPending || saveDraft.isPending}
           >
             <Save className="h-4 w-4" />
-            {saveDraft.isPending ? "保存中..." : "保存草稿"}
+            {saveDraft.isPending ? t("common.saving") : t("mail.saveDraft")}
           </Button>
           <Button
             size="sm"
@@ -351,10 +352,10 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             disabled={sendEmail.isPending}
           >
             <Send className="h-4 w-4" />
-            {sendEmail.isPending ? "发送中..." : "发送"}
+            {sendEmail.isPending ? t("mail.sending") : t("mail.send")}
           </Button>
         </div>
-      </div>
+      </DialogContent>
       <EmailTemplateDialog
         open={templateDialogOpen}
         onOpenChange={setTemplateDialogOpen}
@@ -364,6 +365,6 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
         open={signatureDialogOpen}
         onOpenChange={setSignatureDialogOpen}
       />
-    </div>
+    </Dialog>
   );
 }

@@ -223,7 +223,7 @@ export function EventFormDialog({
             </div>
           </div>
 
-          {/* TODO: 提醒功能待实现 — 需在 notifications.ts 中接入日历事件提醒 */}
+          {/* 事件提醒：到点由后端 check_event_reminders 发送系统通知 */}
           <div className="space-y-1.5">
             <Label htmlFor="ev-rem">{t("calendar.reminder")}</Label>
             <select

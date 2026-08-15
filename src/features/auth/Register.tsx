@@ -69,7 +69,7 @@ export function Register() {
               aria-invalid={!!fieldErrors.email}
             />
             {fieldErrors.email && (
-              <p className="text-xs text-red-500">{fieldErrors.email}</p>
+              <p className="text-xs text-destructive">{fieldErrors.email}</p>
             )}
           </div>
           <div className="space-y-1">
@@ -81,7 +81,7 @@ export function Register() {
               aria-invalid={!!fieldErrors.password}
             />
             {fieldErrors.password && (
-              <p className="text-xs text-red-500">{fieldErrors.password}</p>
+              <p className="text-xs text-destructive">{fieldErrors.password}</p>
             )}
           </div>
           <div className="space-y-1">
@@ -93,7 +93,7 @@ export function Register() {
               aria-invalid={!!fieldErrors.confirmPassword}
             />
             {fieldErrors.confirmPassword && (
-              <p className="text-xs text-red-500">{fieldErrors.confirmPassword}</p>
+              <p className="text-xs text-destructive">{fieldErrors.confirmPassword}</p>
             )}
           </div>
           <Button type="submit" className="w-full" disabled={registering}>
@@ -101,7 +101,7 @@ export function Register() {
           </Button>
         </form>
 
-        {error && <p className="text-center text-sm text-red-500">{error}</p>}
+        {error && <p className="text-center text-sm text-destructive">{error}</p>}
 
         <div className="space-y-2 text-center text-sm text-muted-foreground">
           <p>

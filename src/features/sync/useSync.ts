@@ -9,6 +9,7 @@ export const syncKeys = {
   config: ["sync", "config"] as const,
   status: ["sync", "status"] as const,
   log: ["sync", "log"] as const,
+  conflicts: ["sync", "conflicts"] as const,
 };
 
 export function useSyncConfig() {
@@ -81,6 +82,26 @@ export function useSetDeviceName() {
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: syncKeys.status });
       qc.invalidateQueries({ queryKey: syncKeys.config });
+    },
+  });
+}
+
+export function useSyncConflicts() {
+  return useQuery({
+    queryKey: syncKeys.conflicts,
+    queryFn: () => syncApi.listConflicts(),
+    refetchInterval: 30_000,
+  });
+}
+
+export function useResolveConflict() {
+  const qc = useQueryClient();
+  return useMutation({
+    mutationFn: ({ id, keepLocal }: { id: string; keepLocal: boolean }) =>
+      syncApi.resolveConflict(id, keepLocal),
+    onSuccess: () => {
+      qc.invalidateQueries({ queryKey: syncKeys.conflicts });
+      qc.invalidateQueries({ queryKey: syncKeys.status });
     },
   });
 }

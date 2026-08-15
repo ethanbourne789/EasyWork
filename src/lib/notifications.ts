@@ -3,6 +3,7 @@ import { format } from "date-fns";
 import { useTasks } from "@/features/tasks/useTasks";
 import { useTransactions, useBudgets, useCategories } from "@/features/finance/useFinance";
 import { useFolderUnreadCounts } from "@/features/mail/useMail";
+import { getDismissedNotifications, setDismissedNotifications } from "@/lib/storage";
 import type { Task, Transaction, Budget, Category } from "@/types";
 import { MS_PER_DAY } from "@/lib/constants";
 
@@ -25,32 +26,13 @@ export interface NotificationsApi {
   markAllRead: () => void;
 }
 
-const DISMISS_KEY = "easywork:dismissed-notifications";
 const DAY = MS_PER_DAY;
-
-function loadDismissed(): Set<string> {
-  try {
-    const raw = localStorage.getItem(DISMISS_KEY);
-    if (raw) return new Set<string>(JSON.parse(raw) as string[]);
-  } catch {
-    /* ignore */
-  }
-  return new Set<string>();
-}
-
-function saveDismissed(set: Set<string>) {
-  try {
-    localStorage.setItem(DISMISS_KEY, JSON.stringify([...set]));
-  } catch {
-    /* ignore */
-  }
-}
 
 /**
  * 聚合多模块事件为统一通知列表：预算超支、任务到期、邮件未读。
  * - 数据来自各模块已有的 React Query 缓存（task/transaction/budget/category/email folder），不额外发请求。
  * - 周期刷新（每 60s）以常驻检查，不再依赖 BudgetList 页面挂载（修复 P4）。
- * - 已读状态按 id 存于 localStorage；仅保留仍处于「活跃」的已读项，便于下月/新邮件再次提醒。
+ * - 已读状态按 id 存于本地持久化；仅保留仍处于「活跃」的已读项，便于下月/新邮件再次提醒。
  */
 export function useNotifications(): NotificationsApi {
   const { data: tasksRaw } = useTasks();
@@ -60,7 +42,7 @@ export function useNotifications(): NotificationsApi {
   const { data: folderUnreadRaw } = useFolderUnreadCounts();
 
   const [now, setNow] = useState<number>(() => Date.now());
-  const [dismissed, setDismissed] = useState<Set<string>>(loadDismissed);
+  const [dismissed, setDismissed] = useState<Set<string>>(getDismissedNotifications);
 
   // 常驻周期检查（P4）：不依赖某个页面挂载
   useEffect(() => {
@@ -163,7 +145,7 @@ export function useNotifications(): NotificationsApi {
     setDismissed((prev) => {
       const next = new Set(prev);
       next.add(id);
-      saveDismissed(next);
+      setDismissedNotifications(next);
       return next;
     });
   };
@@ -171,7 +153,7 @@ export function useNotifications(): NotificationsApi {
     setDismissed((prev) => {
       const next = new Set(prev);
       items.forEach((i) => next.add(i.id));
-      saveDismissed(next);
+      setDismissedNotifications(next);
       return next;
     });
   };

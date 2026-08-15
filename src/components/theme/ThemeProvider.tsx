@@ -1,6 +1,5 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
-
-type Theme = "light" | "dark";
+import { getStoredTheme, setStoredTheme, type Theme } from "@/lib/storage";
 
 interface ThemeContextValue {
   theme: Theme;
@@ -9,18 +8,13 @@ interface ThemeContextValue {
 
 const ThemeContext = createContext<ThemeContextValue | undefined>(undefined);
 
-const STORAGE_KEY = "easywork-theme";
-
 export function ThemeProvider({ children }: { children: ReactNode }) {
-  const [theme, setTheme] = useState<Theme>(() => {
-    const saved = localStorage.getItem(STORAGE_KEY) as Theme | null;
-    return saved ?? "light";
-  });
+  const [theme, setTheme] = useState<Theme>(() => getStoredTheme() ?? "light");
 
   useEffect(() => {
     const root = document.documentElement;
     root.classList.toggle("dark", theme === "dark");
-    localStorage.setItem(STORAGE_KEY, theme);
+    setStoredTheme(theme);
   }, [theme]);
 
   return (

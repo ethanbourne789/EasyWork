@@ -69,7 +69,7 @@ export function CalendarMonthView({
   // 动态计算行数：6 周月（42 天）需要 6 行，避免 grid-rows-5 硬编码导致的渲染错乱
   const weeks = Math.ceil(days.length / 7);
   return (
-    <div className="flex h-full flex-col overflow-x-auto md:overflow-x-visible">
+    <div className="relative flex h-full flex-col overflow-x-auto md:overflow-x-visible">
       {/* 星期表头 */}
       <div className="grid min-w-[560px] grid-cols-7 border-b border-l md:min-w-0">
         {WEEKDAY_LABELS.map((w, i) => (
@@ -150,6 +150,9 @@ export function CalendarMonthView({
           );
         })}
       </div>
+      {/* 小屏横滚视觉提示 */}
+      <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-background to-transparent md:hidden" />
+      <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-background to-transparent md:hidden" />
     </div>
   );
 }

@@ -10,9 +10,12 @@ import { Finance } from "@/features/finance/Finance";
 import { Settings } from "@/features/settings/Settings";
 import { Calendar } from "@/features/calendar/Calendar";
 import { useAuthStore } from "@/features/auth/authStore";
+import { NotFound } from "@/components/NotFound";
+import { PageLoading } from "@/components/PageLoading";
 
 const rootRoute = createRootRouteWithContext()({
   component: () => <Outlet />,
+  notFoundComponent: NotFound,
 });
 
 const loginRoute = createRoute({
@@ -30,6 +33,7 @@ const registerRoute = createRoute({
 const indexRoute = createRoute({
   getParentRoute: () => rootRoute,
   path: "/",
+  pendingComponent: PageLoading,
   beforeLoad: () => {
     const { user, loading } = useAuthStore.getState();
     // loading 期间（本地会话恢复中）不打断渲染，避免已登录回访用户被弹回登录页

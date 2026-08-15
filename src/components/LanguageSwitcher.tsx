@@ -1,6 +1,7 @@
 import { useTranslation } from 'react-i18next';
 import { Button } from '@/components/ui/button';
 import { Languages } from 'lucide-react';
+import { setStoredLanguage, type Language } from '@/lib/storage';
 
 export function LanguageSwitcher({ showLabel = false }: { showLabel?: boolean }) {
   const { t, i18n } = useTranslation();
@@ -9,9 +10,9 @@ export function LanguageSwitcher({ showLabel = false }: { showLabel?: boolean })
   const isZh = currentLang.startsWith('zh');
 
   const toggleLanguage = () => {
-    const newLang = isZh ? 'en-US' : 'zh-CN';
+    const newLang: Language = isZh ? 'en-US' : 'zh-CN';
     i18n.changeLanguage(newLang);
-    localStorage.setItem('language', newLang);
+    setStoredLanguage(newLang);
   };
 
   return (

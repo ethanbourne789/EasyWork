@@ -1,4 +1,5 @@
 pub mod config;
+pub mod creds;
 pub mod engine;
 pub mod postgres;
 pub mod schema;
@@ -25,6 +26,18 @@ pub struct SyncStatus {
     pub sync_error: Option<String>,
     pub device_id: String,
     pub device_name: String,
+    /// 待处理冲突数（本地与云端并发修改，等待用户裁决）
+    pub pending_conflicts: i64,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct SyncConflict {
+    pub id: String,
+    pub table_name: String,
+    pub pk_value: String,
+    pub local_snapshot: String,
+    pub remote_snapshot: String,
+    pub detected_at: String,
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]

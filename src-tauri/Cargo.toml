@@ -33,12 +33,15 @@ reqwest = { version = "0.12", features = ["rustls-tls", "json", "stream"] }
 urlencoding = "2"
 
 tracing = "0.1"
-tracing-subscriber = "0.3"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
 serde = { version = "1", features = ["derive"] }
 serde_json = "1"
 chrono = { version = "0.4", features = ["serde"] }
 uuid = { version = "1", features = ["v4"] }
 argon2 = { version = "0.5", features = ["std", "rand"] }
+aes-gcm = "0.10"
+rand = "0.9"
 ical = "0.10"
 base64 = "0.22"
 tokio-postgres = { version = "0.7", features = ["runtime", "with-chrono-0_4", "with-uuid-1"] }
@@ -67,3 +70,8 @@ custom-protocol = ["tauri/custom-protocol"]
 [profile.release]
 # Strip debug symbols from the final binary (smaller portable exe; no runtime cost).
 strip = true
+# 全链路优化：缩小体积并提升运行时性能；编译时间会增加，仅影响 release 构建。
+lto = true
+codegen-units = 1
+# "z" 优先体积；若更看重运行时性能可改为 3。
+opt-level = "z"

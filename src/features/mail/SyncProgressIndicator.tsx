@@ -1,4 +1,5 @@
 import { Loader2, CheckCircle2, X } from "lucide-react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { useSyncProgress } from "./useSyncProgress";
 
@@ -20,6 +21,7 @@ export function SyncProgressIndicator({
   compact = false,
   onDismiss,
 }: SyncProgressIndicatorProps) {
+  const { t } = useTranslation();
   const { syncingAccounts, lastResults, isSyncing, clearProgress } = useSyncProgress();
 
   if (!isSyncing && lastResults.length === 0) return null;
@@ -41,16 +43,16 @@ export function SyncProgressIndicator({
           {isSyncing ? (
             <Loader2 className="h-4 w-4 shrink-0 animate-spin text-primary" />
           ) : (
-            <CheckCircle2 className="h-4 w-4 shrink-0 text-green-500" />
+            <CheckCircle2 className="h-4 w-4 shrink-0 text-success" />
           )}
           <span className="text-sm font-medium truncate">
             {isSyncing
               ? syncingAccounts.length === 1
-                ? "正在同步…"
-                : `正在同步 ${syncingAccounts.length} 个账户…`
+                ? t("mail.syncing")
+                : t("mail.syncingAccounts", { count: syncingAccounts.length })
               : lastResults.length === 1
-                ? `同步完成：${lastResults[0].fetched} 封新邮件`
-                : `同步完成：${lastResults.reduce((s, r) => s + r.fetched, 0)} 封新邮件`}
+                ? t("mail.syncComplete", { count: lastResults[0].fetched })
+                : t("mail.syncComplete", { count: lastResults.reduce((s, r) => s + r.fetched, 0) })}
           </span>
         </div>
         {onDismiss && !isSyncing && (
@@ -58,7 +60,7 @@ export function SyncProgressIndicator({
             type="button"
             onClick={handleDismiss}
             className="flex h-5 w-5 shrink-0 items-center justify-center rounded hover:bg-accent"
-            aria-label="关闭"
+            aria-label={t("common.close")}
           >
             <X className="h-3.5 w-3.5" />
           </button>
@@ -74,7 +76,7 @@ export function SyncProgressIndicator({
               <div key={account.id} className="flex items-center gap-2 text-xs text-muted-foreground">
                 <span className="truncate max-w-[120px]">{label}</span>
                 {account.phase === "connecting" ? (
-                  <span className="text-muted-foreground">连接中…</span>
+                  <span className="text-muted-foreground">{t("mail.connecting")}</span>
                 ) : (
                   <span className="truncate">
                     {account.folderDone > 0
@@ -95,9 +97,9 @@ export function SyncProgressIndicator({
           {lastResults.map((result) => {
             const label = accountLabels[result.id] ?? result.id.slice(0, 8);
             return (
-              <div key={result.id} className="flex items-center gap-2 text-xs text-green-600 dark:text-green-400">
+              <div key={result.id} className="flex items-center gap-2 text-xs text-success">
                 <CheckCircle2 className="h-3 w-3 shrink-0" />
-                <span className="truncate">{label}：{result.fetched} 封新邮件</span>
+                <span className="truncate">{t("mail.syncResult", { account: label, count: result.fetched })}</span>
               </div>
             );
           })}

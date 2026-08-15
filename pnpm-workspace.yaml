@@ -4,12 +4,6 @@ onlyBuiltDependencies:
   - esbuild
 
 minimumReleaseAgeExclude:
-  - '@supabase/auth-js@2.112.2'
-  - '@supabase/functions-js@2.112.2'
-  - '@supabase/postgrest-js@2.112.2'
-  - '@supabase/realtime-js@2.112.2'
-  - '@supabase/storage-js@2.112.2'
-  - '@supabase/supabase-js@2.112.2'
   - '@tanstack/history@1.162.1'
   - '@tanstack/react-router@1.170.21'
   - '@tanstack/router-core@1.171.18'

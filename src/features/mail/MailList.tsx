@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { useTranslation } from "react-i18next";
 import { cn } from "@/lib/utils";
 import { Avatar } from "@/components/ui/avatar";
 import { Button } from "@/components/ui/button";
@@ -31,14 +32,15 @@ function formatTime(dateStr?: string | null): string {
   return `${String(date.getMonth() + 1).padStart(2, "0")}/${String(date.getDate()).padStart(2, "0")}`;
 }
 
-function extractName(email: string): string {
-  if (!email) return "未知";
+function extractName(email: string, fallback: string): string {
+  if (!email) return fallback;
   const match = email.match(/^([^<]+)</);
   if (match) return match[1].trim();
   return email.split("@")[0];
 }
 
 export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListProps) {
+  const { t } = useTranslation();
   const { data: initialEmails = [], isLoading, isError, refetch } = useEmails(folderId);
   const toggleStar = useToggleStar();
   const markAsRead = useMarkAsRead();
@@ -111,7 +113,7 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
   if (!folderId) {
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-        请选择一个文件夹
+        {t("mail.selectFolder")}
       </div>
     );
   }
@@ -119,8 +121,8 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
   if (isError) {
     return (
       <div className="flex h-full flex-col items-center justify-center gap-3 text-sm text-muted-foreground">
-        <span className="text-destructive">加载失败</span>
-        <Button variant="outline" size="sm" onClick={() => refetch()}>重试</Button>
+        <span className="text-destructive">{t("mail.loadFailed")}</span>
+        <Button variant="outline" size="sm" onClick={() => refetch()}>{t("common.retry")}</Button>
       </div>
     );
   }
@@ -129,7 +131,7 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
     return (
       <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
         <Loader2 className="h-4 w-4 animate-spin mr-2" />
-        加载中...
+        {t("common.loading")}
       </div>
     );
   }
@@ -140,7 +142,7 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
         <div className="relative flex-1">
           <Search className="absolute left-2 top-1/2 h-4 w-4 -translate-y-1/2 text-muted-foreground" />
           <Input
-            placeholder="搜索邮件..."
+            placeholder={t("mail.searchPlaceholder")}
             value={searchQuery}
             onChange={(e) => setSearchQuery(e.target.value)}
             className="h-8 pl-8"
@@ -158,7 +160,7 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
       <div className="flex-1 overflow-y-auto">
         {filteredEmails.length === 0 ? (
           <div className="flex h-full items-center justify-center text-sm text-muted-foreground">
-            {searchQuery ? "未找到匹配的邮件" : "暂无邮件"}
+            {searchQuery ? t("mail.noMatchingEmails") : t("mail.noEmails")}
           </div>
         ) : (
           <div className="divide-y">
@@ -177,11 +179,11 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
               {loadingMore && (
                 <div className="flex items-center gap-2 text-sm text-muted-foreground">
                   <Loader2 className="h-4 w-4 animate-spin" />
-                  加载更多...
+                  {t("mail.loadingMore")}
                 </div>
               )}
               {!hasMore && allEmails.length > PAGE_SIZE && (
-                <span className="text-xs text-muted-foreground">已显示全部邮件</span>
+                <span className="text-xs text-muted-foreground">{t("mail.allEmailsLoaded")}</span>
               )}
             </div>
           </div>
@@ -200,7 +202,8 @@ interface MailListItemProps {
 }
 
 function MailListItem({ email, selected, onClick, onStarClick, isUnifiedInbox }: MailListItemProps) {
-  const senderName = extractName(email.from_address || "");
+  const { t } = useTranslation();
+  const senderName = extractName(email.from_address || "", t("common.unknown"));
   const accountLabel = email.account_name || email.account_email;
 
   return (
@@ -248,7 +251,7 @@ function MailListItem({ email, selected, onClick, onStarClick, isUnifiedInbox }:
             !email.is_read && "font-medium"
           )}
         >
-          {email.subject || "(无主题)"}
+          {email.subject || t("mail.noSubject")}
         </div>
         <div className="flex items-center gap-2">
           {isUnifiedInbox && accountLabel && (
@@ -268,15 +271,15 @@ function MailListItem({ email, selected, onClick, onStarClick, isUnifiedInbox }:
           onStarClick(e);
         }}
         className="flex h-9 w-9 shrink-0 items-center justify-center rounded md:h-7 md:w-7 hover:bg-background/60"
-        aria-label={email.is_starred ? "取消标星" : "标星"}
+        aria-label={email.is_starred ? t("mail.unstar") : t("mail.star")}
         aria-pressed={email.is_starred}
       >
         <Star
           className={cn(
             "h-4 w-4 transition-colors",
             email.is_starred
-              ? "fill-yellow-400 text-yellow-400"
-              : "text-muted-foreground hover:text-yellow-400"
+              ? "fill-warning text-warning"
+              : "text-muted-foreground hover:text-warning"
           )}
         />
       </button>

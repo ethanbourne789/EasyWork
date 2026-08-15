@@ -57,6 +57,13 @@ pub async fn sync_all_subscriptions(
     Ok(results)
 }
 
+fn load_subscription_password(id: &str, db_password: Option<String>) -> Option<String> {
+    match db_password {
+        Some(ref pw) if !pw.is_empty() => Some(pw.clone()),
+        _ => crate::calendar_creds::get_password(id),
+    }
+}
+
 fn get_enabled_subscriptions(
     db: &rusqlite::Connection,
     subscription_id: Option<String>,
@@ -67,13 +74,14 @@ fn get_enabled_subscriptions(
         let mut stmt = db.prepare(sql).map_err(|e| e.to_string())?;
         let subs = stmt
             .query_map(rusqlite::params![id], |row| {
+                let id: String = row.get(0).unwrap_or_default();
                 Ok(CalendarSubscriptionDb {
-                    id: row.get(0).unwrap_or_default(),
+                    id: id.clone(),
                     name: row.get(1).unwrap_or_default(),
                     provider: row.get(2).unwrap_or_default(),
                     url: row.get(3).unwrap_or_default(),
                     username: row.get(4).ok(),
-                    password: row.get(5).ok(),
+                    password: load_subscription_password(&id, row.get(5).ok()),
                     color: row.get(6).unwrap_or_else(|_| "#8b5cf6".to_string()),
                 })
             })
@@ -86,13 +94,14 @@ fn get_enabled_subscriptions(
     let mut stmt = db.prepare(sql).map_err(|e| e.to_string())?;
     let subs = stmt
         .query_map(rusqlite::params![], |row| {
+            let id: String = row.get(0).unwrap_or_default();
             Ok(CalendarSubscriptionDb {
-                id: row.get(0).unwrap_or_default(),
+                id: id.clone(),
                 name: row.get(1).unwrap_or_default(),
                 provider: row.get(2).unwrap_or_default(),
                 url: row.get(3).unwrap_or_default(),
                 username: row.get(4).ok(),
-                password: row.get(5).ok(),
+                password: load_subscription_password(&id, row.get(5).ok()),
                 color: row.get(6).unwrap_or_else(|_| "#8b5cf6".to_string()),
             })
         })

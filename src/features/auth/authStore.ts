@@ -2,11 +2,13 @@ import { create } from "zustand";
 import { authApi, type LocalUser } from "@/lib/authApi";
 import { systemApi } from "@/lib/systemApi";
 import { seedDemoData } from "@/features/auth/seedDemoData";
-
-/** 会话持久化 key：本地登录用户 id（local-first，无服务端 session）。 */
-const SESSION_KEY = "easywork:user_id";
-/** 演示模式标记：存在即表示当前为演示会话，启动时应重新播种「近 1 个月」数据。 */
-const DEMO_KEY = "easywork:demo_mode";
+import {
+  clearAuthSession,
+  getDemoFlag,
+  getStoredUserId,
+  setDemoFlag,
+  setStoredUserId,
+} from "@/lib/storage";
 
 interface AuthState {
   /** 当前登录的本地用户；null 表示未登录。 */
@@ -17,7 +19,7 @@ interface AuthState {
   isDemo: boolean;
   setUser: (user: LocalUser | null) => void;
   clearSession: () => void;
-  /** 本地账号密码登录；成功写入 localStorage 并返回 null，失败返回中文错误。 */
+  /** 本地账号密码登录；成功写入本地持久化并返回 null，失败返回中文错误。 */
   login: (email: string, password: string) => Promise<string | null>;
   /** 本地账号注册（成功即自动登录）。 */
   register: (email: string, password: string, displayName?: string) => Promise<string | null>;
@@ -29,35 +31,18 @@ interface AuthState {
   refreshUser: () => Promise<void>;
 }
 
-function readStoredUserId(): string | null {
-  try {
-    return localStorage.getItem(SESSION_KEY);
-  } catch {
-    return null;
-  }
-}
-
 export const useAuthStore = create<AuthState>((set, get) => ({
   user: null,
   loading: true,
   isDemo: false,
   setUser: (user) => {
     if (user) {
-      try {
-        localStorage.setItem(SESSION_KEY, user.id);
-      } catch {
-        /* ignore */
-      }
+      setStoredUserId(user.id);
     }
     set({ user, loading: false });
   },
   clearSession: () => {
-    try {
-      localStorage.removeItem(SESSION_KEY);
-      localStorage.removeItem(DEMO_KEY);
-    } catch {
-      /* ignore */
-    }
+    clearAuthSession();
     set({ user: null, loading: false, isDemo: false });
   },
   login: async (email, password) => {
@@ -83,11 +68,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
       const user = await systemApi.enterDemoSession();
       // 清空并重新播种「近 1 个月」演示数据（日期相对 now，每次进入都是最新）
       await seedDemoData();
-      try {
-        localStorage.setItem(DEMO_KEY, "1");
-      } catch {
-        /* ignore */
-      }
+      setDemoFlag();
       get().setUser(user);
       set({ isDemo: true });
       return null;
@@ -100,7 +81,7 @@ export const useAuthStore = create<AuthState>((set, get) => ({
     get().clearSession();
   },
   refreshUser: async () => {
-    const id = readStoredUserId();
+    const id = getStoredUserId();
     if (!id) {
       set({ user: null, loading: false });
       return;
@@ -116,13 +97,9 @@ export const useAuthStore = create<AuthState>((set, get) => ({
   },
 }));
 
-/** 读取演示模式标记（localStorage）。 */
+/** 读取演示模式标记。 */
 function readDemoFlag(): boolean {
-  try {
-    return localStorage.getItem(DEMO_KEY) === "1";
-  } catch {
-    return false;
-  }
+  return getDemoFlag();
 }
 
 /**
@@ -132,7 +109,7 @@ export function getCurrentUserId(): string {
   return useAuthStore.getState().user?.id ?? "";
 }
 
-/** 供启动时恢复本地会话：读取 localStorage 中的 user id 并拉取资料。 */
+/** 供启动时恢复本地会话：读取本地持久化中的 user id 并拉取资料。 */
 export function restoreLocalSession(): Promise<void> {
   return useAuthStore.getState().refreshUser();
 }

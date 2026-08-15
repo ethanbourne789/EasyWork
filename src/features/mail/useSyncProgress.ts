@@ -147,7 +147,7 @@ export function useSyncProgress() {
           });
           break;
       }
-    }).then((fn) => { if (fn) unlisteners.push(fn); });
+    }).then((fn) => { if (fn) unlisteners.push(fn); }).catch(() => {});
 
     return () => {
       for (const fn of unlisteners) fn();

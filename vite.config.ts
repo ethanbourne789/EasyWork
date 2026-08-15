@@ -21,7 +21,6 @@ export default defineConfig({
           if (id.includes("recharts") || id.includes("d3-")) return "vendor-charts";
           if (id.includes("@tiptap") || id.includes("prosemirror")) return "vendor-editor";
           if (id.includes("@tanstack")) return "vendor-tanstack";
-          if (id.includes("@supabase")) return "vendor-supabase";
           if (id.includes("lucide-react")) return "vendor-icons";
           if (id.includes("@dnd-kit")) return "vendor-dnd";
           if (

@@ -161,7 +161,7 @@ export function TaskForm({ task, onSuccess, onCancel }: TaskFormProps) {
           {...register("title")}
         />
         {errors.title && (
-          <p className="text-xs text-red-500">{errors.title.message}</p>
+          <p className="text-xs text-destructive">{errors.title.message}</p>
         )}
       </div>
 

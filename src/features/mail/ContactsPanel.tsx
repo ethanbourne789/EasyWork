@@ -1,4 +1,5 @@
 import { useEffect, useMemo, useRef, useState } from "react";
+import { useTranslation } from "react-i18next";
 import {
   Users, UserPlus, Upload, Download, Search, Trash2, Pencil, Plus, X, Folder,
 } from "lucide-react";
@@ -25,6 +26,7 @@ const EMPTY_CONTACT: Contact = {
 
 /** 联系人管理面板：增删改查 + 分组 + VCF 导入导出 */
 export function ContactsPanel() {
+  const { t } = useTranslation();
   const [activeGroupId, setActiveGroupId] = useState<string | undefined>();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -51,12 +53,12 @@ export function ContactsPanel() {
       const url = URL.createObjectURL(blob);
       const a = document.createElement("a");
       a.href = url;
-      a.download = `联系人${groupName ? `-${groupName}` : ""}-${new Date().toISOString().slice(0, 10)}.vcf`;
+      a.download = `${t("mail.contacts.exportFileName")}${groupName ? `-${groupName}` : ""}-${new Date().toISOString().slice(0, 10)}.vcf`;
       a.click();
       URL.revokeObjectURL(url);
-      toast("导出成功", "success");
+      toast(t("common.exportSuccess"), "success");
     } catch (e) {
-      toast(`导出失败：${e instanceof Error ? e.message : String(e)}`, "error");
+      toast(`${t("common.exportFailed")}${e instanceof Error ? e.message : String(e)}`, "error");
     }
   };
 
@@ -64,9 +66,9 @@ export function ContactsPanel() {
     try {
       const text = await file.text();
       const count = await importVcf.mutateAsync(text);
-      toast(`成功导入 ${count} 个联系人`, "success");
+      toast(t("mail.contacts.importedCount", { count }), "success");
     } catch (e) {
-      toast(`导入失败：${e instanceof Error ? e.message : String(e)}`, "error");
+      toast(`${t("common.importFailed")}${e instanceof Error ? e.message : String(e)}`, "error");
     }
   };
 
@@ -75,9 +77,9 @@ export function ContactsPanel() {
       {/* 分组侧栏：桌面固定，移动端隐藏（用顶部横向 chips 代替） */}
       <aside className="hidden w-[180px] shrink-0 flex-col border-r md:flex">
         <div className="flex items-center justify-between px-3 py-2">
-          <span className="text-xs font-medium text-muted-foreground">分组</span>
+          <span className="text-xs font-medium text-muted-foreground">{t("mail.contacts.group")}</span>
           <Button
-            variant="ghost" size="icon" className="h-7 w-7" aria-label="新建分组"
+            variant="ghost" size="icon" className="h-7 w-7" aria-label={t("mail.contacts.newGroup")}
             onClick={() => setGroupDialog({ name: "" })}
           >
             <Plus className="h-4 w-4" />
@@ -85,7 +87,7 @@ export function ContactsPanel() {
         </div>
         <nav className="flex-1 overflow-y-auto px-2 pb-2">
           <GroupItem
-            label="全部联系人" count={contacts.length} active={!activeGroupId}
+            label={t("mail.contacts.allContacts")} count={contacts.length} active={!activeGroupId}
             onClick={() => setActiveGroupId(undefined)}
           />
           {groups.map((g) => (
@@ -95,11 +97,11 @@ export function ContactsPanel() {
               onClick={() => setActiveGroupId(g.id)}
               onEdit={() => setGroupDialog({ id: g.id, name: g.name })}
               onDelete={() => {
-                if (confirm(`删除分组「${g.name}」？（不会删除联系人）`)) {
+                if (confirm(t("mail.contacts.deleteGroupConfirm", { name: g.name }))) {
                   deleteGroup.mutate(g.id, {
                     onSuccess: () => {
                       if (activeGroupId === g.id) setActiveGroupId(undefined);
-                      toast("分组已删除", "success");
+                      toast(t("mail.contacts.groupDeleted"), "success");
                     },
                   });
                 }
@@ -118,22 +120,22 @@ export function ContactsPanel() {
             <Input
               value={search}
               onChange={(e) => setSearch(e.target.value)}
-              placeholder="搜索姓名 / 邮箱 / 公司"
+              placeholder={t("mail.contacts.searchPlaceholder")}
               className="pl-8"
             />
           </div>
           <div className="flex items-center gap-1">
             <Button variant="ghost" size="sm" className="gap-1" onClick={() => fileInputRef.current?.click()}>
               <Upload className="h-4 w-4" />
-              <span className="hidden sm:inline">导入 VCF</span>
+              <span className="hidden sm:inline">{t("mail.contacts.importVcf")}</span>
             </Button>
             <Button variant="ghost" size="sm" className="gap-1" onClick={handleExport}>
               <Download className="h-4 w-4" />
-              <span className="hidden sm:inline">导出 VCF</span>
+              <span className="hidden sm:inline">{t("mail.contacts.exportVcf")}</span>
             </Button>
             <Button size="sm" className="gap-1" onClick={() => setEditing({ ...EMPTY_CONTACT })}>
               <UserPlus className="h-4 w-4" />
-              <span className="hidden sm:inline">新建联系人</span>
+              <span className="hidden sm:inline">{t("mail.contacts.newContact")}</span>
             </Button>
           </div>
           <input
@@ -153,7 +155,7 @@ export function ContactsPanel() {
             className="cursor-pointer shrink-0"
             onClick={() => setActiveGroupId(undefined)}
           >
-            全部
+            {t("mail.contacts.all")}
           </Badge>
           {groups.map((g) => (
             <Badge
@@ -170,13 +172,13 @@ export function ContactsPanel() {
         {/* 联系人列表 */}
         <div className="flex-1 overflow-y-auto">
           {isLoading ? (
-            <div className="p-6 text-sm text-muted-foreground">加载中…</div>
+            <div className="p-6 text-sm text-muted-foreground">{t("common.loading")}</div>
           ) : contacts.length === 0 ? (
             <div className="flex h-full flex-col items-center justify-center gap-2 p-6 text-center">
               <Users className="h-10 w-10 text-muted-foreground/50" />
-              <p className="font-display text-lg font-semibold">暂无联系人</p>
+              <p className="font-display text-lg font-semibold">{t("mail.contacts.noContacts")}</p>
               <p className="text-sm text-muted-foreground">
-                点击「新建联系人」或「导入 VCF」开始管理你的联系人
+                {t("mail.contacts.noContactsHint")}
               </p>
             </div>
           ) : (
@@ -204,12 +206,12 @@ export function ContactsPanel() {
                     </div>
                   </div>
                   <Button
-                    variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="删除联系人"
+                    variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={t("mail.contacts.deleteContact")}
                     onClick={(e) => {
                       e.stopPropagation();
-                      if (confirm(`删除联系人「${c.name}」？`)) {
+                      if (confirm(t("mail.contacts.deleteContactConfirm", { name: c.name }))) {
                         deleteContact.mutate(c.id, {
-                          onSuccess: () => toast("联系人已删除", "success"),
+                          onSuccess: () => toast(t("mail.contacts.contactDeleted"), "success"),
                         });
                       }
                     }}
@@ -243,14 +245,14 @@ export function ContactsPanel() {
       <Dialog open={!!groupDialog} onOpenChange={(open) => !open && setGroupDialog(null)}>
         <DialogContent className="max-w-sm">
           <DialogHeader>
-            <DialogTitle>{groupDialog?.id ? "重命名分组" : "新建分组"}</DialogTitle>
+            <DialogTitle>{groupDialog?.id ? t("mail.contacts.renameGroup") : t("mail.contacts.newGroup")}</DialogTitle>
           </DialogHeader>
           <DialogClose onClose={() => setGroupDialog(null)} />
           <div className="space-y-3">
             <Input
               value={groupDialog?.name ?? ""}
               onChange={(e) => setGroupDialog((d) => d && { ...d, name: e.target.value })}
-              placeholder="分组名称，如：家人、同事"
+              placeholder={t("mail.contacts.groupNamePlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && groupDialog?.name.trim()) {
                   saveGroup.mutate(
@@ -261,7 +263,7 @@ export function ContactsPanel() {
               }}
             />
             <div className="flex justify-end gap-2">
-              <Button variant="outline" onClick={() => setGroupDialog(null)}>取消</Button>
+              <Button variant="outline" onClick={() => setGroupDialog(null)}>{t("common.cancel")}</Button>
               <Button
                 disabled={!groupDialog?.name.trim() || saveGroup.isPending}
                 onClick={() => {
@@ -272,7 +274,7 @@ export function ContactsPanel() {
                   );
                 }}
               >
-                保存
+                {t("common.save")}
               </Button>
             </div>
           </div>
@@ -286,6 +288,7 @@ function GroupItem(props: {
   label: string; count: number; active: boolean;
   onClick: () => void; onEdit?: () => void; onDelete?: () => void;
 }) {
+  const { t } = useTranslation();
   return (
     <div
       className={`group flex cursor-pointer items-center gap-2 rounded-md px-2 py-1.5 text-sm transition-colors ${
@@ -299,13 +302,13 @@ function GroupItem(props: {
       {props.onEdit && (
         <span className="hidden shrink-0 items-center group-hover:flex">
           <button
-            className="rounded p-0.5 hover:bg-accent" aria-label="重命名分组"
+            className="rounded p-0.5 hover:bg-accent" aria-label={t("mail.contacts.renameGroup")}
             onClick={(e) => { e.stopPropagation(); props.onEdit?.(); }}
           >
             <Pencil className="h-3 w-3 text-muted-foreground" />
           </button>
           <button
-            className="rounded p-0.5 hover:bg-accent" aria-label="删除分组"
+            className="rounded p-0.5 hover:bg-accent" aria-label={t("mail.contacts.deleteGroup")}
             onClick={(e) => { e.stopPropagation(); props.onDelete?.(); }}
           >
             <X className="h-3 w-3 text-muted-foreground" />
@@ -319,6 +322,7 @@ function GroupItem(props: {
 /** 多值字段（邮箱/电话）编辑：动态行 */
 function MultiValueEditor(props: {
   label: string; values: string[]; placeholder: string; type?: string;
+  addLabel: string; removeLabel: string;
   onChange: (values: string[]) => void;
 }) {
   const rows = props.values.length > 0 ? props.values : [""];
@@ -339,7 +343,7 @@ function MultiValueEditor(props: {
           />
           {rows.length > 1 && (
             <Button
-              variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label="移除"
+              variant="ghost" size="icon" className="h-8 w-8 shrink-0" aria-label={props.removeLabel}
               onClick={() => props.onChange(rows.filter((_, j) => j !== i))}
             >
               <X className="h-4 w-4" />
@@ -351,7 +355,7 @@ function MultiValueEditor(props: {
         variant="ghost" size="sm" className="h-7 gap-1 px-2 text-xs"
         onClick={() => props.onChange([...rows, ""])}
       >
-        <Plus className="h-3 w-3" /> 添加{props.label}
+        <Plus className="h-3 w-3" /> {props.addLabel}
       </Button>
     </div>
   );
@@ -364,6 +368,7 @@ function ContactEditDialog(props: {
   onSave: (c: Contact) => void;
   saving: boolean;
 }) {
+  const { t } = useTranslation();
   const [draft, setDraft] = useState<Contact | null>(null);
 
   // 打开/切换联系人时用传入值初始化本地草稿
@@ -386,39 +391,43 @@ function ContactEditDialog(props: {
     <Dialog open={!!props.contact} onOpenChange={(open) => { if (!open) close(); }}>
       <DialogContent className="max-w-md max-h-[90vh] overflow-y-auto">
         <DialogHeader>
-          <DialogTitle>{props.contact?.id ? "编辑联系人" : "新建联系人"}</DialogTitle>
+          <DialogTitle>{props.contact?.id ? t("mail.contacts.editContact") : t("mail.contacts.newContact")}</DialogTitle>
         </DialogHeader>
         <DialogClose onClose={close} />
         {current && (
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">姓名 *</label>
+              <label className="text-sm font-medium">{t("mail.contacts.nameRequired")}</label>
               <Input
                 value={current.name}
                 onChange={(e) => update({ name: e.target.value })}
-                placeholder="联系人姓名"
+                placeholder={t("mail.contacts.namePlaceholder")}
               />
             </div>
             <MultiValueEditor
-              label="邮箱" values={current.emails} type="email"
+              label={t("mail.contacts.email")} values={current.emails} type="email"
               placeholder="name@example.com"
+              addLabel={t("mail.contacts.addEmail")}
+              removeLabel={t("common.remove")}
               onChange={(emails) => update({ emails })}
             />
             <MultiValueEditor
-              label="电话" values={current.phones} type="tel"
+              label={t("mail.contacts.phone")} values={current.phones} type="tel"
               placeholder="138 0000 0000"
+              addLabel={t("mail.contacts.addPhone")}
+              removeLabel={t("common.remove")}
               onChange={(phones) => update({ phones })}
             />
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">公司</label>
+                <label className="text-sm font-medium">{t("mail.contacts.company")}</label>
                 <Input
                   value={current.company ?? ""}
                   onChange={(e) => update({ company: e.target.value || null })}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">职位</label>
+                <label className="text-sm font-medium">{t("mail.contacts.title")}</label>
                 <Input
                   value={current.title ?? ""}
                   onChange={(e) => update({ title: e.target.value || null })}
@@ -426,7 +435,7 @@ function ContactEditDialog(props: {
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">备注</label>
+              <label className="text-sm font-medium">{t("mail.contacts.notes")}</label>
               <Textarea
                 value={current.notes ?? ""}
                 rows={2}
@@ -435,7 +444,7 @@ function ContactEditDialog(props: {
             </div>
             {props.groups.length > 0 && (
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">所属分组</label>
+                <label className="text-sm font-medium">{t("mail.contacts.belongingGroups")}</label>
                 <div className="flex flex-wrap gap-3">
                   {props.groups.map((g) => (
                     <label key={g.id} className="flex cursor-pointer items-center gap-1.5 text-sm">
@@ -456,10 +465,10 @@ function ContactEditDialog(props: {
             )}
             <div className="flex justify-end gap-2 pt-1">
               <Button variant="outline" onClick={() => { setDraft(null); props.onClose(); }}>
-                取消
+                {t("common.cancel")}
               </Button>
               <Button disabled={!canSave} onClick={() => props.onSave(current)}>
-                {props.saving ? "保存中…" : "保存"}
+                {props.saving ? t("common.saving") : t("common.save")}
               </Button>
             </div>
           </div>

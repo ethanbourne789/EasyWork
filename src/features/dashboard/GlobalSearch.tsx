@@ -93,11 +93,11 @@ export function GlobalSearch() {
   const typeIcon = (type: ResultType) => {
     switch (type) {
       case "task":
-        return <ListChecks className="h-4 w-4 text-blue-500" />;
+        return <ListChecks className="h-4 w-4 text-primary" />;
       case "note":
-        return <FileText className="h-4 w-4 text-green-500" />;
+        return <FileText className="h-4 w-4 text-success" />;
       case "transaction":
-        return <Wallet className="h-4 w-4 text-orange-500" />;
+        return <Wallet className="h-4 w-4 text-warning" />;
     }
   };
 

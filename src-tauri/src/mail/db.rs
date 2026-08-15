@@ -2,7 +2,7 @@ use rusqlite::{Connection, params};
 use std::path::Path;
 use crate::mail::error::MailResult;
 
-const SCHEMA_VERSION: &str = "4";
+const SCHEMA_VERSION: &str = "7";
 
 pub fn init_db(db_path: &Path) -> MailResult<Connection> {
     let conn = Connection::open(db_path)?;
@@ -12,10 +12,17 @@ pub fn init_db(db_path: &Path) -> MailResult<Connection> {
 }
 
 fn migrate(conn: &Connection) -> MailResult<()> {
-    let current: String = conn.query_row(
+    let current: String = match conn.query_row(
         "SELECT value FROM mail_meta WHERE key='schema_version'",
         [], |row| row.get(0)
-    ).unwrap_or_else(|_| "0".to_string());
+    ) {
+        Ok(v) => v,
+        Err(rusqlite::Error::QueryReturnedNoRows) => "0".to_string(),
+        Err(e) => {
+            tracing::warn!("读取 mail schema 版本失败，按全新库处理: {}", e);
+            "0".to_string()
+        }
+    };
 
     if current == SCHEMA_VERSION {
         return Ok(());
@@ -29,6 +36,12 @@ fn migrate(conn: &Connection) -> MailResult<()> {
 
     conn.execute_batch(r#"
         CREATE TABLE IF NOT EXISTS mail_meta (key TEXT PRIMARY KEY, value TEXT);
+
+        CREATE TABLE IF NOT EXISTS sync_mute_triggers (
+            id INTEGER PRIMARY KEY CHECK (id = 0),
+            muted INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO sync_mute_triggers (id, muted) VALUES (0, 0);
 
         CREATE TABLE IF NOT EXISTS email_accounts (
             id TEXT PRIMARY KEY, email TEXT NOT NULL, display_name TEXT, username TEXT,
@@ -61,7 +74,8 @@ fn migrate(conn: &Connection) -> MailResult<()> {
 
         CREATE TABLE IF NOT EXISTS email_attachments (
             id TEXT PRIMARY KEY, email_id TEXT NOT NULL, filename TEXT, mime_type TEXT, size INTEGER,
-            file_path TEXT NOT NULL, is_inline INTEGER DEFAULT 0, content_id TEXT, created_at TEXT NOT NULL
+            file_path TEXT NOT NULL, is_inline INTEGER DEFAULT 0, content_id TEXT, created_at TEXT NOT NULL,
+            part_id TEXT, pending_download INTEGER DEFAULT 0
         );
         CREATE INDEX IF NOT EXISTS idx_att_email ON email_attachments(email_id);
 
@@ -87,18 +101,26 @@ fn migrate(conn: &Connection) -> MailResult<()> {
     "#)?;
 
     if current.as_str() < "2" {
-        conn.execute_batch(r#"
-            ALTER TABLE email_accounts ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-            ALTER TABLE email_accounts ADD COLUMN sync_device_id TEXT;
-        "#).ok();
-
+        // 幂等添加同步列：先检查避免重复 ALTER 报错
+        if !has_column(conn, "email_accounts", "sync_modified_at") {
+            conn.execute(
+                "ALTER TABLE email_accounts ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                []
+            )?;
+        }
+        if !has_column(conn, "email_accounts", "sync_device_id") {
+            conn.execute(
+                "ALTER TABLE email_accounts ADD COLUMN sync_device_id TEXT",
+                []
+            )?;
+        }
         conn.execute_batch(r#"
             CREATE TRIGGER IF NOT EXISTS email_accounts_sync_touch AFTER UPDATE ON email_accounts
             BEGIN
                 UPDATE email_accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
                 WHERE id = NEW.id;
             END;
-        "#).ok();
+        "#)?;
     }
 
     if current.as_str() < "3" {
@@ -205,6 +227,145 @@ fn migrate(conn: &Connection) -> MailResult<()> {
             INSERT INTO emails_fts(emails_fts) VALUES('delete-all');
             INSERT INTO emails_fts(emails_fts) VALUES('rebuild');
         "#)?;
+    }
+
+    // v5：邮件库同步触发器增加 mute 开关，与业务库保持一致。
+    if current.as_str() < "5" {
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS sync_mute_triggers (
+                id INTEGER PRIMARY KEY CHECK (id = 0),
+                muted INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT OR IGNORE INTO sync_mute_triggers (id, muted) VALUES (0, 0);
+
+            DROP TRIGGER IF EXISTS email_accounts_sync_touch;
+            DROP TRIGGER IF EXISTS email_templates_sync_touch;
+            DROP TRIGGER IF EXISTS email_signatures_sync_touch;
+            DROP TRIGGER IF EXISTS contacts_sync_touch;
+            DROP TRIGGER IF EXISTS contact_groups_sync_touch;
+            DROP TRIGGER IF EXISTS contact_group_members_sync_touch;
+
+            CREATE TRIGGER IF NOT EXISTS email_accounts_sync_touch AFTER UPDATE ON email_accounts
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                UPDATE email_accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS email_templates_sync_touch AFTER UPDATE ON email_templates
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                UPDATE email_templates SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS email_signatures_sync_touch AFTER UPDATE ON email_signatures
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                UPDATE email_signatures SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS contacts_sync_touch AFTER UPDATE ON contacts
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                UPDATE contacts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS contact_groups_sync_touch AFTER UPDATE ON contact_groups
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                UPDATE contact_groups SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS contact_group_members_sync_touch AFTER UPDATE ON contact_group_members
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                UPDATE contact_group_members SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE contact_id = NEW.contact_id AND group_id = NEW.group_id;
+            END;
+        "#)?;
+    }
+
+    // v6：新增 sync_tombstones 表与 DELETE 触发器，支持删除传播。
+    if current.as_str() < "6" {
+        conn.execute_batch(r#"
+            -- 触发器 WHEN 子句依赖此表，需在创建触发器前确保存在。
+            CREATE TABLE IF NOT EXISTS sync_mute_triggers (
+                id INTEGER PRIMARY KEY CHECK (id = 0),
+                muted INTEGER NOT NULL DEFAULT 0
+            );
+            INSERT OR IGNORE INTO sync_mute_triggers (id, muted) VALUES (0, 0);
+
+            CREATE TABLE IF NOT EXISTS sync_tombstones (
+                table_name TEXT NOT NULL,
+                pk_value TEXT NOT NULL,
+                deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+                sync_device_id TEXT,
+                synced_at TEXT,
+                PRIMARY KEY (table_name, pk_value)
+            );
+            CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at);
+            CREATE INDEX IF NOT EXISTS idx_sync_tombstones_synced_at ON sync_tombstones(synced_at);
+
+            CREATE TRIGGER IF NOT EXISTS email_accounts_sync_tombstone AFTER DELETE ON email_accounts
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+                VALUES ('email_accounts', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS email_templates_sync_tombstone AFTER DELETE ON email_templates
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+                VALUES ('email_templates', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS email_signatures_sync_tombstone AFTER DELETE ON email_signatures
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+                VALUES ('email_signatures', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS contacts_sync_tombstone AFTER DELETE ON contacts
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+                VALUES ('contacts', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS contact_groups_sync_tombstone AFTER DELETE ON contact_groups
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+                VALUES ('contact_groups', OLD.id, strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+            END;
+
+            CREATE TRIGGER IF NOT EXISTS contact_group_members_sync_tombstone AFTER DELETE ON contact_group_members
+            WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+            BEGIN
+                INSERT OR REPLACE INTO sync_tombstones (table_name, pk_value, deleted_at, sync_device_id)
+                VALUES ('contact_group_members', json_array(OLD.contact_id, OLD.group_id), strftime('%Y-%m-%dT%H:%M:%fZ', 'now'), NULL);
+            END;
+        "#)?;
+    }
+
+    // v7：email_attachments 支持大附件按需下载——记录 MIME part 编号与待下载标记。
+    // 幂等添加列（CREATE TABLE IF NOT EXISTS 已含新列，仅对旧库执行 ALTER）。
+    if current.as_str() < "7" {
+        if !has_column(conn, "email_attachments", "part_id") {
+            conn.execute("ALTER TABLE email_attachments ADD COLUMN part_id TEXT", [])?;
+        }
+        if !has_column(conn, "email_attachments", "pending_download") {
+            conn.execute(
+                "ALTER TABLE email_attachments ADD COLUMN pending_download INTEGER DEFAULT 0",
+                [],
+            )?;
+        }
     }
 
     // crate::sync::config::create_sync_tables(conn)?;
