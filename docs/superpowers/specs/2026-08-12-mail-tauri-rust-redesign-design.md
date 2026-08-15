@@ -1,5 +1,7 @@
 # 邮箱模块重构设计：Tauri 2 + Rust 原生实现
 
+> ⚠️ **实现注记（2026-08-15）**：文中的 `<app_data_dir>` 已改为「数据根目录」（`<data_root>`）——优先「用户文档目录/EasyWork」（`document_dir()`），失败回退应用数据目录。见 `src-tauri/src/lib.rs` 的 `resolve_data_root()` / `migrate_legacy_data()`。
+>
 > **目标**：将邮箱模块从 Supabase Edge Function + Postgres 架构迁移到 Tauri 2 + Rust 原生实现，支持 Windows 和 Android 双端，具备多账户统一收件箱、邮箱签名、多尺寸响应式 UI 能力。
 >
 > **参考项目**：Skim（Tauri 2 + async-imap + lettre + mail-parser + rusqlite）、MailVault、Himalaya

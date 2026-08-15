@@ -19,11 +19,21 @@ export function Notes() {
 
   const { data: selectedNote } = useNote(selectedNoteId || undefined);
 
-  const { mutate: createNote } = useCreateNote();
+  const { mutateAsync: createNote } = useCreateNote();
   const fileInputRef = useRef<HTMLInputElement>(null);
 
-  const handleCreateNote = (title?: string) => {
-    createNote({ title: title ?? t('notes.untitledNote'), folder_id: selectedFolderId ?? undefined });
+  const handleCreateNote = async (title?: string) => {
+    // 创建后自动选中并打开编辑器（此前只创建不选中，桌面端点击后无反应）
+    try {
+      const note = await createNote({
+        title: title ?? t('notes.untitledNote'),
+        folder_id: selectedFolderId ?? undefined,
+      });
+      setSelectedNoteId(note.id);
+      setMobileView('editor');
+    } catch {
+      // useSafeMutation 已兜底 toast 错误
+    }
   };
 
   const handleImportFile = (e: React.ChangeEvent<HTMLInputElement>) => {

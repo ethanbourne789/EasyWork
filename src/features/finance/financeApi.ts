@@ -38,13 +38,13 @@ export const financeApi = {
     const invoke = await getInvoke();
     return invoke<Transaction>("transaction_create", {
       type: data.type,
-      amount_cents: Math.round(data.amount * 100),
-      account_id: data.account_id,
-      transfer_account_id: data.to_account_id,
-      category_id: data.category_id,
+      amountCents: Math.round(data.amount * 100),
+      accountId: data.account_id,
+      transferAccountId: data.to_account_id,
+      categoryId: data.category_id,
       date: data.date,
       description: data.note,
-      receipt_path: data.receipt_url,
+      receiptPath: data.receipt_url,
     });
   },
   updateTransaction: async (data: {
@@ -62,13 +62,13 @@ export const financeApi = {
     return invoke<Transaction>("transaction_update", {
       id: data.id,
       type: data.type,
-      amount_cents: data.amount != null ? Math.round(data.amount * 100) : undefined,
-      account_id: data.account_id,
-      transfer_account_id: data.to_account_id,
-      category_id: data.category_id,
+      amountCents: data.amount != null ? Math.round(data.amount * 100) : undefined,
+      accountId: data.account_id,
+      transferAccountId: data.to_account_id,
+      categoryId: data.category_id,
       date: data.date,
       description: data.note,
-      receipt_path: data.receipt_url,
+      receiptPath: data.receipt_url,
     });
   },
   deleteTransaction: async (id: string) => {
@@ -97,7 +97,7 @@ export const financeApi = {
     return invoke<Account>("account_create", {
       name: data.name,
       type: data.type,
-      balance_cents: Math.round(data.initial_balance * 100),
+      balanceCents: Math.round(data.initial_balance * 100),
       currency: data.currency,
     });
   },
@@ -113,7 +113,7 @@ export const financeApi = {
       id: data.id,
       name: data.name,
       type: data.type,
-      balance_cents: data.initial_balance != null ? Math.round(data.initial_balance * 100) : undefined,
+      balanceCents: data.initial_balance != null ? Math.round(data.initial_balance * 100) : undefined,
       currency: data.currency,
     });
   },
@@ -140,7 +140,7 @@ export const financeApi = {
       name: data.name,
       type: data.type,
       icon: data.icon,
-      parent_id: data.parent_id,
+      parentId: data.parent_id,
     });
   },
   updateCategory: async (data: {
@@ -156,7 +156,7 @@ export const financeApi = {
       name: data.name,
       type: data.type,
       icon: data.icon,
-      parent_id: data.parent_id,
+      parentId: data.parent_id,
     });
   },
   deleteCategory: async (id: string) => {
@@ -183,14 +183,14 @@ export const financeApi = {
   }) => {
     const invoke = await getInvoke();
     return invoke<Budget>("budget_create", {
-      category_id: data.category_id,
-      amount_cents: Math.round(data.amount * 100),
-      year_month: String(data.year_month),
+      categoryId: data.category_id,
+      amountCents: Math.round(data.amount * 100),
+      yearMonth: String(data.year_month),
       scope: data.scope,
-      carry_over_cents: data.carry_over != null ? Math.round(data.carry_over * 100) : undefined,
+      carryOverCents: data.carry_over != null ? Math.round(data.carry_over * 100) : undefined,
       period: data.period,
-      period_start: data.period_start,
-      period_end: data.period_end,
+      periodStart: data.period_start,
+      periodEnd: data.period_end,
     });
   },
   updateBudget: async (data: {
@@ -207,14 +207,14 @@ export const financeApi = {
     const invoke = await getInvoke();
     return invoke<Budget>("budget_update", {
       id: data.id,
-      category_id: data.category_id,
-      amount_cents: data.amount != null ? Math.round(data.amount * 100) : undefined,
-      year_month: data.year_month != null ? String(data.year_month) : undefined,
+      categoryId: data.category_id,
+      amountCents: data.amount != null ? Math.round(data.amount * 100) : undefined,
+      yearMonth: data.year_month != null ? String(data.year_month) : undefined,
       scope: data.scope,
-      carry_over_cents: data.carry_over != null ? Math.round(data.carry_over * 100) : undefined,
+      carryOverCents: data.carry_over != null ? Math.round(data.carry_over * 100) : undefined,
       period: data.period,
-      period_start: data.period_start,
-      period_end: data.period_end,
+      periodStart: data.period_start,
+      periodEnd: data.period_end,
     });
   },
   deleteBudget: async (id: string) => {

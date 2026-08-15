@@ -1,6 +1,6 @@
 import { createContext, useContext, useEffect, useState, type ReactNode } from "react";
 
-type Theme = "light" | "dark" | "system";
+type Theme = "light" | "dark";
 
 interface ThemeContextValue {
   theme: Theme;
@@ -19,26 +19,8 @@ export function ThemeProvider({ children }: { children: ReactNode }) {
 
   useEffect(() => {
     const root = document.documentElement;
-    // 某些宿主环境（如测试用的 jsdom）不提供 matchMedia，缺失时降级为 light
-    const mql =
-      typeof window.matchMedia === "function"
-        ? window.matchMedia("(prefers-color-scheme: dark)")
-        : null;
-
-    const apply = () => {
-      const actualTheme =
-        theme === "system" ? (mql?.matches ? "dark" : "light") : theme;
-      root.classList.toggle("dark", actualTheme === "dark");
-    };
-
-    apply();
+    root.classList.toggle("dark", theme === "dark");
     localStorage.setItem(STORAGE_KEY, theme);
-
-    // 仅在 system 模式下监听系统主题变化
-    if (theme === "system" && mql) {
-      mql.addEventListener("change", apply);
-      return () => mql.removeEventListener("change", apply);
-    }
   }, [theme]);
 
   return (

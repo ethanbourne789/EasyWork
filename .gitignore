@@ -58,6 +58,7 @@ audit-shots-v2/
 gui-test-screenshots/
 .workbuddy/shots/
 scripts/mail-e2e-shots/
+e2e-screenshots/
 
 # 根目录临时调试脚本（如有需要应移入 scripts/ 并明确用途）
 capture-console.js

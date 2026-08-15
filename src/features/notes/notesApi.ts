@@ -37,10 +37,10 @@ export const notesApi = {
     return invoke<Note>("note_create", {
       title: data.title,
       content: data.content ? JSON.stringify(data.content) : "",
-      content_text: data.content_text,
-      folder_id: data.folder_id,
-      is_pinned: data.is_pinned,
-      cover_url: data.cover_url,
+      contentText: data.content_text,
+      folderId: data.folder_id,
+      isPinned: data.is_pinned,
+      coverUrl: data.cover_url,
     });
   },
   updateNote: async (
@@ -60,11 +60,11 @@ export const notesApi = {
       id: data.id,
       title: data.title,
       content: data.content ? JSON.stringify(data.content) : undefined,
-      content_text: data.content_text,
-      folder_id: data.folder_id,
-      is_pinned: data.is_pinned,
-      cover_url: data.cover_url,
-      null_fields,
+      contentText: data.content_text,
+      folderId: data.folder_id,
+      isPinned: data.is_pinned,
+      coverUrl: data.cover_url,
+      nullFields: null_fields,
     });
   },
   deleteNote: async (id: string) => {
@@ -87,8 +87,8 @@ export const notesApi = {
     const invoke = await getInvoke();
     return invoke<NoteFolder>("note_folder_create", {
       name: data.name,
-      parent_id: data.parent_id,
-      sort_order: data.sort_order,
+      parentId: data.parent_id,
+      sortOrder: data.sort_order,
     });
   },
   updateFolder: async (
@@ -104,9 +104,9 @@ export const notesApi = {
     return invoke<NoteFolder>("note_folder_update", {
       id: data.id,
       name: data.name,
-      parent_id: data.parent_id,
-      sort_order: data.sort_order,
-      null_fields,
+      parentId: data.parent_id,
+      sortOrder: data.sort_order,
+      nullFields: null_fields,
     });
   },
   deleteFolder: async (id: string) => {
@@ -146,11 +146,11 @@ export const notesApi = {
   // ---------------------------------------------------------------------------
   getNoteTags: async (noteId: string) => {
     const invoke = await getInvoke();
-    return invoke<NoteTag[]>("note_tag_get_by_note", { note_id: noteId });
+    return invoke<NoteTag[]>("note_tag_get_by_note", { noteId });
   },
   getNoteTagIds: async (noteId: string) => {
     const invoke = await getInvoke();
-    return invoke<string[]>("note_tag_get_ids", { note_id: noteId });
+    return invoke<string[]>("note_tag_get_ids", { noteId });
   },
   getAllNoteTagRelations: async () => {
     const invoke = await getInvoke();
@@ -159,8 +159,8 @@ export const notesApi = {
   setNoteTags: async (data: { note_id: string; tag_ids: string[] }) => {
     const invoke = await getInvoke();
     return invoke<NoteNoteTag[]>("note_tag_set", {
-      note_id: data.note_id,
-      tag_ids: data.tag_ids,
+      noteId: data.note_id,
+      tagIds: data.tag_ids,
     });
   },
 };

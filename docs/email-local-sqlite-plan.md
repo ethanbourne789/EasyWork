@@ -1,5 +1,7 @@
 # EasyWork 邮件模块技术规划：弃用 Edge Function + 本地 SQLite 服务
 
+> ⚠️ **实现注记（2026-08-15）**：文中的 `<app_data_dir>` 已改为「数据根目录」（`<data_root>`）——优先「用户文档目录/EasyWork」（`document_dir()`），失败回退应用数据目录。见 `src-tauri/src/lib.rs` 的 `resolve_data_root()` / `migrate_legacy_data()`。
+>
 > 目标：邮件模块全面弃用 Supabase Edge Function，IMAP 同步 / 发送邮件 / 文件夹管理三项核心功能全部在**本地**完成；邮件数据存储与管理迁移到**本地 SQLite 服务**。
 > 适用范围：仅邮件（mail）模块。日历（sync-calendar）等其它模块暂不在此范围内，但其后续改造可复用本方案范式。
 

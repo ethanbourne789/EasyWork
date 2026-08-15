@@ -47,11 +47,11 @@ export const calendarApi = {
       title: data.title,
       description: data.description,
       location: data.location,
-      start_at: data.start_at,
-      end_at: data.end_at,
-      all_day: data.all_day,
+      startAt: data.start_at,
+      endAt: data.end_at,
+      allDay: data.all_day,
       color: data.color,
-      reminder_minutes: data.reminder_minutes,
+      reminderMinutes: data.reminder_minutes,
       source: data.source,
     });
   },
@@ -72,11 +72,11 @@ export const calendarApi = {
       title: data.title,
       description: data.description,
       location: data.location,
-      start_at: data.start_at,
-      end_at: data.end_at,
-      all_day: data.all_day,
+      startAt: data.start_at,
+      endAt: data.end_at,
+      allDay: data.all_day,
       color: data.color,
-      reminder_minutes: data.reminder_minutes,
+      reminderMinutes: data.reminder_minutes,
     });
   },
   deleteEvent: async (id: string) => {
@@ -148,7 +148,7 @@ export const calendarApi = {
   syncSubscription: async (subscriptionId?: string) => {
     const invoke = await getInvoke();
     return invoke<{ results: SyncResult[] }>("calendar_sync_subscription", {
-      subscription_id: subscriptionId,
+      subscriptionId,
     });
   },
 };

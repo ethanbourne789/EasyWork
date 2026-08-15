@@ -1613,6 +1613,17 @@ const BACKUP_TABLES: &[&str] = &[
     "calendar_events", "calendar_subscriptions",
 ];
 
+/// 清空业务表的顺序：**子表（引用他表的）必须先于父表删除**，
+/// 否则在外键约束（无 ON DELETE CASCADE）下 DELETE 父表会报
+/// `FOREIGN KEY constraint failed`。
+/// 自引用列（categories.parent_id、note_folders.parent_id）需在删除前置 NULL。
+const CLEAR_ORDER: &[&str] = &[
+    "subtasks", "task_tags", "note_note_tags",
+    "transactions", "budgets", "notes", "calendar_events",
+    "tasks", "tags", "accounts", "categories",
+    "note_folders", "note_tag_master", "calendar_subscriptions",
+];
+
 /// 导出全部业务表为 { table: rows[] }。含 sync 元数据列，便于完整恢复。
 #[tauri::command]
 pub async fn data_export_all(state: State<'_, AppState>) -> Result<serde_json::Value, String> {
@@ -1657,64 +1668,81 @@ pub async fn data_import_all(
 ) -> Result<i32, String> {
     let obj = data.as_object().ok_or_else(|| "备份数据格式错误".to_string())?;
     let db = state.db.lock().await;
-    let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
-    let mut total = 0i32;
-    for (table, rows) in obj {
-        if !BACKUP_TABLES.contains(&table.as_str()) {
-            continue; // 白名单外忽略（含邮件表、未知表）
+    // 备份是导出时的快照，可能含悬空外键（如子任务引用已删除的任务）。
+    // 导入期间关闭外键检查，忠实还原备份内容；否则单行失败会回滚整个事务。
+    // 另外 serde_json 的 Object 是 BTreeMap（字母序），遍历 obj 会按字母序插入，
+    // 导致 budgets（引用 categories）先于 categories 被插入——所以必须显式按
+    // BACKUP_TABLES 顺序导入。
+    db.pragma_update(None, "foreign_keys", "OFF")
+        .map_err(|e| format!("关闭外键检查失败: {}", e))?;
+    let result = (|| {
+        let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
+        // 先按子表优先顺序清空（含断开自引用），避免逐表 DELETE 顺序不当触发外键失败
+        tx.execute("UPDATE categories SET parent_id = NULL", [])
+            .map_err(|e| format!("断开 categories 自引用失败: {}", e))?;
+        tx.execute("UPDATE note_folders SET parent_id = NULL", [])
+            .map_err(|e| format!("断开 note_folders 自引用失败: {}", e))?;
+        for table in CLEAR_ORDER {
+            tx.execute(&format!("DELETE FROM \"{}\"", table), [])
+                .map_err(|e| format!("清空 {} 失败: {}", table, e))?;
         }
-        let safe_table = sanitize_ident(table);
-        tx.execute(&format!("DELETE FROM \"{}\"", safe_table), [])
-            .map_err(|e| format!("清空 {} 失败: {}", table, e))?;
-        let arr = rows.as_array().ok_or_else(|| format!("{} 数据格式错误", table))?;
-        for row in arr {
-            let o = row.as_object().ok_or_else(|| format!("{} 行数据格式错误", table))?;
-            // 列名 = JSON key（排除 user_id），并做标识符净化
-            let cols: Vec<String> = o
-                .keys()
-                .filter(|c| *c != "user_id")
-                .map(|c| sanitize_ident(c))
-                .collect();
-            if cols.is_empty() {
-                continue;
-            }
-            let placeholders: Vec<String> = (1..=cols.len()).map(|i| format!("?{}", i)).collect();
-            let col_list = cols.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ");
-            let sql = format!(
-                "INSERT OR REPLACE INTO \"{}\" ({}) VALUES ({})",
-                safe_table,
-                col_list,
-                placeholders.join(", ")
-            );
-            let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
-            for c in &cols {
-                let v = o.get(c).unwrap_or(&serde_json::Value::Null);
-                match v {
-                    serde_json::Value::Null => params.push(Box::new(None::<String>)),
-                    serde_json::Value::String(s) => params.push(Box::new(s.clone())),
-                    serde_json::Value::Number(n) => {
-                        if let Some(i) = n.as_i64() {
-                            params.push(Box::new(i));
-                        } else if let Some(f) = n.as_f64() {
-                            params.push(Box::new(f));
-                        } else {
-                            params.push(Box::new(n.to_string()));
+        let mut total = 0i32;
+        // 显式按 BACKUP_TABLES 顺序（父表在子表前），不依赖 JSON key 顺序
+        for table in BACKUP_TABLES {
+            let Some(rows) = obj.get(*table).and_then(|v| v.as_array()) else { continue };
+            let safe_table = sanitize_ident(table);
+            for row in rows {
+                let o = row.as_object().ok_or_else(|| format!("{} 行数据格式错误", table))?;
+                // 列名 = JSON key（排除 user_id），并做标识符净化
+                let cols: Vec<String> = o
+                    .keys()
+                    .filter(|c| *c != "user_id")
+                    .map(|c| sanitize_ident(c))
+                    .collect();
+                if cols.is_empty() {
+                    continue;
+                }
+                let placeholders: Vec<String> = (1..=cols.len()).map(|i| format!("?{}", i)).collect();
+                let col_list = cols.iter().map(|c| format!("\"{}\"", c)).collect::<Vec<_>>().join(", ");
+                let sql = format!(
+                    "INSERT OR REPLACE INTO \"{}\" ({}) VALUES ({})",
+                    safe_table,
+                    col_list,
+                    placeholders.join(", ")
+                );
+                let mut params: Vec<Box<dyn rusqlite::types::ToSql>> = Vec::new();
+                for c in &cols {
+                    let v = o.get(c).unwrap_or(&serde_json::Value::Null);
+                    match v {
+                        serde_json::Value::Null => params.push(Box::new(None::<String>)),
+                        serde_json::Value::String(s) => params.push(Box::new(s.clone())),
+                        serde_json::Value::Number(n) => {
+                            if let Some(i) = n.as_i64() {
+                                params.push(Box::new(i));
+                            } else if let Some(f) = n.as_f64() {
+                                params.push(Box::new(f));
+                            } else {
+                                params.push(Box::new(n.to_string()));
+                            }
+                        }
+                        serde_json::Value::Bool(b) => params.push(Box::new(*b as i64)),
+                        // JSON 对象/数组列（notes.content、tasks.recurrence_rule 等）序列化存储
+                        serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
+                            params.push(Box::new(v.to_string()));
                         }
                     }
-                    serde_json::Value::Bool(b) => params.push(Box::new(*b as i64)),
-                    // JSON 对象/数组列（notes.content、tasks.recurrence_rule 等）序列化存储
-                    serde_json::Value::Object(_) | serde_json::Value::Array(_) => {
-                        params.push(Box::new(v.to_string()));
-                    }
                 }
+                tx.execute(&sql, rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())))
+                    .map_err(|e| format!("导入 {} 行失败: {}", table, e))?;
+                total += 1;
             }
-            tx.execute(&sql, rusqlite::params_from_iter(params.iter().map(|p| p.as_ref())))
-                .map_err(|e| format!("导入 {} 行失败: {}", table, e))?;
-            total += 1;
         }
-    }
-    tx.commit().map_err(|e| e.to_string())?;
-    Ok(total)
+        tx.commit().map_err(|e| e.to_string())?;
+        Ok(total)
+    })();
+    // 无论成败都恢复外键检查
+    let _ = db.pragma_update(None, "foreign_keys", "ON");
+    result
 }
 
 /// 标识符净化：移除引号与语句分隔符，防注入。
@@ -1723,11 +1751,17 @@ fn sanitize_ident(name: &str) -> String {
 }
 
 /// 清空全部业务表（Settings「清除所有数据」）。
+/// 删除顺序子表优先，并先断开自引用，避免外键约束失败。
 #[tauri::command]
 pub async fn data_clear_all(state: State<'_, AppState>) -> Result<(), String> {
     let db = state.db.lock().await;
     let tx = db.unchecked_transaction().map_err(|e| e.to_string())?;
-    for table in BACKUP_TABLES {
+    // 自引用列先断开（无 ON DELETE CASCADE，父行未删时子行引用会违反外键）
+    tx.execute("UPDATE categories SET parent_id = NULL", [])
+        .map_err(|e| format!("断开 categories 自引用失败: {}", e))?;
+    tx.execute("UPDATE note_folders SET parent_id = NULL", [])
+        .map_err(|e| format!("断开 note_folders 自引用失败: {}", e))?;
+    for table in CLEAR_ORDER {
         tx.execute(&format!("DELETE FROM \"{}\"", table), [])
             .map_err(|e| format!("清空 {} 失败: {}", table, e))?;
     }
@@ -1754,9 +1788,8 @@ pub async fn receipt_save(
         return Err("文件名不合法".to_string());
     }
     let dir = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
+        .state::<crate::DataRoot>()
+        .0
         .join("receipts");
     std::fs::create_dir_all(&dir).map_err(|e| format!("创建收据目录失败: {}", e))?;
     let path = dir.join(&safe_name);
@@ -1769,9 +1802,8 @@ pub async fn receipt_save(
 pub async fn receipt_open(app: tauri::AppHandle, filename: String) -> Result<(), String> {
     let safe_name = sanitize_ident(&filename);
     let path = app
-        .path()
-        .app_data_dir()
-        .map_err(|e| e.to_string())?
+        .state::<crate::DataRoot>()
+        .0
         .join("receipts")
         .join(&safe_name);
     if !path.exists() {

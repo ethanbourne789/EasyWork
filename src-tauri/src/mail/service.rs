@@ -23,6 +23,9 @@ impl MailService {
         {
             let mut locks = self.locks.lock().await;
             if locks.get(&lock_key).copied().unwrap_or(false) {
+                let _ = std::fs::OpenOptions::new().create(true).append(true)
+                    .open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
+                    .and_then(|mut f| std::io::Write::write_all(&mut f, format!("[sync_account] LOCK CONFLICT account_id={}\n", account_id).as_bytes()));
                 return Ok(SyncResult { fetched: 0, inserted: 0, folders: 0, error: Some("同步进行中".into()) });
             }
             locks.insert(lock_key.clone(), true);
@@ -34,22 +37,34 @@ impl MailService {
             let mut locks = self.locks.lock().await;
             locks.insert(lock_key, false);
         }
+        let _ = std::fs::OpenOptions::new().create(true).append(true).open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
+            .and_then(|mut f| std::io::Write::write_all(&mut f, format!("[sync_account] result is_ok={} err={:?}\n", result.is_ok(), result.as_ref().err()).as_bytes()));
         result
     }
 
     async fn do_sync(&self, app: &AppHandle, account_id: &str) -> MailResult<SyncResult> {
+        let trace = |s: String| {
+            let _ = std::fs::OpenOptions::new().create(true).append(true)
+                .open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
+                .and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}\n", s).as_bytes()));
+        };
+        trace(format!("[do_sync] 1.entry account_id={}", account_id));
         emit_progress(app, SyncProgress::Connecting { account_id: account_id.into() });
 
         let account = {
             let db = self.db.lock().await;
             db_queries::get_account(&db, account_id)?
         };
+        trace(format!("[do_sync] 2.after get_account email={} imap={}:{}", account.email, account.imap_host, account.imap_port));
         let password = CredentialStore::get_password(account_id)?;
+        trace("[do_sync] 3.after get_password".to_string());
         let username = account.username.as_deref().unwrap_or(&account.email);
 
         let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
+        trace("[do_sync] 4.after imap connect".to_string());
 
         let folders = imap.list_folders().await?;
+        trace(format!("[do_sync] 5.after list_folders len={} paths={:?}", folders.len(), folders.iter().map(|(p,_)|p).collect::<Vec<_>>()));
         let mut fetched = 0i64;
         let mut inserted = 0i64;
 
@@ -61,63 +76,80 @@ impl MailService {
                 let db = self.db.lock().await;
                 ensure_folder(&db, account_id, path, &display_name, folder_type)?
             };
+            trace(format!("[do_sync] 6.folder path={} folder_type={:?}", path, folder_type));
 
-            if let Ok((uid_next, uid_validity)) = imap.select_folder(path).await {
-                let last_uid = {
-                    let db = self.db.lock().await;
-                    get_folder_last_uid(&db, &folder_id)?
-                };
-                let (start, end) = calc_fetch_range(last_uid, uid_next);
-
-                if start <= end {
-                    let messages = imap.fetch_range(start, end).await?;
-                    let total = messages.len() as i64;
-                    let mut done = 0i64;
-
-                    for (uid, body, msg_flags) in messages {
-                        let parsed = parse_message(&body)?;
-                        let is_read = msg_flags.iter().any(|f| f.contains("Seen"));
-                        let is_starred = msg_flags.iter().any(|f| f.contains("Flagged"));
-
-                        let email = Email {
-                            id: uuid::Uuid::new_v4().to_string(),
-                            account_id: account_id.into(),
-                            folder_id: Some(folder_id.clone()),
-                            message_id: parsed.message_id.clone(),
-                            uid: Some(uid as i64),
-                            from_address: parsed.from_address.clone(),
-                            to_addresses: Some(serde_json::to_string(&parsed.to_addresses).unwrap_or_default()),
-                            cc_addresses: Some(serde_json::to_string(&parsed.cc_addresses).unwrap_or_default()),
-                            subject: parsed.subject.clone(),
-                            preview_text: parsed.preview_text.clone(),
-                            body_text: parsed.body_text.clone(),
-                            body_html: parsed.body_html.as_ref().map(|h| sanitize_html(h)),
-                            has_attachments: parsed.has_attachments,
-                            is_read, is_starred,
-                            received_at: Some(chrono::Utc::now().to_rfc3339()),
-                            created_at: chrono::Utc::now().to_rfc3339(),
-                            account_email: Some(account.email.clone()),
-                            account_name: account.display_name.clone(),
-                        };
-
+            match imap.select_folder(path).await {
+                Ok((uid_next, uid_validity)) => {
+                    trace(format!("[do_sync] 7.select OK path={} uid_next={} uid_validity={}", path, uid_next, uid_validity));
+                    let last_uid = {
                         let db = self.db.lock().await;
-                        db_queries::upsert_email(&db, &email)?;
-                        inserted += 1;
-                        fetched += 1;
-                        done += 1;
-                        emit_progress(app, SyncProgress::Folder {
-                            account_id: account_id.into(), path: path.clone(), done, total
-                        });
-                    }
+                        get_folder_last_uid(&db, &folder_id)?
+                    };
+                    let (start, end) = calc_fetch_range(last_uid, uid_next);
+                    trace(format!("[do_sync] 8.last_uid={:?} fetch_range={}..{}", last_uid, start, end));
 
-                    {
-                        let db = self.db.lock().await;
-                        update_folder_cursor(&db, account_id, &folder_id, end, uid_validity)?;
+                    if start <= end {
+                        let messages = imap.fetch_range(start, end).await?;
+                        let total = messages.len() as i64;
+                        let mut done = 0i64;
+                        trace(format!("[do_sync] 9.fetch_range returned {} messages", messages.len()));
+
+                        for (uid, body, msg_flags) in messages {
+                            trace(format!("[do_sync] 9a.parse uid={} body_len={}", uid, body.len()));
+                            let parsed = parse_message(&body)?;
+                            trace(format!("[do_sync] 9b.parsed uid={} subject={:?}", uid, parsed.subject.as_deref().unwrap_or("").chars().take(30).collect::<String>()));
+                            let is_read = msg_flags.iter().any(|f| f.contains("Seen"));
+                            let is_starred = msg_flags.iter().any(|f| f.contains("Flagged"));
+
+                            let email = Email {
+                                id: uuid::Uuid::new_v4().to_string(),
+                                account_id: account_id.into(),
+                                folder_id: Some(folder_id.clone()),
+                                message_id: parsed.message_id.clone(),
+                                uid: Some(uid as i64),
+                                from_address: parsed.from_address.clone(),
+                                to_addresses: Some(serde_json::to_string(&parsed.to_addresses).unwrap_or_default()),
+                                cc_addresses: Some(serde_json::to_string(&parsed.cc_addresses).unwrap_or_default()),
+                                subject: parsed.subject.clone(),
+                                preview_text: parsed.preview_text.clone(),
+                                body_text: parsed.body_text.clone(),
+                                body_html: parsed.body_html.as_ref().map(|h| sanitize_html(h)),
+                                has_attachments: parsed.has_attachments,
+                                is_read, is_starred,
+                                received_at: Some(chrono::Utc::now().to_rfc3339()),
+                                created_at: chrono::Utc::now().to_rfc3339(),
+                                account_email: Some(account.email.clone()),
+                                account_name: account.display_name.clone(),
+                            };
+                            trace(format!("[do_sync] 9b2.email built uid={}", uid));
+
+                            {
+                                let db = self.db.lock().await;
+                                trace(format!("[do_sync] 9c.db locked uid={}", uid));
+                                db_queries::upsert_email(&db, &email)?;
+                                trace(format!("[do_sync] 9d.after upsert uid={}", uid));
+                            }
+                            inserted += 1;
+                            fetched += 1;
+                            done += 1;
+                            emit_progress(app, SyncProgress::Folder {
+                                account_id: account_id.into(), path: path.clone(), done, total
+                            });
+                        }
+
+                        {
+                            let db = self.db.lock().await;
+                            update_folder_cursor(&db, account_id, &folder_id, end, uid_validity)?;
+                        }
                     }
+                }
+                Err(e) => {
+                    trace(format!("[do_sync] 7.select FAIL path={} err={:?}", path, e));
                 }
             }
         }
 
+        trace(format!("[do_sync] 10.END fetched={} inserted={} folders_vec_len={}", fetched, inserted, folders.len()));
         emit_progress(app, SyncProgress::Done {
             account_id: account_id.into(), fetched, inserted
         });

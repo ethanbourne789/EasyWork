@@ -41,10 +41,10 @@ export const taskApi = {
       description: data.description,
       status: data.status,
       priority: data.priority,
-      due_date: data.due_date,
-      tag_ids: data.tag_ids,
-      recurrence_rule: data.recurrence_rule,
-      recurrence_next: data.recurrence_next,
+      dueDate: data.due_date,
+      tagIds: data.tag_ids,
+      recurrenceRule: data.recurrence_rule,
+      recurrenceNext: data.recurrence_next,
     });
   },
   updateTask: async (
@@ -67,10 +67,10 @@ export const taskApi = {
       description: data.description,
       status: data.status,
       priority: data.priority,
-      due_date: data.due_date ?? undefined,
-      tag_ids: data.tag_ids,
-      recurrence_rule: data.recurrence_rule ?? undefined,
-      null_fields,
+      dueDate: data.due_date ?? undefined,
+      tagIds: data.tag_ids,
+      recurrenceRule: data.recurrence_rule ?? undefined,
+      nullFields: null_fields,
     });
   },
   deleteTask: async (id: string) => {
@@ -83,12 +83,12 @@ export const taskApi = {
   // ---------------------------------------------------------------------------
   listSubtasks: async (taskId: string) => {
     const invoke = await getInvoke();
-    return invoke<Subtask[]>("subtask_list", { task_id: taskId });
+    return invoke<Subtask[]>("subtask_list", { taskId });
   },
   createSubtask: async (data: { task_id: string; title: string }) => {
     const invoke = await getInvoke();
     return invoke<Subtask>("subtask_create", {
-      task_id: data.task_id,
+      taskId: data.task_id,
       title: data.title,
     });
   },
@@ -101,14 +101,14 @@ export const taskApi = {
     const invoke = await getInvoke();
     return invoke<Subtask>("subtask_update", {
       id: data.id,
-      task_id: data.task_id,
+      taskId: data.task_id,
       done: data.done,
       title: data.title,
     });
   },
   deleteSubtask: async (data: { id: string; task_id: string }) => {
     const invoke = await getInvoke();
-    return invoke("subtask_delete", { id: data.id, task_id: data.task_id });
+    return invoke("subtask_delete", { id: data.id, taskId: data.task_id });
   },
 
   // ---------------------------------------------------------------------------
@@ -143,13 +143,13 @@ export const taskApi = {
   // ---------------------------------------------------------------------------
   getTaskTags: async (taskId: string) => {
     const invoke = await getInvoke();
-    return invoke<Tag[]>("task_tag_list", { task_id: taskId });
+    return invoke<Tag[]>("task_tag_list", { taskId });
   },
   setTaskTags: async (data: { task_id: string; tag_ids: string[] }) => {
     const invoke = await getInvoke();
     return invoke<void>("task_tag_set", {
-      task_id: data.task_id,
-      tag_ids: data.tag_ids,
+      taskId: data.task_id,
+      tagIds: data.tag_ids,
     });
   },
 };

@@ -14,14 +14,11 @@ import {
   type LucideIcon,
 } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { ThemeToggle } from "@/components/theme/ThemeToggle";
-import { LanguageSwitcher } from "@/components/LanguageSwitcher";
 import { Avatar } from "@/components/ui/avatar";
 import { useProfile } from "@/features/settings/useProfile";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useNotifications } from "@/lib/notifications";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
-import { SyncStatusIcon } from "@/components/SyncStatusIcon";
 
 
 type Item = { to: string; labelKey: string; icon: LucideIcon };
@@ -84,20 +81,6 @@ export function Sidebar() {
 
       {/* 账户区：固定在底部 */}
       <div className="mt-auto flex flex-col items-center gap-1">
-        <div className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent">
-          <ThemeToggle />
-          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-            {t('settings.theme')}
-          </span>
-        </div>
-
-        <div className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent">
-          <LanguageSwitcher />
-          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-            {t('settings.language')}
-          </span>
-        </div>
-
         <button
           type="button"
           onClick={openSearch}
@@ -134,17 +117,6 @@ export function Sidebar() {
           onDismiss={dismiss}
           onMarkAllRead={markAllRead}
         />
-
-        <Link
-          to="/settings"
-          aria-label={t('sync.title')}
-          className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent"
-        >
-          <SyncStatusIcon />
-          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
-            {t('sync.title')}
-          </span>
-        </Link>
 
         <Link
           to="/settings"

@@ -69,11 +69,14 @@ pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
 }
 
 pub fn sanitize_html(html: &str) -> String {
-    ammonia::Builder::default()
-        .add_tags(&["style"])
-        .add_tag_attribute_values("img", "loading", &["lazy"])
-        .clean(html)
-        .to_string()
+    // 后端不再用 ammonia 做 HTML 清理：ammonia 4 对某些正常 HTML（实测 QQ 邮件 3KB）
+    // 会卡死/死循环，导致 do_sync 卡在第一封邮件、同步锁永不释放。
+    // 前端 MailReader 渲染时已用 DOMPurify 做 sanitize，这里仅做长度上限防存储膨胀。
+    const MAX_HTML: usize = 512 * 1024;
+    if html.len() > MAX_HTML {
+        return String::new(); // 超限丢弃 HTML，仅保留纯文本
+    }
+    html.to_string()
 }
 
 pub fn infer_folder_type(imap_path: &str, flags: &[String]) -> &'static str {

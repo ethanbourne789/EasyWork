@@ -61,10 +61,23 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 export const syncApi = {
   getConfig: () => invoke<SyncConfig>("sync_config_get"),
-  saveConfig: (config: SyncConfig) => invoke<void>("sync_config_save", { config }),
+  saveConfig: (config: SyncConfig) =>
+    invoke<void>("sync_config_save", {
+      config: {
+        id: config.id,
+        enabled: config.enabled,
+        provider: config.provider,
+        connectionString: config.connection_string,
+        databaseName: config.database_name,
+        lastSyncAt: config.last_sync_at,
+        syncError: config.sync_error,
+        createdAt: config.created_at,
+        updatedAt: config.updated_at,
+      },
+    }),
   deleteConfig: () => invoke<void>("sync_config_delete"),
   testConnection: (connectionString?: string) =>
-    invoke<ConnectionTestResult>("sync_test_connection", { connection_string: connectionString }),
+    invoke<ConnectionTestResult>("sync_test_connection", { connectionString }),
   triggerSync: () => invoke<SyncResult>("sync_trigger"),
   getStatus: () => invoke<SyncStatus>("sync_status"),
   getLog: (limit?: number) => invoke<SyncLogEntry[]>("sync_log_get", { limit }),

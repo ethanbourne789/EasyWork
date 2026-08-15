@@ -23,15 +23,24 @@ async function invoke<T>(cmd: string, args?: Record<string, unknown>): Promise<T
 
 export const authApi = {
   register: (email: string, password: string, display_name?: string) =>
-    invoke<LocalUser>("auth_register", { email, password, display_name }),
+    invoke<LocalUser>("auth_register", { email, password, displayName: display_name }),
   login: (email: string, password: string) =>
     invoke<LocalUser>("auth_login", { email, password }),
   getUser: async (user_id: string) => {
     if (!user_id) throw new Error("auth_get_user: user_id 为空");
-    return invoke<LocalUser>("auth_get_user", { user_id });
+    return invoke<LocalUser>("auth_get_user", { userId: user_id });
   },
   updateProfile: (user_id: string, display_name?: string, avatar_data?: string, clear_avatar?: boolean) =>
-    invoke<LocalUser>("auth_update_profile", { user_id, display_name, avatar_data, clear_avatar }),
+    invoke<LocalUser>("auth_update_profile", {
+      userId: user_id,
+      displayName: display_name,
+      avatarData: avatar_data,
+      clearAvatar: clear_avatar,
+    }),
   changePassword: (user_id: string, current_password: string, new_password: string) =>
-    invoke<void>("auth_change_password", { user_id, current_password, new_password }),
+    invoke<void>("auth_change_password", {
+      userId: user_id,
+      currentPassword: current_password,
+      newPassword: new_password,
+    }),
 };

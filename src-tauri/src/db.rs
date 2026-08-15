@@ -1,7 +1,7 @@
 use rusqlite::{Connection, params};
 use std::path::Path;
 
-const SCHEMA_VERSION: i32 = 6;
+const SCHEMA_VERSION: i32 = 7;
 
 pub fn init_db(db_path: &Path) -> rusqlite::Result<Connection> {
     let conn = Connection::open(db_path)?;
@@ -26,6 +26,24 @@ fn schema_version(conn: &Connection) -> i32 {
         ).unwrap_or(false);
         if has_tables { SCHEMA_VERSION } else { 0 }
     })
+}
+
+/// v7 增量迁移：note_folders 表补 updated_at 列。
+/// 该列被 note_folder_create/update 的 SQL 引用，但历史建表（含 v6 全新库）遗漏了它，
+/// 导致「创建笔记文件夹」报错 `no column named updated_at`。
+/// 历史行回填 created_at 作为初始值（NoteFolderOut.updated_at 为 String，不可为 NULL）。
+/// 对已含该列的全新库，跳过 ALTER（SQLite 无 ADD COLUMN IF NOT EXISTS）。
+fn migrate_v7(conn: &Connection) -> rusqlite::Result<()> {
+    let has_col: bool = conn.query_row(
+        "SELECT EXISTS(SELECT 1 FROM pragma_table_info('note_folders') WHERE name='updated_at')",
+        [],
+        |r| r.get(0),
+    )?;
+    if !has_col {
+        conn.execute_batch("ALTER TABLE note_folders ADD COLUMN updated_at TEXT;")?;
+    }
+    conn.execute_batch("UPDATE note_folders SET updated_at = COALESCE(updated_at, created_at);")?;
+    Ok(())
 }
 
 /// 版本化迁移入口（M1 修复）：
@@ -66,6 +84,11 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
     // v6：budgets 表补 updated_at 列（budget_list_all/budget_update SQL 引用）
     if current < 6 {
         migrate_v6(conn)?;
+    }
+
+    // v7：note_folders 表补 updated_at 列（note_folder_create/update SQL 引用）
+    if current < 7 {
+        migrate_v7(conn)?;
     }
 
     conn.execute(
@@ -257,7 +280,8 @@ fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
             color TEXT,
             parent_id TEXT REFERENCES note_folders(id),
             sort_order INTEGER NOT NULL DEFAULT 0,
-            created_at TEXT NOT NULL
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL
         );
 
         CREATE TABLE notes (

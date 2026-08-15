@@ -406,7 +406,7 @@ export function Settings() {
             <h2 className="text-xl font-semibold">{t('settings.appearance')}</h2>
             <div className="space-y-2">
               <label className="text-sm font-medium">{t('settings.theme')}</label>
-              <div className="grid grid-cols-3 gap-2">
+              <div className="grid grid-cols-2 gap-2">
                 <Button
                   variant={theme === "light" ? "default" : "outline"}
                   onClick={() => setTheme("light")}
@@ -418,12 +418,6 @@ export function Settings() {
                   onClick={() => setTheme("dark")}
                 >
                   {t('settings.dark')}
-                </Button>
-                <Button
-                  variant={theme === "system" ? "default" : "outline"}
-                  onClick={() => setTheme("system")}
-                >
-                  {t('settings.system')}
                 </Button>
               </div>
             </div>

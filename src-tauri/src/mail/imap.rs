@@ -36,19 +36,31 @@ impl ImapAdapter {
             .map_err(|e| MailError::new("IMAP_LIST", &format!("列出文件夹失败: {}", e)))?;
         tokio::pin!(mailboxes);
         let mut result = Vec::new();
+        let mut raw = 0usize;
+        let mut skipped = 0usize;
         while let Some(mbox) = mailboxes.next().await {
+            raw += 1;
             if let Ok(m) = mbox {
-                // 跳过 Noselect/NonExistent 文件夹
                 let skip = m.attributes().iter().any(|a| {
                     matches!(a, NameAttribute::NoSelect)
                         || matches!(a, NameAttribute::Extension(s) if s == "NonExistent")
                 });
-                if skip { continue; }
+                if skip { skipped += 1; continue; }
                 let path = m.name().to_string();
                 let flags: Vec<String> = m.attributes().iter().map(|f| format!("{:?}", f)).collect();
                 result.push((path, flags));
             }
         }
+        // 调试日志（追加模式，多次调用累积）
+        let _ = std::fs::OpenOptions::new()
+            .create(true).append(true).open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
+            .and_then(|mut f| std::io::Write::write_all(
+                &mut f,
+                format!("[list_folders] raw={}, skipped={}, kept={}, paths={:?}\n",
+                    raw, skipped, result.len(),
+                    result.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()
+                ).as_bytes(),
+            ));
         Ok(result)
     }
 

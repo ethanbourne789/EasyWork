@@ -11,6 +11,7 @@ import { FinanceOverview } from './FinanceOverview';
 import { Plus, ArrowLeftRight, TrendingUp, TrendingDown, LayoutGrid, ArrowUpDown, Wallet, PiggyBank, BarChart3, Tags } from 'lucide-react';
 import { Dialog, DialogContent, DialogHeader, DialogTitle } from '@/components/ui/dialog';
 import { ModuleFab } from '@/components/layout/ModuleFab';
+import { Button } from '@/components/ui/button';
 import type { TransactionType } from '@/types';
 
 type TabValue = 'overview' | 'transactions' | 'accounts' | 'budgets' | 'categories' | 'reports';
@@ -42,6 +43,10 @@ export function Finance() {
           <h1 className="font-display text-[28px] font-semibold leading-tight">{t('finance.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('finance.subtitle')}</p>
         </div>
+        {/* 桌面端新建交易按钮（移动端走 ModuleFab） */}
+        <Button size="sm" onClick={() => openForm('expense')} className="hidden md:flex items-center gap-1">
+          <Plus size={15} /> {t('finance.addTransaction')}
+        </Button>
       </div>
 
       <Tabs value={activeTab} onValueChange={(v) => setActiveTab(v as TabValue)}>
