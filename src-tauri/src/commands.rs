@@ -5,9 +5,11 @@ use tokio::sync::Mutex;
 use crate::mail::creds::CredentialStore;
 use crate::mail::db_queries;
 use crate::mail::error::MailError;
+use crate::mail::imap::ImapAdapter;
 use crate::mail::service::MailService;
-use crate::mail::smtp::{SmtpParams, send_mail};
+use crate::mail::smtp::{SmtpParams, build_raw, send_mail};
 use crate::mail::types::*;
+use crate::mail::contacts;
 use crate::sync::{SyncConfig, SyncStatus, SyncLogEntry, ConnectionTestResult, SyncResult as CloudSyncResult};
 
 pub struct AppState {
@@ -124,11 +126,28 @@ pub async fn mail_sync(state: State<'_, AppState>, app: AppHandle, account_id: O
         None => accounts,
     };
     let mut total = SyncResult { fetched: 0, inserted: 0, folders: 0, error: None };
+    let mut errors: Vec<String> = Vec::new();
     for account in target {
-        let r = state.service.sync_account(&app, &account.id).await?;
-        total.fetched += r.fetched;
-        total.inserted += r.inserted;
-        total.folders += r.folders;
+        match state.service.sync_account(&app, &account.id).await {
+            Ok(r) => {
+                total.fetched += r.fetched;
+                total.inserted += r.inserted;
+                total.folders += r.folders;
+                // 子账号的非致命错误（锁冲突/部分文件夹失败）必须透传，不能静默丢弃
+                if let Some(e) = r.error {
+                    errors.push(format!("{}: {}", account.email, e));
+                }
+            }
+            Err(e) => {
+                errors.push(format!("{}: {}", account.email, e.message));
+            }
+        }
+    }
+    // 单账号场景下硬错误直接返回 Err（前端按失败处理）；多账号聚合成 error 字段
+    if total.folders == 0 && total.fetched == 0 && !errors.is_empty() {
+        total.error = Some(errors.join("；"));
+    } else if !errors.is_empty() {
+        total.error = Some(errors.join("；"));
     }
     Ok(total)
 }
@@ -143,13 +162,36 @@ pub async fn mail_send(state: State<'_, AppState>, account_id: String, to: Vec<S
     };
     let password = CredentialStore::get_password(&account_id)?;
     let username = account.username.clone().unwrap_or(account.email.clone());
+    let imap_host = account.imap_host.clone();
+    let imap_port = account.imap_port as u16;
+    let account_email = account.email.clone();
+    let account_name = account.display_name.clone();
 
     let params = SmtpParams {
         host: account.smtp_host, port: account.smtp_port as u16,
-        username, password, from_email: account.email.clone(), from_name: account.display_name,
+        username: username.clone(), password: password.clone(),
+        from_email: account_email.clone(), from_name: account_name.clone(),
     };
     let raw_mail = send_mail(&params, &to, &cc, &subject, &body_html, &body_text).await?;
-    let _ = raw_mail;  // 暂未追加到 IMAP Sent 文件夹
+
+    // 最佳努力：把已发送副本 APPEND 到 IMAP 已发送文件夹（失败不影响发送结果）
+    let sent_path: Option<String> = {
+        let db = state.service.db.lock().await;
+        db.query_row(
+            "SELECT imap_path FROM email_folders WHERE account_id = ?1 AND folder_type = 'sent'",
+            rusqlite::params![account_id], |row| row.get(0)
+        ).ok()
+    };
+    if let Some(path) = sent_path {
+        match ImapAdapter::connect(&imap_host, imap_port, &username, &password).await {
+            Ok(mut imap) => {
+                if let Err(e) = imap.append_to_mailbox(&path, &raw_mail).await {
+                    tracing::warn!("追加已发送到 IMAP 失败: {}", e.message);
+                }
+            }
+            Err(e) => tracing::warn!("连接 IMAP 追加已发送失败: {}", e.message),
+        }
+    }
 
     // 插入已发送副本
     let sent_folder = {
@@ -164,13 +206,62 @@ pub async fn mail_send(state: State<'_, AppState>, account_id: String, to: Vec<S
     let email = Email {
         id: uuid::Uuid::new_v4().to_string(), account_id: account_id.clone(),
         folder_id: sent_folder, message_id: Some(format!("sent-{}", uuid::Uuid::new_v4())),
+        uid: None, from_address: Some(account_email.clone()),
+        to_addresses: Some(serde_json::to_string(&to).unwrap_or_default()),
+        cc_addresses: Some(serde_json::to_string(&cc).unwrap_or_default()),
+        subject: Some(subject), preview_text: Some(body_text.chars().take(200).collect()),
+        body_text: Some(body_text), body_html: Some(body_html), has_attachments: false,
+        is_read: true, is_starred: false, received_at: Some(now()),
+        created_at: now(), account_email: Some(account_email), account_name,
+    };
+    let db = state.service.db.lock().await;
+    db_queries::upsert_email(&db, &email)?;
+    Ok(email)
+}
+
+/// 保存草稿：构建 MIME 后最佳努力 APPEND 到 IMAP 草稿箱，并写入本地库
+#[tauri::command]
+pub async fn mail_save_draft(state: State<'_, AppState>, account_id: String, to: Vec<String>,
+    cc: Vec<String>, subject: String, body_html: String, body_text: String) -> Result<Email, MailError> {
+    let account = {
+        let db = state.service.db.lock().await;
+        db_queries::get_account(&db, &account_id)?
+    };
+    let raw = build_raw(&account.email, account.display_name.as_deref(), &to, &cc, &subject, &body_html, &body_text)?;
+
+    let draft_folder: Option<(String, String)> = {
+        let db = state.service.db.lock().await;
+        db.query_row(
+            "SELECT id, imap_path FROM email_folders WHERE account_id = ?1 AND folder_type = 'drafts'",
+            rusqlite::params![account_id], |row| Ok((row.get(0)?, row.get(1)?))
+        ).ok()
+    };
+
+    if let Some((_, ref path)) = draft_folder {
+        let username = account.username.clone().unwrap_or(account.email.clone());
+        if let Ok(password) = CredentialStore::get_password(&account_id) {
+            match ImapAdapter::connect(&account.imap_host, account.imap_port as u16, &username, &password).await {
+                Ok(mut imap) => {
+                    if let Err(e) = imap.append_to_mailbox(path, &raw).await {
+                        tracing::warn!("追加草稿到 IMAP 失败: {}", e.message);
+                    }
+                }
+                Err(e) => tracing::warn!("连接 IMAP 保存草稿失败: {}", e.message),
+            }
+        }
+    }
+
+    let email = Email {
+        id: uuid::Uuid::new_v4().to_string(), account_id: account_id.clone(),
+        folder_id: draft_folder.map(|(id, _)| id),
+        message_id: Some(format!("draft-{}", uuid::Uuid::new_v4())),
         uid: None, from_address: Some(account.email.clone()),
         to_addresses: Some(serde_json::to_string(&to).unwrap_or_default()),
         cc_addresses: Some(serde_json::to_string(&cc).unwrap_or_default()),
         subject: Some(subject), preview_text: Some(body_text.chars().take(200).collect()),
         body_text: Some(body_text), body_html: Some(body_html), has_attachments: false,
         is_read: true, is_starred: false, received_at: Some(now()),
-        created_at: now(), account_email: Some(account.email), account_name: None,
+        created_at: now(), account_email: Some(account.email), account_name: account.display_name,
     };
     let db = state.service.db.lock().await;
     db_queries::upsert_email(&db, &email)?;
@@ -239,6 +330,141 @@ pub async fn mail_set_account_signature(state: State<'_, AppState>, account_id: 
     signature_id: Option<String>, auto_new: Option<bool>, auto_reply: Option<bool>) -> Result<(), MailError> {
     let db = state.service.db.lock().await;
     db_queries::set_account_signature(&db, &account_id, signature_id.as_deref(), auto_new, auto_reply)
+}
+
+// ---------------------------------------------------------------------------
+// 邮件模板
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn mail_list_templates(state: State<'_, AppState>) -> Result<Vec<EmailTemplate>, MailError> {
+    let db = state.service.db.lock().await;
+    db_queries::list_templates(&db)
+}
+
+#[tauri::command]
+pub async fn mail_save_template(state: State<'_, AppState>, id: Option<String>, name: String,
+    subject: Option<String>, body: Option<String>) -> Result<EmailTemplate, MailError> {
+    let tpl = EmailTemplate {
+        id: id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        name, subject, body, created_at: now(),
+    };
+    let db = state.service.db.lock().await;
+    db_queries::save_template(&db, &tpl)?;
+    Ok(tpl)
+}
+
+#[tauri::command]
+pub async fn mail_delete_template(state: State<'_, AppState>, id: String) -> Result<(), MailError> {
+    let db = state.service.db.lock().await;
+    db_queries::delete_template(&db, &id)
+}
+
+// ---------------------------------------------------------------------------
+// 联系人（CRUD + 分组 + VCF 导入导出）
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn contact_list(state: State<'_, AppState>, group_id: Option<String>,
+    query: Option<String>) -> Result<Vec<Contact>, MailError> {
+    let db = state.service.db.lock().await;
+    contacts::list_contacts(&db, group_id.as_deref(), query.as_deref())
+}
+
+#[tauri::command]
+pub async fn contact_save(state: State<'_, AppState>, contact: Contact) -> Result<Contact, MailError> {
+    let mut c = contact;
+    if c.id.is_empty() {
+        c.id = uuid::Uuid::new_v4().to_string();
+        c.created_at = now();
+    }
+    c.updated_at = now();
+    if c.created_at.is_empty() {
+        c.created_at = c.updated_at.clone();
+    }
+    let db = state.service.db.lock().await;
+    contacts::save_contact(&db, &c)?;
+    Ok(c)
+}
+
+#[tauri::command]
+pub async fn contact_delete(state: State<'_, AppState>, id: String) -> Result<(), MailError> {
+    let db = state.service.db.lock().await;
+    contacts::delete_contact(&db, &id)
+}
+
+#[tauri::command]
+pub async fn contact_group_list(state: State<'_, AppState>) -> Result<Vec<ContactGroup>, MailError> {
+    let db = state.service.db.lock().await;
+    contacts::list_groups(&db)
+}
+
+#[tauri::command]
+pub async fn contact_group_save(state: State<'_, AppState>, id: Option<String>,
+    name: String) -> Result<ContactGroup, MailError> {
+    let ts = now();
+    let group = ContactGroup {
+        id: id.unwrap_or_else(|| uuid::Uuid::new_v4().to_string()),
+        name, sort_order: 0, member_count: 0,
+        created_at: ts.clone(), updated_at: ts,
+    };
+    let db = state.service.db.lock().await;
+    contacts::save_group(&db, &group)?;
+    Ok(group)
+}
+
+#[tauri::command]
+pub async fn contact_group_delete(state: State<'_, AppState>, id: String) -> Result<(), MailError> {
+    let db = state.service.db.lock().await;
+    contacts::delete_group(&db, &id)
+}
+
+#[tauri::command]
+pub async fn contact_export_vcf(state: State<'_, AppState>, group_id: Option<String>) -> Result<String, MailError> {
+    let db = state.service.db.lock().await;
+    contacts::export_vcf(&db, group_id.as_deref())
+}
+
+#[tauri::command]
+pub async fn contact_import_vcf(state: State<'_, AppState>, content: String) -> Result<i64, MailError> {
+    let db = state.service.db.lock().await;
+    contacts::import_vcf(&db, &content)
+}
+
+// ---------------------------------------------------------------------------
+// 邮件附件
+// ---------------------------------------------------------------------------
+
+#[tauri::command]
+pub async fn mail_list_attachments(state: State<'_, AppState>, email_id: String) -> Result<Vec<EmailAttachment>, MailError> {
+    let db = state.service.db.lock().await;
+    db_queries::list_attachments(&db, &email_id)
+}
+
+/// 下载附件：弹出系统保存对话框，把附件复制到用户选择的位置；用户取消返回空字符串
+#[tauri::command]
+pub async fn mail_download_attachment(app: AppHandle, state: State<'_, AppState>, id: String) -> Result<String, MailError> {
+    use tauri_plugin_dialog::DialogExt;
+    let att = {
+        let db = state.service.db.lock().await;
+        db_queries::get_attachment(&db, &id)?
+    };
+    let src = std::path::PathBuf::from(&att.file_path);
+    if !src.exists() {
+        return Err(MailError::new("NOT_FOUND", "附件文件不存在或已被清理"));
+    }
+    let default_name = att.filename.clone().unwrap_or_else(|| "attachment".into());
+    let picked = app.dialog().file()
+        .set_file_name(default_name)
+        .blocking_save_file();
+    let Some(path) = picked else {
+        return Ok(String::new()); // 用户取消
+    };
+    let dest = path.into_path()
+        .map_err(|e| MailError::new("IO_ERROR", &format!("无效保存路径: {}", e)))?;
+    std::fs::copy(&src, &dest)
+        .map_err(|e| MailError::new("IO_ERROR", &format!("复制附件失败: {}", e)))?;
+    Ok(dest.to_string_lossy().into_owned())
 }
 
 #[tauri::command]

@@ -1,6 +1,7 @@
 use rusqlite::Connection;
+use std::collections::HashSet;
 use std::path::Path;
-use std::sync::Arc;
+use std::sync::{Arc, Mutex as StdMutex};
 use tokio::sync::Mutex;
 use tauri::AppHandle;
 use crate::mail::creds::CredentialStore;
@@ -14,59 +15,62 @@ use crate::mail::error::{MailError, MailResult};
 pub struct MailService {
     pub db: Arc<Mutex<Connection>>,
     pub attachments_dir: Box<Path>,
-    pub locks: Arc<Mutex<std::collections::HashMap<String, bool>>>,
+    /// 每账号同步互斥锁（std Mutex：临界区极短，且可在 Drop 中安全复位）
+    pub locks: Arc<StdMutex<HashSet<String>>>,
+}
+
+/// RAII 同步锁守卫：无论正常结束还是 panic，Drop 时都会释放锁，
+/// 避免旧实现中 do_sync panic 导致锁永久卡死的问题。
+struct SyncGuard {
+    locks: Arc<StdMutex<HashSet<String>>>,
+    key: String,
+}
+
+impl Drop for SyncGuard {
+    fn drop(&mut self) {
+        if let Ok(mut set) = self.locks.lock() {
+            set.remove(&self.key);
+        }
+    }
 }
 
 impl MailService {
     pub async fn sync_account(&self, app: &AppHandle, account_id: &str) -> MailResult<SyncResult> {
         let lock_key = account_id.to_string();
         {
-            let mut locks = self.locks.lock().await;
-            if locks.get(&lock_key).copied().unwrap_or(false) {
-                let _ = std::fs::OpenOptions::new().create(true).append(true)
-                    .open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
-                    .and_then(|mut f| std::io::Write::write_all(&mut f, format!("[sync_account] LOCK CONFLICT account_id={}\n", account_id).as_bytes()));
-                return Ok(SyncResult { fetched: 0, inserted: 0, folders: 0, error: Some("同步进行中".into()) });
+            let mut set = self.locks.lock().map_err(|_| MailError::new("LOCK", "同步锁状态异常"))?;
+            if !set.insert(lock_key.clone()) {
+                return Ok(SyncResult { fetched: 0, inserted: 0, folders: 0, error: Some("该账号同步进行中，请稍后再试".into()) });
             }
-            locks.insert(lock_key.clone(), true);
         }
+        let _guard = SyncGuard { locks: self.locks.clone(), key: lock_key };
 
         let result = self.do_sync(app, account_id).await;
-
-        {
-            let mut locks = self.locks.lock().await;
-            locks.insert(lock_key, false);
+        if let Err(e) = &result {
+            emit_progress(app, SyncProgress::Error { account_id: account_id.into(), message: e.message.clone() });
         }
-        let _ = std::fs::OpenOptions::new().create(true).append(true).open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
-            .and_then(|mut f| std::io::Write::write_all(&mut f, format!("[sync_account] result is_ok={} err={:?}\n", result.is_ok(), result.as_ref().err()).as_bytes()));
         result
     }
 
     async fn do_sync(&self, app: &AppHandle, account_id: &str) -> MailResult<SyncResult> {
-        let trace = |s: String| {
-            let _ = std::fs::OpenOptions::new().create(true).append(true)
-                .open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
-                .and_then(|mut f| std::io::Write::write_all(&mut f, format!("{}\n", s).as_bytes()));
-        };
-        trace(format!("[do_sync] 1.entry account_id={}", account_id));
         emit_progress(app, SyncProgress::Connecting { account_id: account_id.into() });
 
         let account = {
             let db = self.db.lock().await;
             db_queries::get_account(&db, account_id)?
         };
-        trace(format!("[do_sync] 2.after get_account email={} imap={}:{}", account.email, account.imap_host, account.imap_port));
         let password = CredentialStore::get_password(account_id)?;
-        trace("[do_sync] 3.after get_password".to_string());
         let username = account.username.as_deref().unwrap_or(&account.email);
 
         let mut imap = ImapAdapter::connect(&account.imap_host, account.imap_port as u16, username, &password).await?;
-        trace("[do_sync] 4.after imap connect".to_string());
 
         let folders = imap.list_folders().await?;
-        trace(format!("[do_sync] 5.after list_folders len={} paths={:?}", folders.len(), folders.iter().map(|(p,_)|p).collect::<Vec<_>>()));
+        tracing::debug!("[do_sync] account={} folders={:?}", account.email, folders.iter().map(|(p,_)| p).collect::<Vec<_>>());
         let mut fetched = 0i64;
         let mut inserted = 0i64;
+        // 聚合各文件夹的非致命错误（select/fetch 失败），最终透传给前端，
+        // 避免"拉到 0 封但 error=null"的假象
+        let mut folder_errors: Vec<String> = Vec::new();
 
         for (path, flags) in &folders {
             let folder_type = infer_folder_type(path, flags);
@@ -76,28 +80,36 @@ impl MailService {
                 let db = self.db.lock().await;
                 ensure_folder(&db, account_id, path, &display_name, folder_type)?
             };
-            trace(format!("[do_sync] 6.folder path={} folder_type={:?}", path, folder_type));
 
             match imap.select_folder(path).await {
                 Ok((uid_next, uid_validity)) => {
-                    trace(format!("[do_sync] 7.select OK path={} uid_next={} uid_validity={}", path, uid_next, uid_validity));
                     let last_uid = {
                         let db = self.db.lock().await;
                         get_folder_last_uid(&db, &folder_id)?
                     };
                     let (start, end) = calc_fetch_range(last_uid, uid_next);
-                    trace(format!("[do_sync] 8.last_uid={:?} fetch_range={}..{}", last_uid, start, end));
+                    tracing::debug!("[do_sync] folder={} last_uid={:?} range={}..{}", path, last_uid, start, end);
 
                     if start <= end {
-                        let messages = imap.fetch_range(start, end).await?;
+                        let messages = match imap.fetch_range(start, end).await {
+                            Ok(m) => m,
+                            Err(e) => {
+                                folder_errors.push(format!("{}: {}", display_name, e.message));
+                                continue;
+                            }
+                        };
                         let total = messages.len() as i64;
                         let mut done = 0i64;
-                        trace(format!("[do_sync] 9.fetch_range returned {} messages", messages.len()));
 
                         for (uid, body, msg_flags) in messages {
-                            trace(format!("[do_sync] 9a.parse uid={} body_len={}", uid, body.len()));
-                            let parsed = parse_message(&body)?;
-                            trace(format!("[do_sync] 9b.parsed uid={} subject={:?}", uid, parsed.subject.as_deref().unwrap_or("").chars().take(30).collect::<String>()));
+                            // 单封邮件解析失败只跳过该封，不中断整轮同步
+                            let parsed = match parse_message(&body) {
+                                Ok(p) => p,
+                                Err(e) => {
+                                    tracing::warn!("[do_sync] 跳过无法解析的邮件 folder={} uid={} err={}", path, uid, e.message);
+                                    continue;
+                                }
+                            };
                             let is_read = msg_flags.iter().any(|f| f.contains("Seen"));
                             let is_starred = msg_flags.iter().any(|f| f.contains("Flagged"));
 
@@ -116,18 +128,54 @@ impl MailService {
                                 body_html: parsed.body_html.as_ref().map(|h| sanitize_html(h)),
                                 has_attachments: parsed.has_attachments,
                                 is_read, is_starred,
-                                received_at: Some(chrono::Utc::now().to_rfc3339()),
+                                // 使用邮件 Date 头作为接收时间，缺失才回退到同步时刻
+                                received_at: parsed.date.clone().or_else(|| Some(chrono::Utc::now().to_rfc3339())),
                                 created_at: chrono::Utc::now().to_rfc3339(),
                                 account_email: Some(account.email.clone()),
                                 account_name: account.display_name.clone(),
                             };
-                            trace(format!("[do_sync] 9b2.email built uid={}", uid));
 
                             {
                                 let db = self.db.lock().await;
-                                trace(format!("[do_sync] 9c.db locked uid={}", uid));
                                 db_queries::upsert_email(&db, &email)?;
-                                trace(format!("[do_sync] 9d.after upsert uid={}", uid));
+                                // 先清旧附件记录（磁盘文件由下面锁外清理）
+                                let old = db_queries::delete_attachments_for_email(&db, &email.id)?;
+                                drop(db);
+                                for o in &old {
+                                    let _ = std::fs::remove_file(&o.file_path);
+                                }
+                            }
+
+                            // 附件落盘：uuid+序号 命名磁盘文件（不信任邮件头文件名，防路径注入）
+                            const MAX_ATTACH_BYTES: usize = 30 * 1024 * 1024;
+                            let _ = std::fs::create_dir_all(&*self.attachments_dir);
+                            for (i, att) in parsed.attachments.iter().enumerate() {
+                                if att.data.len() > MAX_ATTACH_BYTES {
+                                    tracing::warn!("附件超限跳过 email={} name={:?} size={}",
+                                        email.id, att.filename, att.data.len());
+                                    continue;
+                                }
+                                let disk_name = format!("{}_{}", email.id, i);
+                                let path = self.attachments_dir.join(&disk_name);
+                                if let Err(e) = std::fs::write(&path, &att.data) {
+                                    tracing::warn!("附件落盘失败 email={} idx={} err={}", email.id, i, e);
+                                    continue;
+                                }
+                                let rec = EmailAttachment {
+                                    id: uuid::Uuid::new_v4().to_string(),
+                                    email_id: email.id.clone(),
+                                    filename: att.filename.clone(),
+                                    mime_type: att.mime_type.clone(),
+                                    size: Some(att.data.len() as i64),
+                                    file_path: path.to_string_lossy().into_owned(),
+                                    is_inline: att.is_inline,
+                                    content_id: att.content_id.clone(),
+                                    created_at: chrono::Utc::now().to_rfc3339(),
+                                };
+                                {
+                                    let db = self.db.lock().await;
+                                    db_queries::insert_attachment(&db, &rec)?;
+                                }
                             }
                             inserted += 1;
                             fetched += 1;
@@ -144,17 +192,22 @@ impl MailService {
                     }
                 }
                 Err(e) => {
-                    trace(format!("[do_sync] 7.select FAIL path={} err={:?}", path, e));
+                    tracing::warn!("[do_sync] select 失败 folder={} err={}", path, e.message);
+                    folder_errors.push(format!("{}: {}", display_name, e.message));
                 }
             }
         }
 
-        trace(format!("[do_sync] 10.END fetched={} inserted={} folders_vec_len={}", fetched, inserted, folders.len()));
         emit_progress(app, SyncProgress::Done {
             account_id: account_id.into(), fetched, inserted
         });
 
-        Ok(SyncResult { fetched, inserted, folders: folders.len() as i64, error: None })
+        Ok(SyncResult {
+            fetched,
+            inserted,
+            folders: folders.len() as i64,
+            error: if folder_errors.is_empty() { None } else { Some(folder_errors.join("；")) },
+        })
     }
 
     pub async fn create_folder(&self, account_id: &str, name: &str) -> MailResult<EmailFolder> {

@@ -11,34 +11,46 @@ import {
 } from "./useMail";
 import { sanitizeHtml } from "@/lib/utils";
 import { toast } from "@/lib/toast";
+import { isTauri } from "@/lib/tauri";
+import { mailApi } from "./mailApi";
 import { TOAST_DURATION } from "@/lib/constants";
 import { formatDateTime } from "@/lib/dateUtils";
 import type { Email, EmailAttachment } from "@/types";
 
-function triggerDownload(href: string, filename: string) {
-  const a = document.createElement("a");
-  a.href = href;
-  a.download = filename;
-  document.body.appendChild(a);
-  a.click();
-  document.body.removeChild(a);
-}
-
 /**
  * 解析附件的可访问 URL。
- * Tauri 本地模式下附件存储在本地文件系统，file_path 已是可直接访问的本地路径或 file:// URL。
- * 兼容 http/data/blob 外链场景。
+ * Tauri 环境：本地绝对路径经 convertFileSrc 转成 asset protocol URL
+ * （http://tauri.localhost/...，同源，受 assetProtocol scope 约束）。
+ * 非 Tauri 环境回退 file:// 以便浏览器预览。
  */
-function resolveAttachmentUrl(attachment: EmailAttachment): string | null {
+async function resolveAttachmentUrl(attachment: EmailAttachment): Promise<string | null> {
   const path = attachment.file_path;
   if (!path) return null;
-  if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:") || path.startsWith("file:")) {
+  if (path.startsWith("http") || path.startsWith("data:") || path.startsWith("blob:")) {
     return path;
   }
-  // 本地绝对路径：转为 file:// URL 供 WebView 加载
-  // Windows 路径形如 C:\Users\... -> file:///C:/Users/...
-  const normalized = path.replace(/\\/g, "/");
-  return `file:///${normalized}`;
+  if (!isTauri()) {
+    const normalized = path.replace(/\\/g, "/");
+    return `file:///${normalized}`;
+  }
+  const { convertFileSrc } = await import("@tauri-apps/api/core");
+  return convertFileSrc(path);
+}
+
+/** 把 body_html 里的 cid:xxx 内联引用替换为本地附件 URL（在 sanitize 之前执行） */
+function resolveCidHtml(html: string, attachments: EmailAttachment[], urlMap: Record<string, string>): string {
+  if (!html || !attachments.length) return html;
+  let out = html;
+  for (const a of attachments) {
+    if (!a.content_id) continue;
+    const url = urlMap[a.id];
+    if (!url) continue;
+    const cid = a.content_id.replace(/[<>]/g, "");
+    if (out.includes(`cid:${cid}`)) {
+      out = out.split(`cid:${cid}`).join(url);
+    }
+  }
+  return out;
 }
 
 interface MailReaderProps {
@@ -54,6 +66,7 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
   const deleteEmail = useDeleteEmail();
   const sendEmail = useSendEmail();
   const { data: attachments = [] } = useEmailAttachments(email?.id);
+  const [urlMap, setUrlMap] = useState<Record<string, string>>({});
   const [previewUrls, setPreviewUrls] = useState<Record<string, string>>({});
   const [replyMode, setReplyMode] = useState(false);
   const [forwardMode, setForwardMode] = useState(false);
@@ -64,22 +77,32 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
   const [forwardSubject, setForwardSubject] = useState("");
   const [forwardBody, setForwardBody] = useState("");
 
-  // 为图片/PDF 附件预取可访问 URL，用于内联预览
+  // 为全部附件生成可访问 URL（urlMap 供 cid 替换与预览使用）
   // 依赖 email?.id 而非 attachments 数组，避免每次渲染新数组引用导致无限循环
   useEffect(() => {
     if (!email?.id) {
+      setUrlMap({});
       setPreviewUrls({});
       return;
     }
-    const previewable = (mime?: string | null) =>
-      !!mime && (mime.startsWith("image/") || mime === "application/pdf");
-    const map: Record<string, string> = {};
-    for (const a of attachments) {
-      if (!previewable(a.mime_type)) continue;
-      const url = resolveAttachmentUrl(a);
-      if (url) map[a.id] = url;
-    }
-    setPreviewUrls(map);
+    let cancelled = false;
+    (async () => {
+      const all: Record<string, string> = {};
+      const previewable = (mime?: string | null) =>
+        !!mime && (mime.startsWith("image/") || mime === "application/pdf");
+      const preview: Record<string, string> = {};
+      for (const a of attachments) {
+        const url = await resolveAttachmentUrl(a);
+        if (!url) continue;
+        all[a.id] = url;
+        if (previewable(a.mime_type)) preview[a.id] = url;
+      }
+      if (!cancelled) {
+        setUrlMap(all);
+        setPreviewUrls(preview);
+      }
+    })();
+    return () => { cancelled = true; };
   }, [email?.id, attachments]);
 
   if (!email) {
@@ -119,14 +142,16 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
     }
   };
 
-  const handleDownload = (attachment: EmailAttachment) => {
-    const filename = attachment.filename || "attachment";
-    const url = resolveAttachmentUrl(attachment);
-    if (!url) {
-      toast("该附件没有可用的存储路径", "error");
-      return;
+  const handleDownload = async (attachment: EmailAttachment) => {
+    try {
+      const saved = await mailApi.downloadAttachment(attachment.id);
+      if (saved) {
+        toast(`附件已保存到 ${saved}`, "success");
+      }
+      // 用户取消保存对话框时静默
+    } catch (e) {
+      toast(`下载失败：${e instanceof Error ? e.message : String(e)}`, "error");
     }
-    triggerDownload(url, filename);
   };
 
   const handleForward = () => {
@@ -237,7 +262,9 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
 
       <div
         className="flex-1 overflow-auto p-4 prose prose-sm max-w-none dark:prose-invert"
-        dangerouslySetInnerHTML={{ __html: sanitizeHtml(email.body_html ?? email.preview_text ?? "") }}
+        dangerouslySetInnerHTML={{
+          __html: sanitizeHtml(resolveCidHtml(email.body_html ?? email.preview_text ?? "", attachments, urlMap)),
+        }}
       />
 
       {(replyMode || forwardMode) && (

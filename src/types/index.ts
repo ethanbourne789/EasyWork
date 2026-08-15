@@ -292,5 +292,36 @@ export interface EmailSignature {
   updated_at: string;
 }
 
+// 联系人（与 Rust 端 Contact / ContactGroup 保持一致）
+export interface Contact {
+  id: string;
+  name: string;
+  emails: string[];
+  phones: string[];
+  company: Option<string>;
+  title: Option<string>;
+  notes: Option<string>;
+  group_ids: string[];
+  created_at: string;
+  updated_at: string;
+}
+
+export interface ContactGroup {
+  id: string;
+  name: string;
+  sort_order: number;
+  member_count: number;
+  created_at: string;
+  updated_at: string;
+}
+
+/** Rust SyncResult：邮件同步结果（error 为非致命错误聚合） */
+export interface MailSyncResult {
+  fetched: number;
+  inserted: number;
+  folders: number;
+  error: Option<string>;
+}
+
 // 兼容 Rust Option<T> 序列化（serde 默认序列化为 null 或缺失）
 type Option<T> = T | null;

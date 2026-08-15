@@ -1,5 +1,5 @@
 import { useState, useEffect } from "react";
-import { Pencil, FolderPlus, RefreshCw, Menu, PenSquare } from "lucide-react";
+import { Pencil, FolderPlus, RefreshCw, Menu, PenSquare, Users, Mail as MailIcon } from "lucide-react";
 import { ModuleFab } from "@/components/layout/ModuleFab";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
@@ -16,6 +16,7 @@ import { MailAccountTree } from "./MailAccountTree";
 import { MailList } from "./MailList";
 import { MailReader } from "./MailReader";
 import { MailComposer } from "./MailComposer";
+import { ContactsPanel } from "./ContactsPanel";
 import {
   useEmailFolders,
   useEmailAccounts,
@@ -58,6 +59,8 @@ export function Mail() {
     body?: string;
   }>();
   const [mobileView, setMobileView] = useState<"list" | "reader">("list");
+  /** 主视图：邮件三栏 / 联系人管理 */
+  const [mainView, setMainView] = useState<"mail" | "contacts">("mail");
   const [drawerOpen, setDrawerOpen] = useState(false);
   const [folderDialogOpen, setFolderDialogOpen] = useState(false);
   const [newFolderName, setNewFolderName] = useState("");
@@ -154,53 +157,91 @@ export function Mail() {
       {/* 响应式标题栏 — 桌面端显示完整标题，移动端显示紧凑标题 + 菜单按钮 */}
       <div className="flex items-center justify-between gap-4 border-b px-4 py-2">
         <div className="flex items-center gap-2">
-          {/* 移动端菜单按钮 */}
-          <Button
-            variant="ghost"
-            size="icon"
-            className="md:hidden"
-            onClick={() => setDrawerOpen(true)}
-          >
-            <Menu className="h-5 w-5" />
-          </Button>
+          {/* 移动端菜单按钮（仅邮件视图需要） */}
+          {mainView === "mail" && (
+            <Button
+              variant="ghost"
+              size="icon"
+              className="md:hidden"
+              onClick={() => setDrawerOpen(true)}
+            >
+              <Menu className="h-5 w-5" />
+            </Button>
+          )}
           <div>
             <h1 className="font-display text-lg font-semibold leading-tight md:text-[28px]">
-              邮箱
+              {mainView === "mail" ? "邮箱" : "联系人"}
             </h1>
             <p className="hidden text-xs text-muted-foreground md:block">
-              {accounts.length} 个账户 · {totalUnread} 封未读
+              {mainView === "mail"
+                ? `${accounts.length} 个账户 · ${totalUnread} 封未读`
+                : "管理联系人、分组与 VCF 导入导出"}
             </p>
           </div>
         </div>
         <div className="flex items-center gap-1">
+          {/* 邮箱 / 联系人 视图切换 */}
           <Button
-            variant="ghost"
+            variant={mainView === "mail" ? "secondary" : "ghost"}
             size="sm"
             className="gap-1"
-            onClick={handleSync}
-            disabled={syncMail.isPending || isSyncing}
+            onClick={() => setMainView("mail")}
+            aria-label="切换到邮箱视图"
           >
-            <RefreshCw className={syncMail.isPending || isSyncing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
-            <span className="hidden sm:inline">{syncMail.isPending || isSyncing ? "收取中..." : "收取邮件"}</span>
+            <MailIcon className="h-4 w-4" />
+            <span className="hidden sm:inline">邮件</span>
           </Button>
-          <Button variant="ghost" size="sm" className="gap-1" onClick={handleCompose}>
-            <PenSquare className="h-4 w-4" />
-            <span className="hidden sm:inline">写信</span>
+          <Button
+            variant={mainView === "contacts" ? "secondary" : "ghost"}
+            size="sm"
+            className="gap-1"
+            onClick={() => setMainView("contacts")}
+            aria-label="切换到联系人视图"
+          >
+            <Users className="h-4 w-4" />
+            <span className="hidden sm:inline">联系人</span>
           </Button>
+          {mainView === "mail" && (
+            <>
+              <Button
+                variant="ghost"
+                size="sm"
+                className="gap-1"
+                onClick={handleSync}
+                disabled={syncMail.isPending || isSyncing}
+              >
+                <RefreshCw className={syncMail.isPending || isSyncing ? "h-4 w-4 animate-spin" : "h-4 w-4"} />
+                <span className="hidden sm:inline">{syncMail.isPending || isSyncing ? "收取中..." : "收取邮件"}</span>
+              </Button>
+              <Button variant="ghost" size="sm" className="gap-1" onClick={handleCompose}>
+                <PenSquare className="h-4 w-4" />
+                <span className="hidden sm:inline">写信</span>
+              </Button>
+            </>
+          )}
         </div>
       </div>
 
-      {/* 同步进度条 */}
-      <SyncProgressBar />
+      {mainView === "mail" && (
+        <>
+          {/* 同步进度条 */}
+          <SyncProgressBar />
 
-      {/* 同步进度提示浮层 */}
-      <div className="px-4 pt-1">
-        <SyncProgressIndicator
-          accountLabels={accountLabels}
-          compact
-        />
-      </div>
+          {/* 同步进度提示浮层 */}
+          <div className="px-4 pt-1">
+            <SyncProgressIndicator
+              accountLabels={accountLabels}
+              compact
+            />
+          </div>
+        </>
+      )}
 
+      {mainView === "contacts" ? (
+        <div className="flex-1 overflow-hidden">
+          <ContactsPanel />
+        </div>
+      ) : (
       <div className="flex flex-1 overflow-hidden">
         {/* 平板/手机抽屉 — 持有 MailAccountTree */}
         <Drawer
@@ -271,6 +312,8 @@ export function Mail() {
           />
         </main>
       </div>
+      )}
+      {mainView === "mail" && (
       <ModuleFab
         mainIcon={Pencil}
         actions={[
@@ -278,6 +321,7 @@ export function Mail() {
           { label: "新建文件夹", icon: FolderPlus, onClick: openFolderDialog },
         ]}
       />
+      )}
       <MailComposer
         open={composerOpen}
         onClose={() => setComposerOpen(false)}

@@ -1,5 +1,5 @@
 import { isTauri } from "@/lib/tauri";
-import type { Email, EmailFolder, EmailAccount, EmailSignature } from "@/types";
+import type { Email, EmailFolder, EmailAccount, EmailSignature, EmailTemplate, EmailAttachment, Contact, ContactGroup, MailSyncResult } from "@/types";
 
 /**
  * 统一收件箱虚拟节点 ID。
@@ -75,7 +75,7 @@ export const mailApi = {
   },
   sync: async (accountId?: string) => {
     const invoke = await getInvoke();
-    return invoke("mail_sync", { accountId });
+    return invoke<MailSyncResult>("mail_sync", { accountId });
   },
   send: async (params: {
     accountId: string;
@@ -167,5 +167,73 @@ export const mailApi = {
   deleteAccount: async (id: string) => {
     const invoke = await getInvoke();
     return invoke("mail_delete_account", { id });
+  },
+  // ---- 邮件模板 ----
+  listTemplates: async () => {
+    const invoke = await getInvoke();
+    return invoke<EmailTemplate[]>("mail_list_templates");
+  },
+  saveTemplate: async (params: { id?: string; name: string; subject?: string; body?: string }) => {
+    const invoke = await getInvoke();
+    return invoke<EmailTemplate>("mail_save_template", params);
+  },
+  deleteTemplate: async (id: string) => {
+    const invoke = await getInvoke();
+    return invoke("mail_delete_template", { id });
+  },
+  // ---- 草稿 ----
+  saveDraft: async (params: {
+    accountId: string;
+    to: string[];
+    cc: string[];
+    subject: string;
+    bodyHtml: string;
+    bodyText: string;
+  }) => {
+    const invoke = await getInvoke();
+    return invoke<Email>("mail_save_draft", params);
+  },
+  // ---- 联系人 ----
+  contactList: async (groupId?: string, query?: string) => {
+    const invoke = await getInvoke();
+    return invoke<Contact[]>("contact_list", { groupId, query });
+  },
+  contactSave: async (contact: Contact) => {
+    const invoke = await getInvoke();
+    return invoke<Contact>("contact_save", { contact });
+  },
+  contactDelete: async (id: string) => {
+    const invoke = await getInvoke();
+    return invoke("contact_delete", { id });
+  },
+  contactGroupList: async () => {
+    const invoke = await getInvoke();
+    return invoke<ContactGroup[]>("contact_group_list");
+  },
+  contactGroupSave: async (params: { id?: string; name: string }) => {
+    const invoke = await getInvoke();
+    return invoke<ContactGroup>("contact_group_save", params);
+  },
+  contactGroupDelete: async (id: string) => {
+    const invoke = await getInvoke();
+    return invoke("contact_group_delete", { id });
+  },
+  contactExportVcf: async (groupId?: string) => {
+    const invoke = await getInvoke();
+    return invoke<string>("contact_export_vcf", { groupId });
+  },
+  contactImportVcf: async (content: string) => {
+    const invoke = await getInvoke();
+    return invoke<number>("contact_import_vcf", { content });
+  },
+  // ---- 附件 ----
+  listAttachments: async (emailId: string) => {
+    const invoke = await getInvoke();
+    return invoke<EmailAttachment[]>("mail_list_attachments", { emailId });
+  },
+  /** 下载附件：弹出系统保存对话框；用户取消返回空字符串 */
+  downloadAttachment: async (id: string) => {
+    const invoke = await getInvoke();
+    return invoke<string>("mail_download_attachment", { id });
   },
 };

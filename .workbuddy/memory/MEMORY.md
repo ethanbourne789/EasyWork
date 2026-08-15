@@ -70,8 +70,9 @@ EasyWork = Tauri 桌面端全能生产力工作台（个人/小团队）：任�
 
 ## 真实邮件 E2E（2026-08-15，QQ 邮箱）
 - **🔴 KEYRING 修复**：`keyring = "3"` 必须按平台显式启用后端 feature（windows-native / apple-native / sync-secret-service），否则 set 静默 no-op、get 报 NoEntry。已加 Cargo.toml target-specific deps。验证：添加 QQ 账户后 keyring 真存密码（之前 P1 报 KEYRING_ERROR 是 set 失败伪装成功）。
-- **🐛 待修 IMAP 拉取 bug**：mail_sync 返回 fetched:0/folders:0/error:null 但 list_folders 实际返 5 个 folder（imap_debug.log）。疑似 sync_account 锁冲突（app auto-sync 与手动 sync 竞争）或 fetch_range 全失败被 if let Ok 吞掉。
-- **首次同步窗口 WINDOW=200**（imap.rs calc_fetch_range）：只拉最近 200 封，2129 封邮箱永远只能拉 200 封，窗口策略需评估。
+- **✅ IMAP 拉取 bug 已修复（2026-08-15 重构）**：根因 = 后台 300s 定时同步与手动同步锁冲突 + `mail_sync` 聚合丢弃子账号 error → `fetched:0/folders:0/error:null` 假象。修复：RAII SyncGuard 锁、错误全链路透传、解析失败跳过、received_at 用 Date 头、文件夹未读实时 COUNT、预览去 HTML 标签。真实 QQ 账号验证 5 文件夹/261 封/error=null。
+- **邮件模块能力现状（2026-08-15）**：多账户+统一收件箱、签名 CRUD/账户绑定、模板 CRUD、草稿（IMAP APPEND）、已发送 APPEND、联系人（CRUD/分组/VCF 3.0 导入导出）、写信联系人 datalist 联想、移动端单栏+汉堡+底 Tab。E2E 脚本 `e2e-tauri/mail-full-flow.mjs`（27/27）。
+- **首次同步窗口 WINDOW=200**（imap.rs calc_fetch_range）：只拉最近 200 封/文件夹，历史回填分页待做；附件未落盘；已读/标星不回写 IMAP 服务端；联系人未入云同步表；emails_fts 无触发器。
 - **UI 渲染通过 SQL 注入验证**：邮件列表+正文（plain text 504 字符、HTML 邮件）渲染正确，console/pageerror=0。
 
 ## Android 图标（2026-08-11 用户偏好：复制进项目目录）

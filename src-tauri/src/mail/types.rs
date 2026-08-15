@@ -94,6 +94,31 @@ pub struct EmailTemplate {
 }
 
 #[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct Contact {
+    pub id: String,
+    pub name: String,
+    /// JSON 数组字符串的 Vec 形式（后端落库时序列化为 JSON）
+    pub emails: Vec<String>,
+    pub phones: Vec<String>,
+    pub company: Option<String>,
+    pub title: Option<String>,
+    pub notes: Option<String>,
+    pub group_ids: Vec<String>,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
+pub struct ContactGroup {
+    pub id: String,
+    pub name: String,
+    pub sort_order: i64,
+    pub member_count: i64,
+    pub created_at: String,
+    pub updated_at: String,
+}
+
+#[derive(Debug, Clone, Serialize, Deserialize)]
 pub struct SyncResult {
     pub fetched: i64,
     pub inserted: i64,

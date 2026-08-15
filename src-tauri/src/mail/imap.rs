@@ -51,16 +51,7 @@ impl ImapAdapter {
                 result.push((path, flags));
             }
         }
-        // 调试日志（追加模式，多次调用累积）
-        let _ = std::fs::OpenOptions::new()
-            .create(true).append(true).open(r"E:\Dev\EasyWork\e2e-screenshots\imap_debug.log")
-            .and_then(|mut f| std::io::Write::write_all(
-                &mut f,
-                format!("[list_folders] raw={}, skipped={}, kept={}, paths={:?}\n",
-                    raw, skipped, result.len(),
-                    result.iter().map(|(p, _)| p.clone()).collect::<Vec<_>>()
-                ).as_bytes(),
-            ));
+        tracing::debug!("[list_folders] raw={} skipped={} kept={}", raw, skipped, result.len());
         Ok(result)
     }
 
@@ -75,14 +66,26 @@ impl ImapAdapter {
         let mut stream = self.session.uid_fetch(range, "(UID FLAGS RFC822)").await
             .map_err(|e| MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", e)))?;
         let mut result = Vec::new();
+        let mut stream_errors = 0usize;
+        let mut last_err: Option<String> = None;
         while let Some(msg) = stream.next().await {
-            if let Ok(msg) = msg {
-                let uid = msg.uid.unwrap_or(0);
-                let flags: Vec<String> = msg.flags().map(|f| format!("{:?}", f)).collect();
-                if let Some(body) = msg.body() {
-                    result.push((uid, body.to_vec(), flags));
+            match msg {
+                Ok(msg) => {
+                    let uid = msg.uid.unwrap_or(0);
+                    let flags: Vec<String> = msg.flags().map(|f| format!("{:?}", f)).collect();
+                    if let Some(body) = msg.body() {
+                        result.push((uid, body.to_vec(), flags));
+                    }
+                }
+                Err(e) => {
+                    stream_errors += 1;
+                    last_err = Some(format!("{}", e));
                 }
             }
+        }
+        // 全部失败时把底层错误透传出去，避免"拉到 0 封但无错误"的假象
+        if result.is_empty() && stream_errors > 0 {
+            return Err(MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", last_err.unwrap_or_default())));
         }
         Ok(result)
     }
@@ -107,9 +110,10 @@ impl ImapAdapter {
         Ok(())
     }
 
-    pub async fn append_to_sent(&mut self, raw_mail: &[u8]) -> MailResult<()> {
-        self.session.append("Sent", None, None, raw_mail).await
-            .map_err(|e| MailError::new("IMAP_APPEND", &format!("追加到已发送失败: {}", e)))?;
+    /// 把原始 MIME 追加到指定 IMAP 文件夹（如已发送/草稿）
+    pub async fn append_to_mailbox(&mut self, mailbox: &str, raw_mail: &[u8]) -> MailResult<()> {
+        self.session.append(mailbox, None, None, raw_mail).await
+            .map_err(|e| MailError::new("IMAP_APPEND", &format!("追加到 {} 失败: {}", mailbox, e)))?;
         Ok(())
     }
 

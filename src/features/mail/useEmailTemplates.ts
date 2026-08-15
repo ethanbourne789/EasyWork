@@ -2,15 +2,13 @@ import { useQuery, useMutation, useQueryClient } from "@tanstack/react-query";
 import { mailApi } from "./mailApi";
 import type { EmailTemplate, EmailSignature } from "@/types";
 
-// 邮件模板 hooks
-// TODO: 后端尚未提供 mail_list/save/delete_templates 命令（P1+ 阶段补齐）；
-// 当前 useEmailTemplates* 系列保留 hook 形态但返回空数据 / 抛错占位，
-// 避免破坏调用方。后续 Task 切换为真实 Tauri invoke 调用。
+// 邮件模板 hooks（后端 mail_list/save/delete_template 已就绪）
 export function useEmailTemplates() {
   return useQuery({
     queryKey: ["email-templates"],
     queryFn: async () => {
-      return [] as EmailTemplate[];
+      const data = await mailApi.listTemplates();
+      return (data ?? []) as EmailTemplate[];
     },
   });
 }
@@ -18,8 +16,8 @@ export function useEmailTemplates() {
 export function useCreateEmailTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (_input: { name: string; subject?: string; body: string }) => {
-      throw new Error("邮件模板保存暂未实现：等待后端 mail_save_template 命令");
+    mutationFn: async (input: { name: string; subject?: string; body: string }) => {
+      return mailApi.saveTemplate({ name: input.name, subject: input.subject, body: input.body });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["email-templates"] });
@@ -30,8 +28,23 @@ export function useCreateEmailTemplate() {
 export function useUpdateEmailTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (_args: { id: string; data: Partial<EmailTemplate> }) => {
-      throw new Error("邮件模板更新暂未实现：等待后端 mail_save_template 命令");
+    mutationFn: async ({ id, data }: { id: string; data: Partial<EmailTemplate> }) => {
+      // 后端是 upsert，需带全量字段；先取回合并（null 统一转 undefined）
+      let merged = {
+        name: data.name ?? "",
+        subject: data.subject ?? undefined,
+        body: data.body ?? undefined,
+      };
+      if (!data.name) {
+        const list = await mailApi.listTemplates();
+        const prev = (list ?? []).find((t) => t.id === id);
+        merged = {
+          name: prev?.name ?? "",
+          subject: (data.subject !== undefined ? data.subject : prev?.subject) ?? undefined,
+          body: (data.body !== undefined ? data.body : prev?.body) ?? undefined,
+        };
+      }
+      return mailApi.saveTemplate({ id, ...merged });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["email-templates"] });
@@ -42,8 +55,8 @@ export function useUpdateEmailTemplate() {
 export function useDeleteEmailTemplate() {
   const qc = useQueryClient();
   return useMutation({
-    mutationFn: async (_id: string) => {
-      throw new Error("邮件模板删除暂未实现：等待后端 mail_delete_template 命令");
+    mutationFn: async (id: string) => {
+      await mailApi.deleteTemplate(id);
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["email-templates"] });

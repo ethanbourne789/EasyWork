@@ -173,7 +173,8 @@ pub fn upsert_email(conn: &Connection, email: &Email) -> MailResult<()> {
          VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10,?11,?12,?13,?14,?15,?16,?17)
          ON CONFLICT(account_id, message_id) DO UPDATE SET
          folder_id=excluded.folder_id, uid=excluded.uid, from_address=excluded.from_address,
-         subject=excluded.subject, preview_text=excluded.preview_text, has_attachments=excluded.has_attachments",
+         subject=excluded.subject, preview_text=excluded.preview_text, has_attachments=excluded.has_attachments,
+         is_read=excluded.is_read, is_starred=excluded.is_starred, received_at=excluded.received_at",
         params![email.id, email.account_id, email.folder_id, email.message_id, email.uid,
                 email.from_address, email.to_addresses, email.cc_addresses, email.subject,
                 email.preview_text, email.body_text, email.body_html, email.has_attachments as i64,
@@ -199,13 +200,19 @@ pub fn delete_message(conn: &Connection, id: &str) -> MailResult<()> {
     Ok(())
 }
 
+/// 文件夹未读数实时从 emails 表计算（email_folders.unread_count 列从不更新，不可信）
 pub fn folder_unread_counts(conn: &Connection, account_id: Option<&str>) -> MailResult<Vec<(String, i64)>> {
-    let mut stmt = if account_id.is_some() {
-        conn.prepare("SELECT id, unread_count FROM email_folders WHERE account_id = ?1")?
+    let (sql, with_param) = if account_id.is_some() {
+        ("SELECT f.id, COUNT(e.id) FROM email_folders f
+          JOIN emails e ON e.folder_id = f.id AND e.is_read = 0
+          WHERE f.account_id = ?1 GROUP BY f.id", true)
     } else {
-        conn.prepare("SELECT id, unread_count FROM email_folders")?
+        ("SELECT f.id, COUNT(e.id) FROM email_folders f
+          JOIN emails e ON e.folder_id = f.id AND e.is_read = 0
+          GROUP BY f.id", false)
     };
-    let rows = if account_id.is_some() {
+    let mut stmt = conn.prepare(sql)?;
+    let rows = if with_param {
         stmt.query_map(params![account_id], map_folder_count)?
     } else {
         stmt.query_map([], map_folder_count)?
@@ -261,6 +268,51 @@ pub fn set_account_signature(conn: &Connection, account_id: &str, signature_id: 
     Ok(())
 }
 
+pub fn list_attachments(conn: &Connection, email_id: &str) -> MailResult<Vec<EmailAttachment>> {
+    let mut stmt = conn.prepare(
+        "SELECT * FROM email_attachments WHERE email_id = ?1 ORDER BY created_at"
+    )?;
+    let rows = stmt.query_map(params![email_id], |row| {
+        Ok(EmailAttachment {
+            id: row.get("id")?, email_id: row.get("email_id")?,
+            filename: row.get("filename")?, mime_type: row.get("mime_type")?,
+            size: row.get("size")?, file_path: row.get("file_path")?,
+            is_inline: row.get::<_, i64>("is_inline")? != 0,
+            content_id: row.get("content_id")?, created_at: row.get("created_at")?,
+        })
+    })?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(MailError::from)
+}
+
+pub fn insert_attachment(conn: &Connection, att: &EmailAttachment) -> MailResult<()> {
+    conn.execute(
+        "INSERT INTO email_attachments (id, email_id, filename, mime_type, size, file_path, is_inline, content_id, created_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)",
+        params![att.id, att.email_id, att.filename, att.mime_type, att.size, att.file_path,
+                att.is_inline as i64, att.content_id, att.created_at],
+    )?;
+    Ok(())
+}
+
+/// 删除某封邮件的附件记录（磁盘文件由调用方清理），返回旧记录
+pub fn delete_attachments_for_email(conn: &Connection, email_id: &str) -> MailResult<Vec<EmailAttachment>> {
+    let old = list_attachments(conn, email_id)?;
+    conn.execute("DELETE FROM email_attachments WHERE email_id = ?1", params![email_id])?;
+    Ok(old)
+}
+
+pub fn get_attachment(conn: &Connection, id: &str) -> MailResult<EmailAttachment> {
+    conn.query_row("SELECT * FROM email_attachments WHERE id = ?1", params![id], |row| {
+        Ok(EmailAttachment {
+            id: row.get("id")?, email_id: row.get("email_id")?,
+            filename: row.get("filename")?, mime_type: row.get("mime_type")?,
+            size: row.get("size")?, file_path: row.get("file_path")?,
+            is_inline: row.get::<_, i64>("is_inline")? != 0,
+            content_id: row.get("content_id")?, created_at: row.get("created_at")?,
+        })
+    }).map_err(|_| MailError::new("NOT_FOUND", "附件不存在"))
+}
+
 pub fn list_templates(conn: &Connection) -> MailResult<Vec<EmailTemplate>> {
     let mut stmt = conn.prepare("SELECT * FROM email_templates ORDER BY name")?;
     let rows = stmt.query_map([], |row| {
@@ -270,4 +322,19 @@ pub fn list_templates(conn: &Connection) -> MailResult<Vec<EmailTemplate>> {
         })
     })?;
     rows.collect::<Result<Vec<_>, _>>().map_err(MailError::from)
+}
+
+pub fn save_template(conn: &Connection, tpl: &EmailTemplate) -> MailResult<()> {
+    conn.execute(
+        "INSERT INTO email_templates (id, name, subject, body, created_at)
+         VALUES (?1,?2,?3,?4,?5)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, subject=excluded.subject, body=excluded.body",
+        params![tpl.id, tpl.name, tpl.subject, tpl.body, tpl.created_at],
+    )?;
+    Ok(())
+}
+
+pub fn delete_template(conn: &Connection, id: &str) -> MailResult<()> {
+    conn.execute("DELETE FROM email_templates WHERE id = ?1", params![id])?;
+    Ok(())
 }

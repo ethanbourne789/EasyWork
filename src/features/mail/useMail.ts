@@ -2,6 +2,7 @@ import { useQuery, useQueryClient } from "@tanstack/react-query";
 import { mailApi, UNIFIED_INBOX_ID } from "./mailApi";
 import { getCurrentUserId } from "@/features/auth/authStore";
 import { useSafeMutation } from "@/lib/mutation";
+import { toast } from "@/lib/toast";
 import type {
   EmailAccount,
   EmailFolder,
@@ -143,9 +144,9 @@ export function useEmailAttachments(emailId?: string) {
   return useQuery({
     queryKey: ["email-attachments", emailId],
     queryFn: async () => {
-      // TODO: 后端尚未提供 mail_list_attachments 命令（P1+ 阶段补齐）；
-      // 附件元数据已内嵌在 Email.attachments 中，目前返回空数组占位。
-      return [] as EmailAttachment[];
+      if (!emailId) return [];
+      const data = await mailApi.listAttachments(emailId);
+      return (data ?? []) as EmailAttachment[];
     },
     enabled: !!emailId,
   });
@@ -222,14 +223,17 @@ export function useSyncMail() {
   const qc = useQueryClient();
   return useSafeMutation({
     mutationFn: async (accountId?: string) => {
-      const res = await mailApi.sync(accountId);
-      return res as { scheduled?: boolean; result?: unknown } | undefined;
+      return mailApi.sync(accountId);
     },
-    onSuccess: () => {
+    onSuccess: (res) => {
       qc.invalidateQueries({ queryKey: ["emails"] });
       qc.invalidateQueries({ queryKey: ["email-folders"] });
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
       qc.invalidateQueries({ queryKey: ["unified-unread"] });
+      // 后端聚合的非致命错误（锁冲突/部分文件夹失败）透传提示，不再静默
+      if (res?.error) {
+        toast(`同步部分失败：${res.error}`, "info");
+      }
     },
   });
 }
@@ -237,16 +241,23 @@ export function useSyncMail() {
 export function useSaveDraft() {
   const qc = useQueryClient();
   return useSafeMutation({
-    mutationFn: async (_data: {
+    mutationFn: async (data: {
       to: string;
       cc?: string;
       subject: string;
       body: string;
       accountId: string;
     }) => {
-      // TODO: 后端尚未提供 mail_save_draft 命令（P1+ 阶段补齐）。
-      // 临时回退：调用 mailApi.send 无法生成草稿（会真实发送），故直接抛错避免误用。
-      throw new Error("草稿保存功能开发中，暂不可用");
+      const toArr = data.to ? data.to.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      const ccArr = data.cc ? data.cc.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      return mailApi.saveDraft({
+        accountId: data.accountId,
+        to: toArr,
+        cc: ccArr,
+        subject: data.subject,
+        bodyHtml: data.body,
+        bodyText: data.body,
+      });
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });
@@ -340,20 +351,31 @@ export function useCreateFolder() {
 }
 
 /**
- * 更新已存在的草稿（按 id upsert），避免重复创建草稿行。
+ * 更新已存在的草稿：后端无独立 update 命令，采用「删旧存新」策略。
  */
 export function useUpdateDraft() {
   const qc = useQueryClient();
   return useSafeMutation({
-    mutationFn: async (_data: {
+    mutationFn: async (data: {
       id: string;
       to: string;
       cc?: string;
       subject: string;
       body: string;
+      accountId: string;
     }) => {
-      // TODO: 后端尚未提供 mail_update_draft 命令（P1+ 阶段补齐）。
-      throw new Error("草稿编辑功能开发中，暂不可用");
+      const toArr = data.to ? data.to.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      const ccArr = data.cc ? data.cc.split(",").map((s) => s.trim()).filter(Boolean) : [];
+      const draft = await mailApi.saveDraft({
+        accountId: data.accountId,
+        to: toArr,
+        cc: ccArr,
+        subject: data.subject,
+        bodyHtml: data.body,
+        bodyText: data.body,
+      });
+      await mailApi.deleteMessage(data.id);
+      return draft;
     },
     onSuccess: () => {
       qc.invalidateQueries({ queryKey: ["folder-unread-counts"] });

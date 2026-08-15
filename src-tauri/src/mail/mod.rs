@@ -1,5 +1,5 @@
 // 邮件模块（Tauri 2 + Rust 原生实现）
-// 后续任务会逐步添加：scheduler
+pub mod contacts;
 pub mod creds;
 pub mod db;
 pub mod db_queries;

@@ -6,6 +6,7 @@ import { Select } from "@/components/ui/select";
 import { X, Send, Save, FileText, Signature } from "lucide-react";
 import { useSendEmail, useSaveDraft, useEmailAccounts, useUpdateDraft, useDeleteEmail } from "./useMail";
 import { useEmailSignatures, useEmailTemplates } from "./useEmailTemplates";
+import { useContacts } from "./useContacts";
 import { EmailTemplateDialog } from "./EmailTemplateDialog";
 import { EmailSignatureDialog } from "./EmailSignatureDialog";
 import { notify } from "@/lib/notify";
@@ -72,6 +73,11 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
   const deleteEmail = useDeleteEmail();
   const { data: accounts = [] } = useEmailAccounts();
   const { data: signatures = [] } = useEmailSignatures();
+  const { data: contacts = [] } = useContacts();
+  // 收件人联想：扁平化为 email -> 姓名 的候选列表（value 必须是纯地址以通过格式校验）
+  const contactSuggestions = contacts.flatMap((c) =>
+    c.emails.map((email) => ({ email, name: c.name })),
+  );
   useEmailTemplates(); // 保留以触发查询缓存
   const [templateDialogOpen, setTemplateDialogOpen] = useState(false);
   const [signatureDialogOpen, setSignatureDialogOpen] = useState(false);
@@ -189,7 +195,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
     try {
       // useSafeMutation 默认 onError 会弹出真实错误 toast，这里只拦截 rejection 用于控制流
       if (draftId) {
-        await updateDraft.mutateAsync({ id: draftId, to, cc: cc || undefined, subject, body });
+        await updateDraft.mutateAsync({ id: draftId, to, cc: cc || undefined, subject, body, accountId });
       } else {
         await saveDraft.mutateAsync({
           to,
@@ -278,7 +284,13 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
               onChange={(e) => setTo(e.target.value)}
               placeholder="输入邮箱地址，多个地址用逗号分隔"
               className="flex-1"
+              list="mail-contact-suggestions"
             />
+            <datalist id="mail-contact-suggestions">
+              {contactSuggestions.map((s) => (
+                <option key={s.email} value={s.email}>{s.name}</option>
+              ))}
+            </datalist>
             {!showCc && (
               <Button
                 variant="ghost"
@@ -298,6 +310,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
                 onChange={(e) => setCc(e.target.value)}
                 placeholder="输入抄送地址，多个地址用逗号分隔"
                 className="flex-1"
+                list="mail-contact-suggestions"
               />
             </div>
           )}

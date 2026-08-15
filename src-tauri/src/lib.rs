@@ -148,7 +148,7 @@ pub fn run() {
             let service = mail::service::MailService {
                 db: Arc::new(tokio::sync::Mutex::new(conn)),
                 attachments_dir: mail_dir.join("attachments").into_boxed_path(),
-                locks: Arc::new(tokio::sync::Mutex::new(std::collections::HashMap::new())),
+                locks: Arc::new(std::sync::Mutex::new(std::collections::HashSet::new())),
             };
 
             app.manage(commands::AppState {
@@ -287,6 +287,20 @@ pub fn run() {
             commands::mail_save_signature,
             commands::mail_delete_signature,
             commands::mail_set_account_signature,
+            commands::mail_list_templates,
+            commands::mail_save_template,
+            commands::mail_delete_template,
+            commands::mail_save_draft,
+            commands::contact_list,
+            commands::contact_save,
+            commands::contact_delete,
+            commands::contact_group_list,
+            commands::contact_group_save,
+            commands::contact_group_delete,
+            commands::contact_export_vcf,
+            commands::contact_import_vcf,
+            commands::mail_list_attachments,
+            commands::mail_download_attachment,
             commands::get_autostart_status,
             commands::set_autostart,
             commands::get_close_behavior,

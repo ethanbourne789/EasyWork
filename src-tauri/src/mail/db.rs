@@ -2,7 +2,7 @@ use rusqlite::{Connection, params};
 use std::path::Path;
 use crate::mail::error::MailResult;
 
-const SCHEMA_VERSION: &str = "2";
+const SCHEMA_VERSION: &str = "3";
 
 pub fn init_db(db_path: &Path) -> MailResult<Connection> {
     let conn = Connection::open(db_path)?;
@@ -99,6 +99,30 @@ fn migrate(conn: &Connection) -> MailResult<()> {
                 WHERE id = NEW.id;
             END;
         "#).ok();
+    }
+
+    if current.as_str() < "3" {
+        conn.execute_batch(r#"
+            CREATE TABLE IF NOT EXISTS contacts (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL,
+                emails TEXT NOT NULL DEFAULT '[]', phones TEXT NOT NULL DEFAULT '[]',
+                company TEXT, title TEXT, notes TEXT,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+            CREATE INDEX IF NOT EXISTS idx_contacts_name ON contacts(name);
+
+            CREATE TABLE IF NOT EXISTS contact_groups (
+                id TEXT PRIMARY KEY, name TEXT NOT NULL UNIQUE,
+                sort_order INTEGER NOT NULL DEFAULT 0,
+                created_at TEXT NOT NULL, updated_at TEXT NOT NULL
+            );
+
+            CREATE TABLE IF NOT EXISTS contact_group_members (
+                contact_id TEXT NOT NULL, group_id TEXT NOT NULL,
+                PRIMARY KEY (contact_id, group_id)
+            );
+            CREATE INDEX IF NOT EXISTS idx_cgm_group ON contact_group_members(group_id);
+        "#)?;
     }
 
     // crate::sync::config::create_sync_tables(conn)?;
