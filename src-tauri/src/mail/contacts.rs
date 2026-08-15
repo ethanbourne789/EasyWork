@@ -71,19 +71,21 @@ fn contact_group_ids(conn: &Connection, contact_id: &str) -> MailResult<Vec<Stri
 pub fn save_contact(conn: &Connection, contact: &Contact) -> MailResult<()> {
     let emails_json = serde_json::to_string(&contact.emails).unwrap_or_else(|_| "[]".into());
     let phones_json = serde_json::to_string(&contact.phones).unwrap_or_else(|_| "[]".into());
+    // sync_modified_at 显式写入（列无 DEFAULT，否则新行 NULL 永远被上传查询选中）
+    let ts = now();
     conn.execute(
-        "INSERT INTO contacts (id, name, emails, phones, company, title, notes, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9)
+        "INSERT INTO contacts (id, name, emails, phones, company, title, notes, created_at, updated_at, sync_modified_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7,?8,?9,?10)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, emails=excluded.emails, phones=excluded.phones,
          company=excluded.company, title=excluded.title, notes=excluded.notes, updated_at=excluded.updated_at",
         params![contact.id, contact.name, emails_json, phones_json, contact.company, contact.title,
-                contact.notes, contact.created_at, contact.updated_at],
+                contact.notes, contact.created_at, contact.updated_at, ts],
     )?;
     // 全量替换分组关系
     conn.execute("DELETE FROM contact_group_members WHERE contact_id = ?1", params![contact.id])?;
     for gid in &contact.group_ids {
-        conn.execute("INSERT OR IGNORE INTO contact_group_members (contact_id, group_id) VALUES (?1, ?2)",
-            params![contact.id, gid])?;
+        conn.execute("INSERT OR IGNORE INTO contact_group_members (contact_id, group_id, sync_modified_at) VALUES (?1, ?2, ?3)",
+            params![contact.id, gid, ts])?;
     }
     Ok(())
 }
@@ -111,10 +113,10 @@ pub fn list_groups(conn: &Connection) -> MailResult<Vec<ContactGroup>> {
 
 pub fn save_group(conn: &Connection, group: &ContactGroup) -> MailResult<()> {
     conn.execute(
-        "INSERT INTO contact_groups (id, name, sort_order, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,?5)
+        "INSERT INTO contact_groups (id, name, sort_order, created_at, updated_at, sync_modified_at)
+         VALUES (?1,?2,?3,?4,?5,?6)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, sort_order=excluded.sort_order, updated_at=excluded.updated_at",
-        params![group.id, group.name, group.sort_order, group.created_at, group.updated_at],
+        params![group.id, group.name, group.sort_order, group.created_at, group.updated_at, now()],
     )?;
     Ok(())
 }

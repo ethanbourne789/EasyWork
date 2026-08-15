@@ -270,14 +270,74 @@ pub async fn mail_save_draft(state: State<'_, AppState>, account_id: String, to:
 
 #[tauri::command]
 pub async fn mail_mark_read(state: State<'_, AppState>, id: String, is_read: bool) -> Result<(), MailError> {
-    let db = state.service.db.lock().await;
-    db_queries::mark_read(&db, &id, is_read)
+    let info = {
+        let db = state.service.db.lock().await;
+        db_queries::get_email_sync_info(&db, &id)?
+    };
+    {
+        let db = state.service.db.lock().await;
+        db_queries::mark_read(&db, &id, is_read)?;
+    }
+    // 最佳努力回写 IMAP \Seen（失败仅告警；本地状态已生效，下次同步从服务端收敛）
+    let (account_id, folder_id, uid) = info;
+    if let (Some(fid), Some(u)) = (folder_id, uid) {
+        push_flag_to_imap(&state, &account_id, &fid, u, "\\Seen", is_read).await;
+    }
+    Ok(())
 }
 
 #[tauri::command]
 pub async fn mail_toggle_star(state: State<'_, AppState>, id: String) -> Result<(), MailError> {
+    let info = {
+        let db = state.service.db.lock().await;
+        db_queries::get_email_sync_info(&db, &id)?
+    };
+    let next = {
+        let db = state.service.db.lock().await;
+        db_queries::toggle_star(&db, &id)?
+    };
+    let (account_id, folder_id, uid) = info;
+    if let (Some(fid), Some(u)) = (folder_id, uid) {
+        push_flag_to_imap(&state, &account_id, &fid, u, "\\Flagged", next).await;
+    }
+    Ok(())
+}
+
+/// 把本地状态变更回写到 IMAP 服务端（UID STORE +/-FLAGS）。
+/// 幂等、失败仅告警，不阻断本地操作。
+async fn push_flag_to_imap(state: &AppState, account_id: &str, folder_id: &str, uid: i64, flag: &str, add: bool) {
+    let account = {
+        let db = state.service.db.lock().await;
+        db_queries::get_account(&db, account_id).ok()
+    };
+    let path = {
+        let db = state.service.db.lock().await;
+        db.query_row(
+            "SELECT imap_path FROM email_folders WHERE id = ?1",
+            rusqlite::params![folder_id], |row| row.get::<_, String>(0)
+        ).ok()
+    };
+    let (Some(account), Some(path)) = (account, path) else { return };
+    let Ok(password) = CredentialStore::get_password(account_id) else { return };
+    let username = account.username.clone().unwrap_or(account.email.clone());
+    match ImapAdapter::connect(&account.imap_host, account.imap_port as u16, &username, &password).await {
+        Ok(mut imap) => {
+            if let Err(e) = imap.select_folder(&path).await {
+                tracing::warn!("IMAP 回写 select 失败 folder={} err={}", path, e.message);
+                return;
+            }
+            if let Err(e) = imap.store_flag(uid as u32, flag, add).await {
+                tracing::warn!("IMAP 回写 {} 失败 uid={} err={}", flag, uid, e.message);
+            }
+        }
+        Err(e) => tracing::warn!("IMAP 回写连接失败 err={}", e.message),
+    }
+}
+
+#[tauri::command]
+pub async fn mail_search(state: State<'_, AppState>, query: String, limit: Option<i64>) -> Result<Vec<Email>, MailError> {
     let db = state.service.db.lock().await;
-    db_queries::toggle_star(&db, &id)
+    db_queries::search_messages(&db, &query, limit.unwrap_or(50))
 }
 
 #[tauri::command]

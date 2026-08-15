@@ -250,6 +250,65 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             sync_device_id TEXT NOT NULL
         );
         CREATE INDEX IF NOT EXISTS idx_email_accounts_sync_modified ON email_accounts(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS email_templates (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            subject TEXT,
+            body TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_templates_sync_modified ON email_templates(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS email_signatures (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            html TEXT NOT NULL,
+            is_default INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_email_signatures_sync_modified ON email_signatures(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS contacts (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            emails TEXT NOT NULL DEFAULT '[]',
+            phones TEXT NOT NULL DEFAULT '[]',
+            company TEXT,
+            title TEXT,
+            notes TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_contacts_sync_modified ON contacts(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS contact_groups (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL UNIQUE,
+            sort_order INTEGER NOT NULL DEFAULT 0,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL
+        );
+        CREATE INDEX IF NOT EXISTS idx_contact_groups_sync_modified ON contact_groups(sync_modified_at);
+
+        CREATE TABLE IF NOT EXISTS contact_group_members (
+            contact_id TEXT NOT NULL,
+            group_id TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL,
+            sync_device_id TEXT NOT NULL,
+            PRIMARY KEY (contact_id, group_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_contact_group_members_sync_modified ON contact_group_members(sync_modified_at);
     "#;
 
     client.batch_execute(schema).await

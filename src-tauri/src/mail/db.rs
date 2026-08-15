@@ -2,7 +2,7 @@ use rusqlite::{Connection, params};
 use std::path::Path;
 use crate::mail::error::MailResult;
 
-const SCHEMA_VERSION: &str = "3";
+const SCHEMA_VERSION: &str = "4";
 
 pub fn init_db(db_path: &Path) -> MailResult<Connection> {
     let conn = Connection::open(db_path)?;
@@ -125,6 +125,88 @@ fn migrate(conn: &Connection) -> MailResult<()> {
         "#)?;
     }
 
+    // v4：联系人/模板/签名纳入云端 PG 增量同步（同步列 + UPDATE 触发器 + FTS 触发器）。
+    // 条件兼容半迁移状态（上次崩溃留下的部分列），幂等重跑。
+    if current.as_str() < "4" || !has_column(conn, "email_signatures", "sync_modified_at") {
+        // ⚠️ 同步列一律「无 DEFAULT 的 NULL 列 + 存量回填」：
+        //    `ADD COLUMN ... DEFAULT (strftime(...))` 在【非空表】上非法
+        //    （Cannot add a column with non-constant default）会导致迁移崩溃（实测 email_signatures）。
+        let sync_columns: &[(&str, &[&str])] = &[
+            ("email_templates", &["updated_at", "sync_modified_at", "sync_device_id"]),
+            ("email_signatures", &["sync_modified_at", "sync_device_id"]),
+            ("contacts", &["sync_modified_at", "sync_device_id"]),
+            ("contact_groups", &["sync_modified_at", "sync_device_id"]),
+            ("contact_group_members", &["sync_modified_at", "sync_device_id"]),
+        ];
+        for (table, cols) in sync_columns {
+            for col in *cols {
+                if !has_column(conn, table, col) {
+                    conn.execute(&format!("ALTER TABLE {} ADD COLUMN {} TEXT", table, col), [])?;
+                }
+            }
+        }
+
+        // 存量回填（幂等）
+        conn.execute_batch(r#"
+            UPDATE email_templates SET updated_at = COALESCE(updated_at, created_at) WHERE updated_at IS NULL;
+            UPDATE email_templates SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+            UPDATE email_signatures SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+            UPDATE contacts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+            UPDATE contact_groups SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+            UPDATE contact_group_members SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        "#)?;
+
+        conn.execute_batch(r#"
+            CREATE TRIGGER IF NOT EXISTS email_templates_sync_touch AFTER UPDATE ON email_templates
+            BEGIN
+                UPDATE email_templates SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+            CREATE TRIGGER IF NOT EXISTS email_signatures_sync_touch AFTER UPDATE ON email_signatures
+            BEGIN
+                UPDATE email_signatures SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+            CREATE TRIGGER IF NOT EXISTS contacts_sync_touch AFTER UPDATE ON contacts
+            BEGIN
+                UPDATE contacts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+            CREATE TRIGGER IF NOT EXISTS contact_groups_sync_touch AFTER UPDATE ON contact_groups
+            BEGIN
+                UPDATE contact_groups SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE id = NEW.id;
+            END;
+            CREATE TRIGGER IF NOT EXISTS contact_group_members_sync_touch AFTER UPDATE ON contact_group_members
+            BEGIN
+                UPDATE contact_group_members SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
+                WHERE contact_id = NEW.contact_id AND group_id = NEW.group_id;
+            END;
+
+            -- emails_fts 全文索引触发器（外链表 content='emails'，需手动同步 rowid）
+            CREATE TRIGGER IF NOT EXISTS emails_fts_insert AFTER INSERT ON emails BEGIN
+                INSERT INTO emails_fts(rowid, subject, from_address, preview_text, body_text)
+                VALUES (new.rowid, new.subject, new.from_address, new.preview_text, new.body_text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS emails_fts_delete AFTER DELETE ON emails BEGIN
+                INSERT INTO emails_fts(emails_fts, rowid, subject, from_address, preview_text, body_text)
+                VALUES('delete', old.rowid, old.subject, old.from_address, old.preview_text, old.body_text);
+            END;
+            CREATE TRIGGER IF NOT EXISTS emails_fts_update AFTER UPDATE ON emails BEGIN
+                INSERT INTO emails_fts(emails_fts, rowid, subject, from_address, preview_text, body_text)
+                VALUES('delete', old.rowid, old.subject, old.from_address, old.preview_text, old.body_text);
+                INSERT INTO emails_fts(rowid, subject, from_address, preview_text, body_text)
+                VALUES (new.rowid, new.subject, new.from_address, new.preview_text, new.body_text);
+            END;
+        "#)?;
+
+        // 存量邮件回填 FTS（delete-all 后 rebuild，幂等）
+        conn.execute_batch(r#"
+            INSERT INTO emails_fts(emails_fts) VALUES('delete-all');
+            INSERT INTO emails_fts(emails_fts) VALUES('rebuild');
+        "#)?;
+    }
+
     // crate::sync::config::create_sync_tables(conn)?;
 
     conn.execute(
@@ -132,4 +214,16 @@ fn migrate(conn: &Connection) -> MailResult<()> {
         params![SCHEMA_VERSION]
     )?;
     Ok(())
+}
+
+/// 幂等迁移辅助：检查某表是否已存在某列
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let Ok(mut stmt) = conn.prepare(&format!("PRAGMA table_info({})", table)) else {
+        return false;
+    };
+    let names: Vec<String> = match stmt.query_map([], |row| row.get::<_, String>(1)) {
+        Ok(rows) => rows.filter_map(Result::ok).collect(),
+        Err(_) => return false,
+    };
+    names.iter().any(|c| c == column)
 }

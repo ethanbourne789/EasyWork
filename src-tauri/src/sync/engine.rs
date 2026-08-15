@@ -18,6 +18,11 @@ const SYNC_TABLES_MAIN: &[&str] = &[
 
 const SYNC_TABLES_MAIL: &[&str] = &[
     "email_accounts",
+    "email_templates",
+    "email_signatures",
+    "contacts",
+    "contact_groups",
+    "contact_group_members",
 ];
 
 /// 每张表的主键列。除关联表外均为单列 `id`；
@@ -26,6 +31,7 @@ fn table_pk(table: &str) -> &'static [&'static str] {
     match table {
         "task_tags" => &["task_id", "tag_id"],
         "note_tags" => &["note_id", "tag_name"],
+        "contact_group_members" => &["contact_id", "group_id"],
         _ => &["id"],
     }
 }
@@ -167,7 +173,7 @@ async fn upload_table(
     let (col_names, rows): (Vec<String>, Vec<Vec<String>>) = {
         let guard = db.lock().await;
         let query = format!(
-            "SELECT * FROM {} WHERE sync_modified_at > ?1 ORDER BY sync_modified_at",
+            "SELECT * FROM {} WHERE sync_modified_at IS NULL OR sync_modified_at > ?1 ORDER BY sync_modified_at",
             safe_table
         );
         let mut stmt = guard.prepare(&query).map_err(|e| format!("准备查询 {}: {}", table, e))?;
@@ -177,7 +183,15 @@ async fn upload_table(
             for i in 0..col_names.len() {
                 // 按存储类型读取并转为文本，避免 INTEGER/REAL 列被 Option<String> 读成 NULL
                 let v = match row.get_ref(i) {
-                    Ok(rusqlite::types::ValueRef::Null) => "NULL".to_string(),
+                    Ok(rusqlite::types::ValueRef::Null) => {
+                        // 云表 sync_modified_at 为 NOT NULL：NULL 行兜底为纪元时间，
+                        // 避免上传报错；本地被编辑/下载后会获得真实值
+                        if col_names[i] == "sync_modified_at" {
+                            "1970-01-01T00:00:00Z".to_string()
+                        } else {
+                            "NULL".to_string()
+                        }
+                    }
                     Ok(rusqlite::types::ValueRef::Integer(n)) => n.to_string(),
                     Ok(rusqlite::types::ValueRef::Real(f)) => f.to_string(),
                     Ok(rusqlite::types::ValueRef::Text(t)) => String::from_utf8_lossy(t).into_owned(),

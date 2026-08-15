@@ -236,4 +236,9 @@ export const mailApi = {
     const invoke = await getInvoke();
     return invoke<string>("mail_download_attachment", { id });
   },
+  /** FTS5 全文搜索（标题/发件人/正文） */
+  search: async (query: string, limit = 50) => {
+    const invoke = await getInvoke();
+    return invoke<Email[]>("mail_search", { query, limit });
+  },
 };

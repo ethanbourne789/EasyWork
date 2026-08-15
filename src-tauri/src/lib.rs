@@ -280,6 +280,7 @@ pub fn run() {
             commands::mail_mark_read,
             commands::mail_toggle_star,
             commands::mail_delete_message,
+            commands::mail_search,
             commands::mail_create_folder,
             commands::mail_rename_folder,
             commands::mail_delete_folder,

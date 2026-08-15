@@ -189,10 +189,15 @@ pub fn mark_read(conn: &Connection, id: &str, is_read: bool) -> MailResult<()> {
     Ok(())
 }
 
-pub fn toggle_star(conn: &Connection, id: &str) -> MailResult<()> {
-    conn.execute("UPDATE emails SET is_starred = NOT is_starred, sync_state = 1 WHERE id = ?1",
-        params![id])?;
-    Ok(())
+/// 切换标星，返回切换后的状态（供 IMAP 回写方向判断）
+pub fn toggle_star(conn: &Connection, id: &str) -> MailResult<bool> {
+    let current: i64 = conn.query_row(
+        "SELECT is_starred FROM emails WHERE id = ?1", params![id], |row| row.get(0)
+    ).map_err(|_| MailError::new("NOT_FOUND", "邮件不存在"))?;
+    let next = current == 0;
+    conn.execute("UPDATE emails SET is_starred = ?1, sync_state = 1 WHERE id = ?2",
+        params![next as i64, id])?;
+    Ok(next)
 }
 
 pub fn delete_message(conn: &Connection, id: &str) -> MailResult<()> {
@@ -238,11 +243,11 @@ pub fn list_signatures(conn: &Connection) -> MailResult<Vec<EmailSignature>> {
 
 pub fn save_signature(conn: &Connection, sig: &EmailSignature) -> MailResult<()> {
     conn.execute(
-        "INSERT INTO email_signatures (id, name, html, is_default, created_at, updated_at)
-         VALUES (?1,?2,?3,?4,?5,?6)
+        "INSERT INTO email_signatures (id, name, html, is_default, created_at, updated_at, sync_modified_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
          ON CONFLICT(id) DO UPDATE SET name=excluded.name, html=excluded.html,
          is_default=excluded.is_default, updated_at=excluded.updated_at",
-        params![sig.id, sig.name, sig.html, sig.is_default as i64, sig.created_at, sig.updated_at],
+        params![sig.id, sig.name, sig.html, sig.is_default as i64, sig.created_at, sig.updated_at, sig.updated_at],
     )?;
     if sig.is_default {
         conn.execute("UPDATE email_signatures SET is_default = 0 WHERE id != ?1", params![sig.id])?;
@@ -325,11 +330,13 @@ pub fn list_templates(conn: &Connection) -> MailResult<Vec<EmailTemplate>> {
 }
 
 pub fn save_template(conn: &Connection, tpl: &EmailTemplate) -> MailResult<()> {
+    // updated_at 用于云端 LWW 比较（EXCLUDED.updated_at > 本地），必须写入
+    let updated = chrono::Utc::now().to_rfc3339();
     conn.execute(
-        "INSERT INTO email_templates (id, name, subject, body, created_at)
-         VALUES (?1,?2,?3,?4,?5)
-         ON CONFLICT(id) DO UPDATE SET name=excluded.name, subject=excluded.subject, body=excluded.body",
-        params![tpl.id, tpl.name, tpl.subject, tpl.body, tpl.created_at],
+        "INSERT INTO email_templates (id, name, subject, body, created_at, updated_at, sync_modified_at)
+         VALUES (?1,?2,?3,?4,?5,?6,?7)
+         ON CONFLICT(id) DO UPDATE SET name=excluded.name, subject=excluded.subject, body=excluded.body, updated_at=excluded.updated_at",
+        params![tpl.id, tpl.name, tpl.subject, tpl.body, tpl.created_at, updated.clone(), updated],
     )?;
     Ok(())
 }
@@ -337,4 +344,34 @@ pub fn save_template(conn: &Connection, tpl: &EmailTemplate) -> MailResult<()> {
 pub fn delete_template(conn: &Connection, id: &str) -> MailResult<()> {
     conn.execute("DELETE FROM email_templates WHERE id = ?1", params![id])?;
     Ok(())
+}
+
+/// 邮件同步回写所需信息：account_id、folder_id、uid（可能缺失）
+pub fn get_email_sync_info(conn: &Connection, id: &str) -> MailResult<(String, Option<String>, Option<i64>)> {
+    conn.query_row(
+        "SELECT account_id, folder_id, uid FROM emails WHERE id = ?1",
+        params![id], |row| Ok((row.get(0)?, row.get(1)?, row.get(2)?)),
+    ).map_err(|_| MailError::new("NOT_FOUND", "邮件不存在"))
+}
+
+/// FTS5 全文搜索：用户输入拆词后逐词双引号包裹再 AND 拼接，避免 MATCH 语法错误
+pub fn search_messages(conn: &Connection, query: &str, limit: i64) -> MailResult<Vec<Email>> {
+    let safe_query = query.split_whitespace()
+        .filter(|w| !w.is_empty())
+        .map(|w| format!("\"{}\"", w.replace('"', "")))
+        .collect::<Vec<_>>()
+        .join(" AND ");
+    if safe_query.is_empty() {
+        return Ok(Vec::new());
+    }
+    let mut stmt = conn.prepare(
+        "SELECT e.*, a.email as account_email, a.display_name as account_name
+         FROM emails_fts f
+         JOIN emails e ON e.rowid = f.rowid
+         LEFT JOIN email_accounts a ON e.account_id = a.id
+         WHERE emails_fts MATCH ?1
+         ORDER BY e.received_at DESC LIMIT ?2"
+    )?;
+    let rows = stmt.query_map(params![safe_query, limit], map_email)?;
+    rows.collect::<Result<Vec<_>, _>>().map_err(MailError::from)
 }
