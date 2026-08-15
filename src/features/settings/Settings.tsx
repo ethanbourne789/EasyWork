@@ -11,7 +11,9 @@ import { useTheme } from "@/components/theme/ThemeProvider";
 import { toast } from "@/lib/toast";
 import { TOAST_DURATION } from "@/lib/constants";
 import { formatDateLocal } from "@/lib/dateUtils";
-import { useEmailAccounts } from "@/features/mail/useMail";
+import { useEmailAccounts, useDeleteEmailAccount } from "@/features/mail/useMail";
+import { AddAccountDialog, EditAccountDialog } from "@/features/mail/EmailAccountDialog";
+import type { EmailAccount } from "@/types";
 import { requestNotificationPermission, fireBudgetWarnings } from "@/lib/notify";
 import { getNotifySettings, setNotifySettings, setStoredLanguage, type NotifySettings } from "@/lib/storage";
 import { getAppVersion, isTauri, getAutostartStatus, setAutostart, getCloseBehavior, setCloseBehavior } from "@/lib/tauri";
@@ -37,6 +39,9 @@ export function Settings() {
   const [savedFlag, setSavedFlag] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
   const { data: emailAccounts = [] } = useEmailAccounts();
+  const deleteAccount = useDeleteEmailAccount();
+  const [editAccount, setEditAccount] = useState<EmailAccount | null>(null);
+  const [addAccountOpen, setAddAccountOpen] = useState(false);
   const { data: profile } = useProfile();
   const updateProfile = useUpdateProfile();
 
@@ -385,10 +390,21 @@ export function Settings() {
 
         {activeTab === "email" && (
           <div className="max-w-2xl space-y-4">
-            <h2 className="text-xl font-semibold">{t('settings.mailAccounts')}</h2>
-            <p className="text-sm text-muted-foreground">
-              {t('settings.mailAccountsDesc')}
-            </p>
+            <div className="flex items-center justify-between gap-2">
+              <div>
+                <h2 className="text-xl font-semibold">{t('settings.mailAccounts')}</h2>
+                <p className="text-sm text-muted-foreground">
+                  {t('settings.mailAccountsDesc')}
+                </p>
+              </div>
+              <Button
+                variant="outline"
+                size="sm"
+                onClick={() => setAddAccountOpen(true)}
+              >
+                {t('mail.addAccount')}
+              </Button>
+            </div>
             <div className="space-y-2">
               {emailAccounts.length === 0 ? (
                 <p className="text-sm text-muted-foreground">{t('settings.noMailAccounts')}</p>
@@ -404,18 +420,48 @@ export function Settings() {
                         {acc.display_name || t('settings.unnamedAccount')}
                       </div>
                     </div>
-                    <Button
-                      variant="outline"
-                      size="sm"
-                      onClick={() => navigate({ to: "/mail" })}
-                    >
-                      {t('common.manage')}
-                    </Button>
+                    <div className="flex items-center gap-2">
+                      <Button
+                        variant="outline"
+                        size="sm"
+                        onClick={() => setEditAccount(acc)}
+                      >
+                        {t('common.manage')}
+                      </Button>
+                      <Button
+                        variant="destructive"
+                        size="sm"
+                        disabled={deleteAccount.isPending}
+                        onClick={async () => {
+                          const ok = await confirm({
+                            title: t('mail.deleteAccount'),
+                            description: t('mail.deleteAccountWithCacheConfirm', {
+                              name: acc.display_name || acc.email,
+                            }),
+                            confirmText: t('common.delete'),
+                            cancelText: t('common.cancel'),
+                            destructive: true,
+                          });
+                          if (ok) deleteAccount.mutate(acc.id);
+                        }}
+                      >
+                        {t('common.delete')}
+                      </Button>
+                    </div>
                   </div>
                 ))
               )}
             </div>
           </div>
+        )}
+
+        <AddAccountDialog open={addAccountOpen} onOpenChange={setAddAccountOpen} />
+        {editAccount && (
+          <EditAccountDialog
+            account={editAccount}
+            open={!!editAccount}
+            onOpenChange={(o) => !o && setEditAccount(null)}
+          />
         )}
 
         {activeTab === "appearance" && (

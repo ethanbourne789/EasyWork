@@ -10,6 +10,19 @@ import type {
   EmailAttachment,
 } from "@/types";
 
+/** 创建邮箱账号所需的入参（与 useCreateEmailAccount 的 mutationFn 入参一致） */
+export type CreateEmailAccountInput = {
+  email: string;
+  display_name?: string;
+  username?: string;
+  password?: string;
+  imap_host: string;
+  imap_port: number;
+  smtp_host: string;
+  smtp_port: number;
+  use_ssl: boolean;
+};
+
 export function useEmailAccounts() {
   return useQuery({
     queryKey: ["email-accounts"],
@@ -288,17 +301,7 @@ export function useSaveDraft() {
 export function useCreateEmailAccount() {
   const qc = useQueryClient();
   return useSafeMutation({
-    mutationFn: async (input: {
-      email: string;
-      display_name?: string;
-      username?: string;
-      password?: string;
-      imap_host: string;
-      imap_port: number;
-      smtp_host: string;
-      smtp_port: number;
-      use_ssl: boolean;
-    }) => {
+    mutationFn: async (input: CreateEmailAccountInput) => {
       const account = await mailApi.addAccount({
         email: input.email,
         displayName: input.display_name || undefined,
