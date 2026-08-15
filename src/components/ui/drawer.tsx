@@ -8,7 +8,7 @@ interface DrawerProps {
   open: boolean;
   onOpenChange: (open: boolean) => void;
   children: React.ReactNode;
-  side?: "left" | "right";
+  side?: "left" | "right" | "bottom";
   width?: string;
   ariaLabel?: string;
   ariaLabelledBy?: string;
@@ -26,6 +26,14 @@ function Drawer({ open, onOpenChange, children, side = "right", width = "w-full 
   const titleId = React.useId();
   const [hasTitle, setHasTitle] = React.useState(false);
   useFocusTrap(panelRef, open);
+
+  const isBottom = side === "bottom";
+  const sideClass = isBottom
+    ? "left-0 right-0 bottom-0 rounded-t-2xl max-h-[85vh]"
+    : side === "left"
+      ? "left-0"
+      : "right-0";
+  const widthClass = isBottom ? "w-full" : width;
 
   // 打开时把焦点移入抽屉，避免焦点滞留在背景
   React.useEffect(() => {
@@ -62,8 +70,6 @@ function Drawer({ open, onOpenChange, children, side = "right", width = "w-full 
 
   if (!open) return null;
 
-  const sideClass = side === "right" ? "right-0" : "left-0";
-
   return createPortal(
     <div className="fixed inset-0 z-50">
       <div
@@ -80,7 +86,7 @@ function Drawer({ open, onOpenChange, children, side = "right", width = "w-full 
         className={cn(
           "fixed top-0 bottom-0 bg-background border-border shadow-lg overflow-auto transition-transform outline-none",
           sideClass,
-          width
+          widthClass
         )}
       >
         <DrawerTitleIdContext.Provider value={{ id: titleId, register: () => setHasTitle(true) }}>

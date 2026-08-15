@@ -1,0 +1,650 @@
+<!DOCTYPE html>
+<html lang="zh-CN">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>记账模块重设计 · 原型</title>
+<link rel="preconnect" href="https://fonts.googleapis.com" />
+<link rel="preconnect" href="https://fonts.gstatic.com" crossorigin />
+<link href="https://fonts.googleapis.com/css2?family=Fraunces:opsz,wght@9..144,500;9..144,600;9..144,700&family=Plus+Jakarta+Sans:wght@400;500;600;700&family=JetBrains+Mono:wght@500;600&display=swap" rel="stylesheet" />
+<script src="https://unpkg.com/lucide@latest/dist/umd/lucide.min.js"></script>
+<style>
+:root{
+  /* 品牌 Iris 鸢尾靛 */
+  --brand-50: oklch(96% 0.02 264);
+  --brand-100: oklch(92% 0.04 264);
+  --brand-200: oklch(84% 0.07 264);
+  --brand-300: oklch(74% 0.11 264);
+  --brand-500: oklch(56% 0.17 264);
+  --brand-600: oklch(49% 0.16 264);
+  --brand-700: oklch(42% 0.14 264);
+  /* 暖中性 */
+  --background: oklch(98.5% 0.004 70);
+  --card: oklch(100% 0.002 70);
+  --popover: oklch(100% 0.004 70);
+  --secondary: oklch(96.5% 0.006 70);
+  --muted: oklch(96.5% 0.006 70);
+  --border: oklch(92% 0.008 70);
+  --input: oklch(92% 0.008 70);
+  --foreground: oklch(24% 0.01 70);
+  --muted-foreground: oklch(50% 0.012 70);
+  --ring: oklch(56% 0.17 264);
+  /* 语义色 */
+  --primary: oklch(56% 0.17 264);
+  --primary-foreground: oklch(100% 0 0);
+  --destructive: oklch(58% 0.21 25);
+  --success: oklch(64% 0.15 150);
+  --warning: oklch(72% 0.15 55);
+  --radius: 14px;
+  --radius-sm: 10px;
+  --shadow-sm: 0 1px 2px oklch(24% 0.01 70 / 0.06), 0 1px 3px oklch(24% 0.01 70 / 0.04);
+  --shadow-md: 0 4px 12px oklch(24% 0.01 70 / 0.08);
+  --font-ui: 'Plus Jakarta Sans', system-ui, sans-serif;
+  --font-display: 'Fraunces', Georgia, serif;
+  --font-mono: 'JetBrains Mono', ui-monospace, monospace;
+}
+*{box-sizing:border-box;margin:0;padding:0}
+html{-webkit-text-size-adjust:100%}
+body{
+  font-family:var(--font-ui);
+  background:oklch(95% 0.006 70);
+  color:var(--foreground);
+  font-size:14px;
+  line-height:1.5;
+  padding:24px;
+}
+.tnum{font-family:var(--font-mono);font-variant-numeric:tabular-nums}
+.font-display{font-family:var(--font-display)}
+.text-success{color:var(--success)}
+.text-destructive{color:var(--destructive)}
+.text-brand{color:var(--brand-500)}
+.text-muted{color:var(--muted-foreground)}
+.card{background:var(--card);border:1px solid var(--border);border-radius:var(--radius);box-shadow:var(--shadow-sm)}
+.btn{
+  display:inline-flex;align-items:center;gap:6px;height:36px;padding:0 14px;border-radius:var(--radius-sm);
+  font-weight:600;font-size:13px;cursor:pointer;border:1px solid transparent;background:var(--secondary);color:var(--foreground);
+  transition:background .16s, border-color .16s;white-space:nowrap;
+}
+.btn:hover{background:var(--border)}
+.btn-primary{background:var(--primary);color:var(--primary-foreground);box-shadow:var(--shadow-sm)}
+.btn-primary:hover{background:var(--brand-600)}
+.btn-ghost{background:transparent;border-color:transparent}
+.btn-ghost:hover{background:var(--secondary)}
+.btn-icon{width:36px;height:36px;padding:0;justify-content:center}
+.chip{display:inline-flex;align-items:center;gap:5px;height:28px;padding:0 10px;border-radius:999px;font-size:12px;font-weight:600;background:var(--secondary);color:var(--muted-foreground);cursor:pointer;border:1px solid transparent}
+.chip.active{background:var(--brand-50);color:var(--brand-700);border-color:var(--brand-200)}
+.dot{width:7px;height:7px;border-radius:50%;display:inline-block;flex:none}
+.dot-income{background:var(--success)}
+.dot-expense{background:var(--destructive)}
+.dot-transfer{background:var(--brand-500)}
+.cat{display:inline-flex;align-items:center;gap:7px;min-width:0}
+.cat-ic{width:26px;height:26px;border-radius:8px;display:flex;align-items:center;justify-content:center;background:var(--brand-50);font-size:14px;flex:none}
+.cat-name{font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+
+/* ===== 顶部控制条 ===== */
+.controlbar{display:flex;align-items:center;gap:12px;max-width:1280px;margin:0 auto 18px;flex-wrap:wrap}
+.controlbar h1{font-family:var(--font-display);font-size:18px;font-weight:600}
+.seg{display:inline-flex;background:var(--card);border:1px solid var(--border);border-radius:999px;padding:3px}
+.seg button{border:none;background:transparent;font-family:var(--font-ui);font-weight:600;font-size:13px;color:var(--muted-foreground);padding:6px 14px;border-radius:999px;cursor:pointer}
+.seg button.active{background:var(--primary);color:var(--primary-foreground)}
+.controlbar .hint{font-size:12px;color:var(--muted-foreground);margin-left:auto;max-width:520px;text-align:right}
+
+/* ===== 舞台 ===== */
+.stage{max-width:1280px;margin:0 auto;display:grid;gap:24px}
+body[data-view="desktop"] .frame-mobile{display:none}
+body[data-view="mobile"] .frame-desktop{display:none}
+body[data-view="both"] .stage{grid-template-columns:1fr 400px;align-items:start}
+@media(max-width:1100px){body[data-view="both"] .stage{grid-template-columns:1fr}}
+
+/* ===== 通用页头 ===== */
+.modhead{display:flex;align-items:flex-end;justify-content:space-between;gap:12px;margin-bottom:14px}
+.modhead .title{font-family:var(--font-display);font-size:26px;font-weight:600;line-height:1.1}
+.modhead .sub{font-size:13px;color:var(--muted-foreground);margin-top:3px}
+.period{display:inline-flex;align-items:center;gap:6px;height:34px;padding:0 12px;border:1px solid var(--border);border-radius:var(--radius-sm);font-weight:600;font-size:13px;cursor:pointer;background:var(--card)}
+
+/* ===== Tabs（3 个） ===== */
+.tabs{display:flex;gap:4px;border-bottom:1px solid var(--border);margin-bottom:16px}
+.tabs button{display:inline-flex;align-items:center;gap:7px;border:none;background:transparent;font-family:var(--font-ui);font-weight:600;font-size:14px;color:var(--muted-foreground);padding:10px 14px;cursor:pointer;border-bottom:2px solid transparent;margin-bottom:-1px}
+.tabs button.active{color:var(--brand-700);border-bottom-color:var(--brand-500)}
+.tabs button .badge{font-size:11px;font-weight:700;background:var(--brand-50);color:var(--brand-700);border-radius:999px;padding:1px 7px}
+
+/* ===== KPI 条 ===== */
+.kpis{display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px}
+.kpi{padding:14px 16px}
+.kpi .lab{font-size:12px;color:var(--muted-foreground);font-weight:600;display:flex;align-items:center;gap:6px}
+.kpi .val{font-size:26px;font-weight:700;margin-top:6px;letter-spacing:-0.01em}
+.kpi .sub{font-size:11.5px;color:var(--muted-foreground);margin-top:4px}
+.kpi .spark{margin-top:8px;height:26px;width:100%}
+
+/* ===== 工具栏 ===== */
+.toolbar{display:flex;align-items:center;gap:8px;flex-wrap:wrap;margin-bottom:14px}
+.search{flex:1;min-width:200px;position:relative}
+.search input{width:100%;height:38px;border:1px solid var(--input);border-radius:var(--radius-sm);background:var(--card);padding:0 12px 0 36px;font-family:var(--font-ui);font-size:13px;color:var(--foreground);outline:none}
+.search input:focus{border-color:var(--ring);box-shadow:0 0 0 3px var(--brand-50)}
+.search svg{position:absolute;left:11px;top:50%;transform:translateY(-50%);color:var(--muted-foreground)}
+.select{height:38px;border:1px solid var(--input);border-radius:var(--radius-sm);background:var(--card);padding:0 10px;font-family:var(--font-ui);font-size:13px;color:var(--foreground);outline:none;cursor:pointer}
+.select:focus{border-color:var(--ring)}
+
+/* ===== 桌面：主区 + 右栏 ===== */
+.desk-grid{display:grid;grid-template-columns:1fr 296px;gap:16px;align-items:start}
+.ledger{padding:0;overflow:hidden}
+.ledger thead th{position:sticky;top:0;background:var(--card);z-index:5;font-size:11px;font-weight:700;color:var(--muted-foreground);text-transform:uppercase;letter-spacing:.04em;text-align:left;padding:10px 12px;border-bottom:1px solid var(--border)}
+.ledger th.num,.ledger td.num{text-align:right}
+.ledger table{width:100%;border-collapse:collapse}
+.ledger tbody tr{border-bottom:1px solid var(--border)}
+.ledger tbody tr:hover{background:var(--secondary)}
+.ledger td{padding:9px 12px;font-size:13px;vertical-align:middle}
+.ledger .cbox{width:34px}
+.ledger .date{font-family:var(--font-mono);font-size:12px;color:var(--muted-foreground);white-space:nowrap}
+.ledger .note{font-weight:600;max-width:180px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.ledger .acct{color:var(--muted-foreground);font-size:12px}
+.ledger .amt{font-weight:600;white-space:nowrap}
+.ledger .acts{width:64px;opacity:0;transition:opacity .12s}
+.ledger tbody tr:hover .acts{opacity:1}
+.ledger .acts button{width:28px;height:28px;border:none;background:transparent;border-radius:7px;color:var(--muted-foreground);cursor:pointer;display:inline-flex;align-items:center;justify-content:center}
+.ledger .acts button:hover{background:var(--secondary);color:var(--foreground)}
+.ledger .acts button.del:hover{color:var(--destructive);background:oklch(58% 0.21 25 / .1)}
+.date-sep{display:flex;align-items:center;justify-content:space-between;padding:8px 12px;background:var(--secondary);font-size:12px;font-weight:700;color:var(--muted-foreground);position:sticky;top:39px;z-index:4}
+.date-sep .sum{font-family:var(--font-mono)}
+.daybal{font-family:var(--font-mono);font-size:12px;color:var(--muted-foreground)}
+
+/* 右栏 */
+.rail .blk{padding:14px 16px;border-bottom:1px solid var(--border)}
+.rail .blk:last-child{border-bottom:none}
+.rail .blk h3{display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;margin-bottom:12px}
+.rail .blk h3 .more{margin-left:auto;color:var(--muted-foreground);cursor:pointer}
+.bp{margin-bottom:12px}
+.bp:last-child{margin-bottom:0}
+.bp .top{display:flex;justify-content:space-between;font-size:12px;margin-bottom:5px}
+.bp .top .nm{font-weight:600;display:flex;align-items:center;gap:6px}
+.bp .top .vv{font-family:var(--font-mono)}
+.bp .bar{height:7px;border-radius:999px;background:var(--secondary);overflow:hidden}
+.bp .bar > i{display:block;height:100%;border-radius:999px;background:var(--brand-500)}
+.bp .bar > i.over{background:var(--destructive)}
+.acct-row{display:flex;align-items:center;gap:9px;padding:7px 0;font-size:13px}
+.acct-row .ic{width:30px;height:30px;border-radius:8px;display:flex;align-items:center;justify-content:center;flex:none}
+.acct-row .nm{flex:1;font-weight:600}
+.acct-row .bal{font-family:var(--font-mono);font-weight:600}
+
+/* ===== 报表 / 管理（轻量示意） ===== */
+.panel-grid{display:grid;grid-template-columns:repeat(2,1fr);gap:16px}
+.mini-chart{height:200px;display:flex;align-items:flex-end;gap:10px;padding:8px 4px}
+.mini-chart .bar-col{flex:1;display:flex;flex-direction:column;align-items:center;gap:6px;justify-content:flex-end;height:100%}
+.mini-chart .bar-col .b{width:100%;border-radius:6px 6px 0 0;background:var(--brand-200)}
+.mini-chart .bar-col .b.exp{background:oklch(58% 0.21 25 / .35)}
+.mini-chart .bar-col .lb{font-size:11px;color:var(--muted-foreground)}
+.manage-grid{display:grid;grid-template-columns:repeat(3,1fr);gap:16px}
+.tile{display:flex;align-items:center;gap:12px;padding:16px;border-radius:var(--radius-sm);background:var(--secondary);cursor:pointer;transition:background .16s}
+.tile:hover{background:var(--border)}
+.tile .ic{width:40px;height:40px;border-radius:10px;background:var(--brand-50);color:var(--brand-600);display:flex;align-items:center;justify-content:center;flex:none}
+.tile .t{font-weight:700;font-size:14px}
+.tile .d{font-size:12px;color:var(--muted-foreground)}
+
+/* ===== 手机框架 ===== */
+.frame-mobile{display:flex;justify-content:center}
+.phone{width:390px;height:844px;background:var(--background);border:1px solid var(--border);border-radius:40px;box-shadow:var(--shadow-md);overflow:hidden;position:relative;display:flex;flex-direction:column}
+.phone .statusbar{height:44px;display:flex;align-items:center;justify-content:space-between;padding:0 22px;font-size:13px;font-weight:600;flex:none}
+.phone .statusbar .icons{display:flex;gap:6px;align-items:center}
+.phone .scroll{flex:1;overflow-y:auto;padding:14px 14px 96px}
+.ph-head{display:flex;align-items:center;justify-content:space-between;margin-bottom:12px}
+.ph-head .t{font-family:var(--font-display);font-size:22px;font-weight:600}
+.ph-tabs{display:flex;gap:4px;background:var(--secondary);border-radius:999px;padding:4px;margin-bottom:14px}
+.ph-tabs button{flex:1;border:none;background:transparent;font-family:var(--font-ui);font-weight:600;font-size:12.5px;color:var(--muted-foreground);padding:7px 0;border-radius:999px;cursor:pointer}
+.ph-tabs button.active{background:var(--card);color:var(--brand-700);box-shadow:var(--shadow-sm)}
+.kpis-ph{display:grid;grid-template-columns:1fr 1fr;gap:10px;margin-bottom:14px}
+.kpi-ph{padding:12px}
+.kpi-ph .lab{font-size:11px;color:var(--muted-foreground);font-weight:600}
+.kpi-ph .val{font-family:var(--font-mono);font-size:20px;font-weight:700;margin-top:4px}
+.kpi-ph .sub{font-size:10.5px;color:var(--muted-foreground);margin-top:2px}
+.chips-ph{display:flex;gap:7px;overflow-x:auto;padding-bottom:10px;margin-bottom:4px;scrollbar-width:none}
+.chips-ph::-webkit-scrollbar{display:none}
+.tx-row{display:flex;align-items:center;gap:11px;padding:11px 4px;border-bottom:1px solid var(--border)}
+.tx-row .ic{width:38px;height:38px;border-radius:11px;background:var(--brand-50);display:flex;align-items:center;justify-content:center;font-size:18px;flex:none}
+.tx-row .mid{flex:1;min-width:0}
+.tx-row .mid .n{font-weight:600;font-size:14px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-row .mid .s{font-size:11.5px;color:var(--muted-foreground);white-space:nowrap;overflow:hidden;text-overflow:ellipsis}
+.tx-row .rt{text-align:right;flex:none}
+.tx-row .rt .a{font-family:var(--font-mono);font-weight:600;font-size:14px}
+.tx-row .rt .ty{font-size:10.5px;color:var(--muted-foreground);display:flex;align-items:center;gap:4px;justify-content:flex-end;margin-top:2px}
+.date-pill{display:inline-flex;align-items:center;gap:8px;margin:12px auto 6px;padding:4px 12px;background:var(--secondary);border-radius:999px;font-size:11px;font-weight:700;color:var(--muted-foreground)}
+.date-pill-wrap{text-align:center}
+.fab{position:absolute;right:18px;bottom:84px;width:56px;height:56px;border-radius:50%;background:var(--primary);color:var(--primary-foreground);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-md);cursor:pointer;z-index:20;border:none}
+.fab-sub{position:absolute;right:24px;width:44px;height:44px;border-radius:50%;background:var(--card);border:1px solid var(--border);color:var(--brand-700);display:flex;align-items:center;justify-content:center;box-shadow:var(--shadow-sm);cursor:pointer;z-index:19;transition:transform .18s, opacity .18s}
+.ph-tabbar{position:absolute;left:0;right:0;bottom:0;height:64px;background:var(--card);border-top:1px solid var(--border);display:flex;align-items:center;justify-content:space-around;padding-bottom:8px;z-index:15}
+.ph-tabbar button{border:none;background:transparent;display:flex;flex-direction:column;align-items:center;gap:3px;font-size:10.5px;font-weight:600;color:var(--muted-foreground);cursor:pointer}
+.ph-tabbar button.active{color:var(--brand-600)}
+/* 底部抽屉 */
+.sheet{position:absolute;left:0;right:0;bottom:0;background:var(--card);border-radius:22px 22px 0 0;box-shadow:0 -8px 30px oklch(24% 0.01 70 / .18);padding:8px 18px 26px;transform:translateY(100%);transition:transform .26s cubic-bezier(.2,.8,.2,1);z-index:30}
+.sheet.open{transform:translateY(0)}
+.sheet .grip{width:40px;height:4px;border-radius:999px;background:var(--border);margin:8px auto 14px}
+.sheet .big{display:flex;align-items:center;gap:12px;margin-bottom:14px}
+.sheet .big .ic{width:44px;height:44px;border-radius:12px;background:var(--brand-50);display:flex;align-items:center;justify-content:center;font-size:22px}
+.sheet .big .amt{font-family:var(--font-mono);font-size:26px;font-weight:700}
+.sheet .grid2{display:grid;grid-template-columns:1fr 1fr;gap:12px 16px;margin-bottom:16px}
+.sheet .grid2 .k{font-size:11px;color:var(--muted-foreground)}
+.sheet .grid2 .v{font-size:13px;font-weight:600;margin-top:1px}
+.sheet .acts2{display:flex;gap:10px}
+.sheet .acts2 .btn{flex:1;justify-content:center}
+.scrim{position:absolute;inset:0;background:oklch(24% 0.01 70 / .35);opacity:0;pointer-events:none;transition:opacity .26s;z-index:25}
+.scrim.open{opacity:1;pointer-events:auto}
+
+/* 设计说明 */
+.notes{max-width:1280px;margin:28px auto 0;padding:20px 22px}
+.notes h2{font-family:var(--font-display);font-size:18px;font-weight:600;margin-bottom:10px}
+.notes ul{margin:8px 0 0 18px;display:flex;flex-direction:column;gap:6px}
+.notes li{font-size:13px;line-height:1.6}
+.notes b{color:var(--brand-700)}
+.tag{display:inline-block;font-size:11px;font-weight:700;padding:1px 8px;border-radius:999px;background:var(--brand-50);color:var(--brand-700);margin-right:4px}
+</style>
+</head>
+<body data-view="both">
+
+<div class="controlbar">
+  <h1>记账模块 · 重设计原型</h1>
+  <div class="seg">
+    <button data-v="desktop" onclick="setView('desktop')">大屏</button>
+    <button data-v="both" class="active" onclick="setView('both')">并排</button>
+    <button data-v="mobile" onclick="setView('mobile')">手机</button>
+  </div>
+  <div class="hint">设计令牌沿用 AGENTS.md（OKLCH Iris 主色 / 暖中性 / JetBrains Mono 金额）。6 个 tab → 3 个，明细页改为高密度表格。</div>
+</div>
+
+<div class="stage">
+
+  <!-- ============ 桌面 ============ -->
+  <section class="frame-desktop card" style="padding:22px">
+    <div class="modhead">
+      <div>
+        <div class="title">记账</div>
+        <div class="sub">本地优先 · 多账本 · 预算与报表</div>
+      </div>
+      <div style="display:flex;gap:10px;align-items:center">
+        <button class="period"><i data-lucide="calendar" style="width:14px"></i> 2026年8月 <i data-lucide="chevron-down" style="width:14px"></i></button>
+        <button class="btn"><i data-lucide="settings" style="width:15px"></i> 管理</button>
+        <button class="btn btn-primary"><i data-lucide="plus" style="width:15px"></i> 记一笔</button>
+      </div>
+    </div>
+
+    <!-- 3 tabs -->
+    <div class="tabs">
+      <button class="active"><i data-lucide="receipt" style="width:15px"></i> 明细</button>
+      <button><i data-lucide="bar-chart-3" style="width:15px"></i> 报表 <span class="badge">6</span></button>
+      <button><i data-lucide="settings-2" style="width:15px"></i> 管理</button>
+    </div>
+
+    <!-- KPI -->
+    <div class="kpis">
+      <div class="kpi card">
+        <div class="lab"><i data-lucide="trending-up" class="text-success" style="width:14px"></i> 本月收入</div>
+        <div class="val tnum text-success">¥ 24,580</div>
+        <div class="sub">较上月 +8.2%</div>
+        <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,20 20,16 40,18 60,10 80,12 100,4" fill="none" stroke="var(--success)" stroke-width="2"/></svg>
+      </div>
+      <div class="kpi card">
+        <div class="lab"><i data-lucide="trending-down" class="text-destructive" style="width:14px"></i> 本月支出</div>
+        <div class="val tnum text-destructive">¥ 16,320</div>
+        <div class="sub">较上月 −3.1%</div>
+        <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,8 20,14 40,10 60,16 80,12 100,18" fill="none" stroke="var(--destructive)" stroke-width="2"/></svg>
+      </div>
+      <div class="kpi card">
+        <div class="lab"><i data-lucide="scale" style="width:14px"></i> 本月结余</div>
+        <div class="val tnum">¥ 8,260</div>
+        <div class="sub">储蓄率 33.6%</div>
+        <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,16 20,12 40,14 60,8 80,10 100,6" fill="none" stroke="var(--brand-500)" stroke-width="2"/></svg>
+      </div>
+      <div class="kpi card">
+        <div class="lab"><i data-lucide="wallet" class="text-brand" style="width:14px"></i> 净资产</div>
+        <div class="val tnum">¥ 182,940</div>
+        <div class="sub">含 3 账户 · 1 信用卡</div>
+        <svg class="spark" viewBox="0 0 100 26" preserveAspectRatio="none"><polyline points="0,22 20,18 40,16 60,12 80,9 100,5" fill="none" stroke="var(--brand-500)" stroke-width="2"/></svg>
+      </div>
+    </div>
+
+    <!-- 工具栏 -->
+    <div class="toolbar">
+      <div class="search">
+        <i data-lucide="search" style="width:15px"></i>
+        <input placeholder="搜索备注或分类…" />
+      </div>
+      <button class="chip active">全部</button>
+      <button class="chip">收入</button>
+      <button class="chip">支出</button>
+      <button class="chip">转账</button>
+      <select class="select"><option>全部分类</option><option>餐饮</option><option>交通</option><option>购物</option></select>
+      <select class="select"><option>全部账户</option><option>招商银行</option><option>支付宝</option><option>现金</option></select>
+      <button class="btn btn-ghost btn-icon" title="更多筛选"><i data-lucide="sliders-horizontal" style="width:15px"></i></button>
+      <button class="btn"><i data-lucide="check-square" style="width:15px"></i> 批量</button>
+    </div>
+
+    <!-- 主区 + 右栏 -->
+    <div class="desk-grid">
+      <div class="ledger card">
+        <table>
+          <thead>
+            <tr>
+              <th class="cbox"><input type="checkbox" /></th>
+              <th>日期</th>
+              <th>分类</th>
+              <th>账户</th>
+              <th>备注</th>
+              <th class="num">金额</th>
+              <th>类型</th>
+              <th></th>
+            </tr>
+          </thead>
+          <tbody>
+            <!-- 8月15日 -->
+            <tr><td colspan="8" class="date-sep"><span>8月15日 周六</span><span class="sum">收 +1,200 · 支 −486 · 余 +714</span></td></tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">09:24</td>
+              <td><div class="cat"><span class="cat-ic">💰</span><span class="cat-name">工资</span></div></td>
+              <td class="acct">招商银行</td>
+              <td class="note">八月薪资</td>
+              <td class="num amt text-success">+12,000</td>
+              <td><span class="dot dot-income"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">12:40</td>
+              <td><div class="cat"><span class="cat-ic">🍜</span><span class="cat-name">餐饮</span></div></td>
+              <td class="acct">支付宝</td>
+              <td class="note">午餐 · 公司楼下</td>
+              <td class="num amt text-destructive">−38</td>
+              <td><span class="dot dot-expense"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">19:05</td>
+              <td><div class="cat"><span class="cat-ic">🛒</span><span class="cat-name">购物</span></div></td>
+              <td class="acct">招商银行</td>
+              <td class="note">超市日用品</td>
+              <td class="num amt text-destructive">−448</td>
+              <td><span class="dot dot-expense"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <!-- 8月14日 -->
+            <tr><td colspan="8" class="date-sep"><span>8月14日 周五</span><span class="sum">支 −1,260 · 转 −2,000</span></td></tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">08:50</td>
+              <td><div class="cat"><span class="cat-ic">🚇</span><span class="cat-name">交通</span></div></td>
+              <td class="acct">现金</td>
+              <td class="note">地铁通勤</td>
+              <td class="num amt text-destructive">−60</td>
+              <td><span class="dot dot-expense"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">14:30</td>
+              <td><div class="cat"><span class="cat-ic">🔁</span><span class="cat-name">转账</span></div></td>
+              <td class="acct">支付宝 → 招商银行</td>
+              <td class="note">还信用卡</td>
+              <td class="num amt text-brand">−2,000</td>
+              <td><span class="dot dot-transfer"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">21:12</td>
+              <td><div class="cat"><span class="cat-ic">🍕</span><span class="cat-name">餐饮</span></div></td>
+              <td class="acct">支付宝</td>
+              <td class="note">外卖</td>
+              <td class="num amt text-destructive">−42</td>
+              <td><span class="dot dot-expense"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <!-- 8月13日 -->
+            <tr><td colspan="8" class="date-sep"><span>8月13日 周四</span><span class="sum">收 +300 · 支 −820</span></td></tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">10:15</td>
+              <td><div class="cat"><span class="cat-ic">💡</span><span class="cat-name">订阅</span></div></td>
+              <td class="acct">招商银行</td>
+              <td class="note">Netflix 月费</td>
+              <td class="num amt text-destructive">−68</td>
+              <td><span class="dot dot-expense"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">18:00</td>
+              <td><div class="cat"><span class="cat-ic">🎁</span><span class="cat-name">兼职</span></div></td>
+              <td class="acct">支付宝</td>
+              <td class="note">设计外包</td>
+              <td class="num amt text-success">+300</td>
+              <td><span class="dot dot-income"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td class="cbox"><input type="checkbox" /></td>
+              <td class="date">20:30</td>
+              <td><div class="cat"><span class="cat-ic">🍷</span><span class="cat-name">餐饮</span></div></td>
+              <td class="acct">现金</td>
+              <td class="note">聚餐 AA</td>
+              <td class="num amt text-destructive">−752</td>
+              <td><span class="dot dot-expense"></span></td>
+              <td class="acts"><button title="编辑"><i data-lucide="pencil" style="width:14px"></i></button><button class="del" title="删除"><i data-lucide="trash-2" style="width:14px"></i></button></td>
+            </tr>
+            <tr>
+              <td colspan="8" style="text-align:center;padding:14px;color:var(--muted-foreground);font-size:12px">已显示近 3 天 · 共 186 条 · <a style="color:var(--brand-600);font-weight:600;cursor:pointer">加载更多</a></td>
+            </tr>
+          </tbody>
+        </table>
+      </div>
+
+      <!-- 右栏 -->
+      <div class="rail card">
+        <div class="blk">
+          <h3><i data-lucide="target" class="text-brand" style="width:15px"></i> 本月预算 <i data-lucide="more-horizontal" class="more" style="width:15px"></i></h3>
+          <div class="bp">
+            <div class="top"><span class="nm">总预算</span><span class="vv">¥ 9,320 / 20,000</span></div>
+            <div class="bar"><i style="width:47%"></i></div>
+          </div>
+          <div class="bp">
+            <div class="top"><span class="nm">🍜 餐饮</span><span class="vv">¥ 1,240 / 2,000</span></div>
+            <div class="bar"><i style="width:62%"></i></div>
+          </div>
+          <div class="bp">
+            <div class="top"><span class="nm">🛒 购物</span><span class="vv">¥ 1,890 / 1,500</span></div>
+            <div class="bar"><i class="over" style="width:100%"></i></div>
+          </div>
+        </div>
+        <div class="blk">
+          <h3><i data-lucide="wallet" class="text-brand" style="width:15px"></i> 净资产分布</h3>
+          <div class="acct-row"><span class="ic" style="background:oklch(74% 0.11 264 / .15);color:var(--brand-600)"><i data-lucide="building-2" style="width:16px"></i></span><span class="nm">招商银行</span><span class="bal">¥ 96,400</span></div>
+          <div class="acct-row"><span class="ic" style="background:oklch(84% 0.07 264 / .2);color:var(--brand-700)"><i data-lucide="wallet" style="width:16px"></i></span><span class="nm">支付宝</span><span class="bal">¥ 28,540</span></div>
+          <div class="acct-row"><span class="ic" style="background:oklch(72% 0.15 55 / .18);color:var(--warning)"><i data-lucide="banknote" style="width:16px"></i></span><span class="nm">现金</span><span class="bal">¥ 3,200</span></div>
+          <div class="acct-row"><span class="ic" style="background:oklch(58% 0.21 25 / .12);color:var(--destructive)"><i data-lucide="credit-card" style="width:16px"></i></span><span class="nm">信用卡（负债）</span><span class="bal text-destructive">−¥ 4,800</span></div>
+        </div>
+        <div class="blk">
+          <h3><i data-lucide="activity" class="text-brand" style="width:15px"></i> 近 7 日趋势</h3>
+          <div class="mini-chart">
+            <div class="bar-col"><div class="b" style="height:40%"></div><span class="lb">9</span></div>
+            <div class="bar-col"><div class="b" style="height:65%"></div><span class="lb">10</span></div>
+            <div class="bar-col"><div class="b exp" style="height:80%"></div><span class="lb">11</span></div>
+            <div class="bar-col"><div class="b" style="height:30%"></div><span class="lb">12</span></div>
+            <div class="bar-col"><div class="b exp" style="height:90%"></div><span class="lb">13</span></div>
+            <div class="bar-col"><div class="b" style="height:55%"></div><span class="lb">14</span></div>
+            <div class="bar-col"><div class="b" style="height:48%"></div><span class="lb">15</span></div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+    <!-- 报表（轻量示意，证明 3 tab 已收纳） -->
+    <div style="margin-top:18px" class="card" id="reportPanel">
+      <div class="blk" style="border-bottom:1px solid var(--border);padding:14px 16px"><h3 style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;margin:0"><i data-lucide="bar-chart-3" class="text-brand" style="width:15px"></i> 报表（整合自原“总览/报表”两个 tab）</h3></div>
+      <div class="panel-grid" style="padding:16px">
+        <div class="card" style="padding:14px"><div style="font-size:12px;font-weight:600;color:var(--muted-foreground);margin-bottom:10px">月度收支对比</div><div class="mini-chart"><div class="bar-col"><div class="b" style="height:70%"></div><span class="lb">收</span></div><div class="bar-col"><div class="b exp" style="height:46%"></div><span class="lb">支</span></div></div></div>
+        <div class="card" style="padding:14px"><div style="font-size:12px;font-weight:600;color:var(--muted-foreground);margin-bottom:10px">支出分类占比</div><div class="mini-chart"><div class="bar-col"><div class="b" style="height:80%"></div><span class="lb">餐饮</span></div><div class="bar-col"><div class="b" style="height:55%"></div><span class="lb">购物</span></div><div class="bar-col"><div class="b" style="height:35%"></div><span class="lb">交通</span></div><div class="bar-col"><div class="b" style="height:25%"></div><span class="lb">其他</span></div></div></div>
+      </div>
+    </div>
+
+    <!-- 管理（轻量示意） -->
+    <div style="margin-top:16px" class="card" id="managePanel">
+      <div class="blk" style="border-bottom:1px solid var(--border);padding:14px 16px"><h3 style="display:flex;align-items:center;gap:7px;font-size:13px;font-weight:700;margin:0"><i data-lucide="settings-2" class="text-brand" style="width:15px"></i> 管理（整合自原“账户/预算/分类”三个 tab）</h3></div>
+      <div class="manage-grid" style="padding:16px">
+        <div class="tile"><span class="ic"><i data-lucide="wallet" style="width:18px"></i></span><div><div class="t">账户</div><div class="d">4 个 · 多账本</div></div></div>
+        <div class="tile"><span class="ic"><i data-lucide="target" style="width:18px"></i></span><div><div class="t">预算</div><div class="d">月度 / 分类</div></div></div>
+        <div class="tile"><span class="ic"><i data-lucide="tags" style="width:18px"></i></span><div><div class="t">分类</div><div class="d">收支分类管理</div></div></div>
+      </div>
+    </div>
+  </section>
+
+  <!-- ============ 手机 ============ -->
+  <section class="frame-mobile">
+    <div class="phone">
+      <div class="statusbar">
+        <span>9:41</span>
+        <span class="icons"><i data-lucide="signal" style="width:15px"></i><i data-lucide="wifi" style="width:15px"></i><i data-lucide="battery-full" style="width:15px"></i></span>
+      </div>
+      <div class="scroll">
+        <div class="ph-head">
+          <div class="t">记账</div>
+          <button class="period" style="height:30px;font-size:12px;padding:0 10px"><i data-lucide="calendar" style="width:13px"></i> 8月</button>
+        </div>
+        <div class="ph-tabs">
+          <button class="active">明细</button>
+          <button>报表</button>
+          <button>管理</button>
+        </div>
+
+        <div class="kpis-ph">
+          <div class="kpi-ph card"><div class="lab">收入</div><div class="val text-success">12,000</div><div class="sub">本月</div></div>
+          <div class="kpi-ph card"><div class="lab">支出</div><div class="val text-destructive">1,620</div><div class="sub">本月</div></div>
+          <div class="kpi-ph card"><div class="lab">结余</div><div class="val">10,380</div><div class="sub">储蓄率 33%</div></div>
+          <div class="kpi-ph card"><div class="lab">净资产</div><div class="val text-brand">182,940</div><div class="sub">4 账户</div></div>
+        </div>
+
+        <div class="chips-ph">
+          <button class="chip active">全部</button>
+          <button class="chip">收入</button>
+          <button class="chip">支出</button>
+          <button class="chip">转账</button>
+          <button class="chip"><i data-lucide="sliders-horizontal" style="width:13px"></i> 筛选</button>
+        </div>
+
+        <div class="date-pill-wrap"><span class="date-pill">8月15日 周六 · 收+12,000 支−486</span></div>
+
+        <div class="tx-row" onclick="openSheet('工资','招商银行','八月薪资','+12,000','收入','09:24','薪资',true)">
+          <span class="ic">💰</span>
+          <div class="mid"><div class="n">八月薪资</div><div class="s">工资 · 招商银行</div></div>
+          <div class="rt"><div class="a text-success">+12,000</div><div class="ty"><span class="dot dot-income"></span>收入</div></div>
+        </div>
+        <div class="tx-row" onclick="openSheet('午餐','支付宝','公司楼下','−38','支出','12:40','餐饮',false)">
+          <span class="ic">🍜</span>
+          <div class="mid"><div class="n">午餐 · 公司楼下</div><div class="s">餐饮 · 支付宝</div></div>
+          <div class="rt"><div class="a text-destructive">−38</div><div class="ty"><span class="dot dot-expense"></span>支出</div></div>
+        </div>
+        <div class="tx-row" onclick="openSheet('超市','招商银行','日用品','−448','支出','19:05','购物',false)">
+          <span class="ic">🛒</span>
+          <div class="mid"><div class="n">超市日用品</div><div class="s">购物 · 招商银行</div></div>
+          <div class="rt"><div class="a text-destructive">−448</div><div class="ty"><span class="dot dot-expense"></span>支出</div></div>
+        </div>
+
+        <div class="date-pill-wrap"><span class="date-pill">8月14日 周五</span></div>
+
+        <div class="tx-row" onclick="openSheet('地铁','现金','通勤','−60','支出','08:50','交通',false)">
+          <span class="ic">🚇</span>
+          <div class="mid"><div class="n">地铁通勤</div><div class="s">交通 · 现金</div></div>
+          <div class="rt"><div class="a text-destructive">−60</div><div class="ty"><span class="dot dot-expense"></span>支出</div></div>
+        </div>
+        <div class="tx-row" onclick="openSheet('还卡','支付宝→招商','还款','−2,000','转账','14:30','转账',false)">
+          <span class="ic">🔁</span>
+          <div class="mid"><div class="n">还信用卡</div><div class="s">转账 · 支付宝→招商</div></div>
+          <div class="rt"><div class="a text-brand">−2,000</div><div class="ty"><span class="dot dot-transfer"></span>转账</div></div>
+        </div>
+        <div class="tx-row" onclick="openSheet('外卖','支付宝','晚饭','−42','支出','21:12','餐饮',false)">
+          <span class="ic">🍕</span>
+          <div class="mid"><div class="n">外卖</div><div class="s">餐饮 · 支付宝</div></div>
+          <div class="rt"><div class="a text-destructive">−42</div><div class="ty"><span class="dot dot-expense"></span>支出</div></div>
+        </div>
+      </div>
+
+      <!-- 底部抽屉 -->
+      <div class="scrim" id="scrim" onclick="closeSheet()"></div>
+      <div class="sheet" id="sheet">
+        <div class="grip"></div>
+        <div class="big">
+          <span class="ic" id="sIc">💰</span>
+          <div>
+            <div class="amt tnum" id="sAmt">+12,000</div>
+            <div style="font-size:12px;color:var(--muted-foreground)" id="sCat">工资</div>
+          </div>
+        </div>
+        <div class="grid2">
+          <div><div class="k">账户</div><div class="v" id="sAcct">招商银行</div></div>
+          <div><div class="k">类型</div><div class="v" id="sType">收入</div></div>
+          <div><div class="k">时间</div><div class="v" id="sTime">09:24</div></div>
+          <div><div class="k">备注</div><div class="v" id="sNote">八月薪资</div></div>
+        </div>
+        <div class="acts2">
+          <button class="btn"><i data-lucide="pencil" style="width:14px"></i> 编辑</button>
+          <button class="btn" style="color:var(--destructive)"><i data-lucide="trash-2" style="width:14px"></i> 删除</button>
+        </div>
+      </div>
+
+      <!-- FAB -->
+      <button class="fab" onclick="toggleFab()"><i data-lucide="plus" style="width:24px"></i></button>
+      <button class="fab-sub" id="fabIn" style="bottom:148px;transform:translateY(20px);opacity:0" title="收入"><i data-lucide="trending-up" style="width:18px"></i></button>
+      <button class="fab-sub" id="fabEx" style="bottom:196px;transform:translateY(20px);opacity:0" title="支出"><i data-lucide="trending-down" style="width:18px"></i></button>
+      <button class="fab-sub" id="fabTr" style="bottom:244px;transform:translateY(20px);opacity:0" title="转账"><i data-lucide="arrow-left-right" style="width:18px"></i></button>
+
+      <!-- 底部导航 -->
+      <div class="ph-tabbar">
+        <button class="active"><i data-lucide="receipt" style="width:18px"></i>明细</button>
+        <button><i data-lucide="bar-chart-3" style="width:18px"></i>报表</button>
+        <button><i data-lucide="settings-2" style="width:18px"></i>管理</button>
+      </div>
+    </div>
+  </section>
+</div>
+
+<!-- 设计说明 -->
+<div class="notes card">
+  <h2>设计说明 · 关键改动</h2>
+  <ul>
+    <li><span class="tag">Tab 收敛</span><b>6 → 3</b>：原「总览 / 明细 / 账户 / 预算 / 分类 / 报表」合并为 <b>明细 / 报表 / 管理</b>。「总览」的 KPI 与图表下放到明细页顶部与右栏；「账户 / 预算 / 分类」三个管理类 tab 收进「管理」入口，避免每次进入都被低频功能占据屏幕。</li>
+    <li><span class="tag">密度提升</span>桌面明细由「展开卡片」改为 <b>高密度表格</b>（行高 ~40px，账户/分类/备注/金额同屏可见，无需点击展开）；hover 行内显隐编辑/删除，新增 <b>批量勾选</b>列（呼应记账模块待办的批量操作）。</li>
+    <li><span class="tag">信息分层</span>顶部 <b>KPI 条</b>用 4 个紧凑指标卡（收入/支出/结余/净资产）替代占空间的渐变 Hero；右栏固定显示 <b>预算进度 + 净资产分布 + 7 日趋势</b>，把常用洞察常驻一侧而非藏进独立 tab。</li>
+    <li><span class="tag">手机适配</span>手机用 <b>紧凑列表行</b>（图标+备注/账户+金额同排），点击行唤起 <b>底部抽屉</b>看详情与操作；KPI 改为 2×2；筛选 chip 横向滚动；保留 FAB 与底部三 tab 导航。</li>
+    <li><span class="tag">令牌一致</span>全部沿用 AGENTS.md 的 OKLCH 令牌、JetBrains Mono 金额（tabular-nums）、Lucide 图标、圆角/间距阶梯，未引入任何脱离令牌的硬编码色。</li>
+  </ul>
+</div>
+
+<script>
+  function setView(v){
+    document.body.dataset.view = v;
+    document.querySelectorAll('.seg button').forEach(b=>b.classList.toggle('active', b.dataset.v===v));
+  }
+  function openSheet(note,acct,cat,amt,type,time,raw){
+    document.getElementById('sIc').textContent = raw==='工资'?'💰':raw==='餐饮'?'🍜':raw==='购物'?'🛒':raw==='交通'?'🚇':raw==='转账'?'🔁':'📌';
+    document.getElementById('sAmt').textContent = amt;
+    document.getElementById('sCat').textContent = cat;
+    document.getElementById('sAcct').textContent = acct;
+    document.getElementById('sType').textContent = type;
+    document.getElementById('sTime').textContent = time;
+    document.getElementById('sNote').textContent = note;
+    document.getElementById('sheet').classList.add('open');
+    document.getElementById('scrim').classList.add('open');
+  }
+  function closeSheet(){
+    document.getElementById('sheet').classList.remove('open');
+    document.getElementById('scrim').classList.remove('open');
+  }
+  function toggleFab(){
+    ['fabIn','fabEx','fabTr'].forEach((id,i)=>{
+      const el=document.getElementById(id);
+      const show = el.style.opacity==='0' || !el.style.opacity;
+      el.style.opacity = show?'1':'0';
+      el.style.transform = show?'translateY(0)':'translateY(20px)';
+    });
+  }
+  if(window.lucide) lucide.createIcons();
+</script>
+</body>
+</html>

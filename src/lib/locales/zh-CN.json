@@ -603,7 +603,22 @@
     "chooseAccount": "选择账户",
     "chooseTargetAccount": "选择目标账户",
     "chooseCategory": "选择分类",
-    "noCashWallet": "现金钱包"
+    "noCashWallet": "现金钱包",
+    "tab_ledger": "明细",
+    "tab_manage": "管理",
+    "netWorth": "净资产",
+    "netWorthDist": "净资产分布",
+    "batch": "批量",
+    "selectAll": "全选",
+    "selectedCount": "已选 {{count}} 条",
+    "bulkDelete": "批量删除",
+    "bulkDeleteConfirm": "确定删除选中的 {{count}} 条交易记录吗？此操作不可撤销。",
+    "loadMore": "加载更多",
+    "detail": "详情",
+    "manageAccountsDesc": "管理你的资金账户",
+    "manageBudgetsDesc": "设置月度与分类预算",
+    "manageCategoriesDesc": "收支分类与图标",
+    "noResult": "没有符合条件的交易"
   },
   "calendar": {
     "title": "日历",

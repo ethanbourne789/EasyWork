@@ -603,7 +603,22 @@
     "chooseAccount": "Select Account",
     "chooseTargetAccount": "Select Target Account",
     "chooseCategory": "Select Category",
-    "noCashWallet": "Cash Wallet"
+    "noCashWallet": "Cash Wallet",
+    "tab_ledger": "Ledger",
+    "tab_manage": "Manage",
+    "netWorth": "Net Worth",
+    "netWorthDist": "Net Worth Breakdown",
+    "batch": "Batch",
+    "selectAll": "Select all",
+    "selectedCount": "{{count}} selected",
+    "bulkDelete": "Delete selected",
+    "bulkDeleteConfirm": "Delete the {{count}} selected transaction(s)? This cannot be undone.",
+    "loadMore": "Load more",
+    "detail": "Details",
+    "manageAccountsDesc": "Manage your accounts",
+    "manageBudgetsDesc": "Set monthly & category budgets",
+    "manageCategoriesDesc": "Income/expense categories",
+    "noResult": "No transactions match the filters"
   },
   "calendar": {
     "title": "Title",
