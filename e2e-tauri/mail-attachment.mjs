@@ -8,11 +8,15 @@ import { existsSync, statSync } from 'node:fs';
 import { connect, collectErrors, demoLogin, shot, Report } from './helpers.mjs';
 
 const QQ = {
-  email: '1633856788@qq.com',
-  password: 'mionyteazudgbfbi',
+  email: process.env.QQ_EMAIL ?? '1633856788@qq.com',
+  password: process.env.QQ_AUTH_CODE ?? '',
   imapHost: 'imap.qq.com', imapPort: 993,
   smtpHost: 'smtp.qq.com', smtpPort: 465,
 };
+if (!QQ.password) {
+  console.error('缺少环境变量 QQ_AUTH_CODE（QQ 邮箱授权码）。用法：QQ_AUTH_CODE=xxx node e2e-tauri/mail-attachment.mjs');
+  process.exit(1);
+}
 
 const report = new Report();
 let browser, page;

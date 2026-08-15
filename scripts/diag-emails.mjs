@@ -1,15 +1,17 @@
+// ⚠️ 已废弃：Supabase 时代一次性诊断脚本（依赖 @supabase/supabase-js 已从 package.json 移除，无法运行），
+// 仅作历史参考。所有凭据改为环境变量读取，不再硬编码。
 import { createClient } from '@supabase/supabase-js';
 
-const SUPABASE_URL = 'https://nbcsywzqvvputqitmpla.supabase.co';
-const ANON_KEY = 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6Im5iY3N5d3pxdnZwdXRxaXRtcGxhIiwicm9sZSI6ImFub24iLCJpYXQiOjE3ODE0MTQ1MDAsImV4cCI6MjA5Njk5MDUwMH0.KPiSoIVyMitVt7hk6Y6pE_BN9lr3W6YWJ3sqIZZ-NEQ';
+const SUPABASE_URL = process.env.SUPABASE_URL ?? '';
+const ANON_KEY = process.env.SUPABASE_ANON_KEY ?? '';
 
 const client = createClient(SUPABASE_URL, ANON_KEY, {
   auth: { persistSession: false, autoRefreshToken: false },
 });
 
 const { data: authData, error: authErr } = await client.auth.signInWithPassword({
-  email: 'ethanbourne789@gmail.com',
-  password: 'oceanking7',
+  email: process.env.GMAIL_EMAIL ?? '',
+  password: process.env.GMAIL_PASSWORD ?? '',
 });
 if (authErr) {
   console.error('AUTH ERR', authErr.message);

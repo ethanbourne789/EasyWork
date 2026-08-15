@@ -13,7 +13,7 @@ Tauri 桌面端全能生产力工作台：任务/邮箱/笔记/记账/仪表盘�
 
 ## 绿色版构建（npm run build:green）
 - 🔴 cargo build --release 必须带 `--features custom-protocol`（否则白屏连 localhost:1420）；必须前台跑 timeout≥600000（后台任务会在 cargo 阶段被杀）。
-- tauri.conf.json bundle.active:false + targets:[]；+crt-static 免 VC++；产物 release-green/EasyWork.exe（2026-08-15: 23.28MB）。运行期仅需 WebView2。
+- tauri.conf.json bundle.active:false + targets:[]；+crt-static 免 VC++；产物 release-green/EasyWork.exe（2026-08-15: **13.66MB**，release 调优 lto/codegen-units=1/opt-level="z" 后较 22.8MB 减 40%）。运行期仅需 WebView2。
 - 调用方式：PowerShell 工具直调 `npm.cmd run build:green`。
 - `tsc -b --force` 引爆 TS6310 → tsconfig.node.json 已改 emitDeclarationOnly+outDir 到 node_modules/.tmp。日常 `tsc -b` 增量。
 
@@ -26,6 +26,7 @@ Tauri 桌面端全能生产力工作台：任务/邮箱/笔记/记账/仪表盘�
 - 浏览器只能测纯前端（无 __TAURI_INTERNALS__，invoke 全挂）；数据工作流必须跑 exe 或 tauri dev。脚本 scripts/e2e-browser-smoke.mjs。
 - Tauri E2E：Playwright + WebView2 CDP；**生产 tauri.conf.json 不再带调试端口，E2E 构建用 `src-tauri/tauri-e2e.conf.json` + `pnpm run build:e2e`**；CSP connect-src 必须含 `ipc: http://ipc.localhost`；重启前杀干净 easywork/msedgewebview 进程。骨架 e2e-tauri/helpers.mjs；mail-full-flow.mjs 27/27。
 - 邮件：IMAP/SMTP 均 TLS-only（mailpit 只能测 SMTP）；首次同步窗口 200 封/文件夹。已修复：emails_fts 触发器（mail/db.rs v4）、附件落盘（service.rs）、已读/星标回写 IMAP（commands.rs push_flag_to_imap）。
+- 🔴 **凭据安全约定**：QQ 邮箱授权码一律经 `QQ_AUTH_CODE` 环境变量注入（邮箱可用 `QQ_EMAIL` 覆盖默认 1633856788@qq.com）；禁止在脚本/代码/记忆里硬编码任何密码、授权码、API key。E2E 脚本统一在入口校验 `QQ_AUTH_CODE`，缺失时提示用法并 exit(1)。
 - 2026-08-15 全项目审阅（详见 docs/project-review-2026-08-15.md）已修复：sync 触发器补齐 5 表；tombstone 删除传播 + 下载触发器 mute 防回环；PG 连接串/CalDAV 密码迁 keyring；tracing 日志 init；assetProtocol 移除 `**`；playwright.config.ts 端口 1420；playwright 移 devDependencies；localStorage 统一走 src/lib/storage.ts；Mail/Notes i18n 补全；business.rs 按领域拆分；LWW updated_at 覆盖 subtasks/tags/task_tags；邮件同步锁外解析+单事务批量写入；P2 白名单 SQL 标识符 + SqlVal 枚举替代 "NULL" 哨兵；sync 冲突检测+UI（sync_conflicts 表 + sync_conflicts_list/resolve 命令 + SyncConflictPanel）。
 - **新功能（2026-08-15 晚）**：日历事件提醒（db v12 reminder_minutes + check_event_reminders 60s 轮询 + 系统通知）；IMAP 大附件按需拉取（parse_message_lazy 5MB 阈值 + email_attachment_download）；备份 AES-256-GCM 可选加密（BackupPasswordDialog）；Cargo release 调优（lto/codegen-units=1/opt-level=z）。
 - 前端存储：所有 localStorage 读写统一走 `src/lib/storage.ts`（key 常量、类型安全、异常吞掉），避免各模块分散硬编码 key。

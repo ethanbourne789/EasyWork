@@ -1,11 +1,13 @@
 import { chromium } from 'playwright';
 import fs from 'node:fs';
 
+// ⚠️ 已废弃：Supabase 时代遗留脚本（调用 /functions/v1/fetch-mail），
+// 依赖与后端均已移除，仅作历史参考。凭据一律从环境变量读取，不再硬编码。
 const BASE = 'http://localhost:1420';
-const EMAIL = 'ethanbourne789@gmail.com';
-const PASSWORD = 'oceanking7';
-const QQ_EMAIL = '1633856788@qq.com';
-const QQ_AUTH = 'mionyteazudgbfbi';
+const EMAIL = process.env.GMAIL_EMAIL ?? '';
+const PASSWORD = process.env.GMAIL_PASSWORD ?? '';
+const QQ_EMAIL = process.env.QQ_EMAIL ?? '1633856788@qq.com';
+const QQ_AUTH = process.env.QQ_AUTH_CODE ?? '';
 const SHOT_DIR = 'E:/Dev/EasyWork0807/scripts/mail-e2e-shots';
 
 fs.mkdirSync(SHOT_DIR, { recursive: true });
