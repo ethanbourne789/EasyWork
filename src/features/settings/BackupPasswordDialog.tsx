@@ -94,9 +94,10 @@ export function BackupPasswordDialog({
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('settings.backup.password')}</label>
+            <label htmlFor="backup-password" className="text-sm font-medium">{t('settings.backup.password')}</label>
             <div className="relative">
               <Input
+                id="backup-password"
                 type={show ? "text" : "password"}
                 placeholder={t('settings.backup.passwordPlaceholder')}
                 value={password}
@@ -108,9 +109,10 @@ export function BackupPasswordDialog({
           </div>
           {isExport && (
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t('settings.backup.confirmPassword')}</label>
+              <label htmlFor="backup-confirm-password" className="text-sm font-medium">{t('settings.backup.confirmPassword')}</label>
               <div className="relative">
                 <Input
+                  id="backup-confirm-password"
                   type={showConfirm ? "text" : "password"}
                   placeholder={t('settings.backup.confirmPasswordPlaceholder')}
                   value={confirmPassword}

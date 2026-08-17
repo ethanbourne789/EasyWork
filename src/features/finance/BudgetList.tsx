@@ -326,15 +326,15 @@ export function BudgetList() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.category')}</label>
+              <label htmlFor="budget-category" className="text-sm font-medium">{t('finance.category')}</label>
               {editingId ? (
-                <Select value={newCatBudget.category_id} disabled>
+                <Select id="budget-category" value={newCatBudget.category_id} disabled>
                   <option value={newCatBudget.category_id}>
                     {(() => { const c = getCategory(newCatBudget.category_id); return `${c?.icon} ${c?.name}`; })()}
                   </option>
                 </Select>
               ) : (
-                <Select value={newCatBudget.category_id} onChange={(e) => setNewCatBudget({ ...newCatBudget, category_id: e.target.value })}>
+                <Select id="budget-category" value={newCatBudget.category_id} onChange={(e) => setNewCatBudget({ ...newCatBudget, category_id: e.target.value })}>
                   <option value="">{t('finance.chooseCategory')}</option>
                   {availableCategories.map((c) => (
                     <option key={c.id} value={c.id}>{c.icon} {c.name}</option>
@@ -343,8 +343,9 @@ export function BudgetList() {
               )}
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.budgetAmount')}</label>
+              <label htmlFor="budget-amount" className="text-sm font-medium">{t('finance.budgetAmount')}</label>
               <Input
+                id="budget-amount"
                 type="number"
                 step="0.01"
                 placeholder="0.00"
@@ -368,8 +369,9 @@ export function BudgetList() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.monthlyLimit')}</label>
+              <label htmlFor="overall-amount" className="text-sm font-medium">{t('finance.monthlyLimit')}</label>
               <Input
+                id="overall-amount"
                 type="number"
                 step="0.01"
                 placeholder="0.00"

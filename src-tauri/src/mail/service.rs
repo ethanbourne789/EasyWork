@@ -8,7 +8,7 @@ use crate::mail::creds::CredentialStore;
 use crate::mail::db_queries;
 use crate::mail::events::emit_progress;
 use crate::mail::imap::{ImapAdapter, calc_fetch_range};
-use crate::mail::mime::{parse_message_lazy, infer_folder_type, folder_display_name, sanitize_html};
+use crate::mail::mime::{parse_message_lazy_from_sections, find_html_part_id, infer_folder_type, folder_display_name, sanitize_html};
 use crate::mail::types::*;
 use crate::mail::error::{MailError, MailResult};
 
@@ -96,7 +96,7 @@ impl MailService {
                     tracing::debug!("[do_sync] folder={} last_uid={:?} range={}..{}", path, last_uid, start, end);
 
                     if start <= end {
-                        let messages = match imap.fetch_range(start, end).await {
+                        let messages = match imap.fetch_range_lazy(start, end).await {
                             Ok(m) => m,
                             Err(e) => {
                                 folder_errors.push(format!("{}: {}", display_name, e.message));
@@ -105,20 +105,49 @@ impl MailService {
                         };
                         let total = messages.len() as i64;
 
-                        // 阶段一：在 async 锁外完成解析与附件落盘，避免同步 IO 阻塞其他邮件命令。
-                        // 懒解析：>5MB 的大附件仅保留元数据并标记待下载，不落盘、不驻留内存，
-                        // 用户打开邮件点击附件时再从 IMAP 按需拉取（见 commands::email_attachment_download）。
-                        const LAZY_ATTACH_BYTES: usize = 5 * 1024 * 1024;
+                        // 阶段一：在 async 锁外完成解析，避免同步 IO 阻塞其他邮件命令。
+                        // 懒同步：仅拉取 HEADER + BODY.PEEK[TEXT]，不拉取任何附件字节。
+                        // 所有附件均标记 pending_download=1，用户点击附件时再从 IMAP 按需拉取
+                        //（见 commands::email_attachment_download）。
+                        // 随后按需补充拉取 HTML 正文（text/html part），不拉取附件 body。
                         let _ = std::fs::create_dir_all(&*self.attachments_dir);
-                        let mut prepared: Vec<(Email, Vec<EmailAttachment>)> = Vec::with_capacity(messages.len());
-                        for (uid, body, msg_flags) in messages {
-                            let parsed = match parse_message_lazy(&body, LAZY_ATTACH_BYTES) {
+                        let mut parsed_batch: Vec<(crate::mail::mime::ParsedMail, u32, Vec<String>, Option<String>)> = Vec::with_capacity(messages.len());
+                        let mut html_fetches: Vec<(u32, String, usize)> = Vec::new();
+                        for (uid, header, body_text, msg_flags) in messages {
+                            let parsed = match parse_message_lazy_from_sections(&header, body_text) {
                                 Ok(p) => p,
                                 Err(e) => {
                                     tracing::warn!("[do_sync] 跳过无法解析的邮件 folder={} uid={} err={}", path, uid, e.message);
                                     continue;
                                 }
                             };
+                            // 从 MIME 树中查找 text/html part，标记为待拉取
+                            let html_part_id = find_html_part_id(&parsed);
+                            if let Some(ref pid) = html_part_id {
+                                html_fetches.push((uid, pid.clone(), parsed_batch.len()));
+                            }
+                            parsed_batch.push((parsed, uid, msg_flags, html_part_id));
+                        }
+                        // 阶段一补：按需拉取 HTML 正文（仅 text/html part，不拉附件 body）
+                        let mut html_cache: Vec<Option<String>> = vec![None; parsed_batch.len()];
+                        for (uid, pid, slot) in html_fetches {
+                            match imap.fetch_html_body(uid, &pid).await {
+                                Ok(Some(raw)) => {
+                                    let decoded = match String::from_utf8(raw) {
+                                        Ok(s) => s,
+                                        Err(_) => continue,
+                                    };
+                                    html_cache[slot] = Some(sanitize_html(&decoded));
+                                }
+                                Ok(None) => {}
+                                Err(e) => {
+                                    tracing::debug!("[do_sync] HTML 拉取跳过 folder={} uid={} err={}", path, uid, e.message);
+                                }
+                            }
+                        }
+                        // 阶段一末：组装 Email 与 Attachment 记录
+                        let mut prepared: Vec<(Email, Vec<EmailAttachment>)> = Vec::with_capacity(parsed_batch.len());
+                        for (original_idx, (parsed, uid, msg_flags, _html_part_id)) in parsed_batch.into_iter().enumerate() {
                             // IMAP 标准 flag 形如 \Seen、\Flagged；做大小写不敏感、忽略反斜杠前缀的精确匹配
                             let is_read = msg_flags.iter().any(|f| imap_flag_eq(f, "Seen"));
                             let is_starred = msg_flags.iter().any(|f| imap_flag_eq(f, "Flagged"));
@@ -135,7 +164,7 @@ impl MailService {
                                 subject: parsed.subject.clone(),
                                 preview_text: parsed.preview_text.clone(),
                                 body_text: parsed.body_text.clone(),
-                                body_html: parsed.body_html.as_ref().map(|h| sanitize_html(h)),
+                                body_html: html_cache[original_idx].clone(),
                                 has_attachments: parsed.has_attachments,
                                 is_read, is_starred,
                                 // 使用邮件 Date 头作为接收时间，缺失才回退到同步时刻
@@ -146,30 +175,19 @@ impl MailService {
                             };
 
                             let mut atts = Vec::new();
-                            for (i, att) in parsed.attachments.into_iter().enumerate() {
-                                // 待下载的大附件：不落盘，仅写入占位记录（file_path 为空、pending_download=1）
-                                let disk_name = format!("{}_{}", email.id, i);
-                                let file_path = if att.needs_download {
-                                    String::new()
-                                } else {
-                                    let path = self.attachments_dir.join(&disk_name);
-                                    if let Err(e) = std::fs::write(&path, &att.data) {
-                                        tracing::warn!("附件落盘失败 email={} idx={} err={}", email.id, i, e);
-                                        continue;
-                                    }
-                                    path.to_string_lossy().into_owned()
-                                };
+                            for (att_idx, att) in parsed.attachments.into_iter().enumerate() {
+                                let _ = att_idx;
                                 atts.push(EmailAttachment {
                                     id: uuid::Uuid::new_v4().to_string(),
                                     email_id: email.id.clone(),
                                     filename: att.filename,
                                     mime_type: att.mime_type,
                                     size: Some(att.size as i64),
-                                    file_path,
+                                    file_path: String::new(),
                                     is_inline: att.is_inline,
                                     content_id: att.content_id,
                                     part_id: att.part_id,
-                                    pending_download: att.needs_download,
+                                    pending_download: true,
                                     created_at: chrono::Utc::now().to_rfc3339(),
                                 });
                             }

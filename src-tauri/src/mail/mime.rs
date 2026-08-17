@@ -30,6 +30,8 @@ pub struct ParsedMail {
     pub attachments: Vec<ParsedAttachment>,
     /// 邮件 Date 头（RFC3339），缺失时为 None，调用方回退到当前时间
     pub date: Option<String>,
+    /// MIME 树中 text/html part 的 IMAP part 编号（如 "2.1"），供按需拉取 HTML 正文使用
+    pub html_part_id: Option<String>,
 }
 
 pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
@@ -40,6 +42,111 @@ pub fn parse_message(raw: &[u8]) -> MailResult<ParsedMail> {
 /// 小附件行为与 parse_message 完全一致。
 pub fn parse_message_lazy(raw: &[u8], max_attach_bytes: usize) -> MailResult<ParsedMail> {
     parse_message_inner(raw, Some(max_attach_bytes))
+}
+
+/// 完全懒解析：仅基于 IMAP 拉取的 HEADER 字节与 BODY.PEEK[TEXT] 构建邮件数据。
+/// 不拉取任何附件字节（包括小附件），所有附件均标记 needs_download=true。
+/// body_html 在此模式下为空（调用方需通过 fetch_html_body 按需拉取）。
+pub fn parse_message_lazy_from_sections(header: &[u8], body_text: Option<Vec<u8>>) -> MailResult<ParsedMail> {
+    let parsed = MessageParser::default()
+        .parse(header)
+        .ok_or_else(|| MailError::new("PARSE_ERROR", "无法解析邮件头"))?;
+
+    let from_address = parsed
+        .from()
+        .and_then(|a| a.first())
+        .and_then(|addr| addr.address())
+        .map(|s| s.to_string());
+
+    let to_addresses: Vec<String> = parsed
+        .to()
+        .map(|a| {
+            a.iter()
+                .filter_map(|addr| addr.address().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let cc_addresses: Vec<String> = parsed
+        .cc()
+        .map(|a| {
+            a.iter()
+                .filter_map(|addr| addr.address().map(|s| s.to_string()))
+                .collect()
+        })
+        .unwrap_or_default();
+
+    let bt = body_text
+        .as_ref()
+        .and_then(|b| String::from_utf8(b.clone()).ok())
+        .or_else(|| parsed.body_text(0).map(|s| s.to_string()));
+
+    let preview_text = bt
+        .as_ref()
+        .map(|t| t.chars().take(200).collect());
+
+    let part_paths = compute_part_paths(&parsed.parts);
+    let html_part_id = find_html_part_in_tree(&parsed.parts, &part_paths);
+    let mut attachments: Vec<ParsedAttachment> = Vec::new();
+    for &att_id in &parsed.attachments {
+        let Some(part) = parsed.part(att_id) else { continue };
+        let is_inline = part.content_disposition().map(|d| d.is_inline()).unwrap_or(false);
+        let filename = part
+            .content_disposition()
+            .and_then(|d| d.attribute("filename"))
+            .or_else(|| part.content_type().and_then(|t| t.attribute("name")))
+            .map(|s| s.to_string())
+            .filter(|s| !s.trim().is_empty());
+        let mime_type = part.content_type().map(|t| {
+            format!("{}/{}", t.ctype(), t.subtype().unwrap_or("octet-stream"))
+        });
+        let content_id = part.content_id().map(|s| s.to_string());
+        attachments.push(ParsedAttachment {
+            filename,
+            mime_type,
+            size: 0,
+            is_inline,
+            content_id,
+            part_id: part_paths.get(&att_id).cloned(),
+            needs_download: true,
+            data: Vec::new(),
+        });
+    }
+
+    Ok(ParsedMail {
+        subject: parsed.subject().map(|s| s.to_string()),
+        from_address,
+        to_addresses,
+        cc_addresses,
+        body_text: bt,
+        body_html: None,
+        preview_text,
+        message_id: parsed.message_id().map(|s| s.to_string()),
+        has_attachments: !attachments.is_empty(),
+        attachments,
+        date: parsed.date().map(|d| d.to_rfc3339()),
+        html_part_id,
+    })
+}
+
+/// 从已解析的 ParsedMail 中获取 HTML part 编号（即 html_part_id 字段）。
+pub fn find_html_part_id(parsed: &ParsedMail) -> Option<String> {
+    parsed.html_part_id.clone()
+}
+
+/// 在 mail-parser 的 parts 树中查找 text/html part 的 IMAP section 编号。
+fn find_html_part_in_tree(parts: &[MessagePart], part_paths: &HashMap<u32, String>) -> Option<String> {
+    for (att_id, path) in part_paths {
+        let Some(part) = parts.get(*att_id as usize) else { continue };
+        if let Some(ct) = part.content_type() {
+            if ct.ctype().eq_ignore_ascii_case("text")
+                && ct.subtype().map_or(false, |st| st.eq_ignore_ascii_case("html"))
+            {
+                return Some(path.clone());
+            }
+        }
+    }
+    None
 }
 
 fn parse_message_inner(raw: &[u8], max_attach_bytes: Option<usize>) -> MailResult<ParsedMail> {
@@ -85,6 +192,7 @@ fn parse_message_inner(raw: &[u8], max_attach_bytes: Option<usize>) -> MailResul
     // 这里直接遍历 message.attachments（扁平 parts 索引），以便同时拿到
     // 各附件在扁平 parts 中的序号，用于查 MIME part 路径表。
     let part_paths = compute_part_paths(&parsed.parts);
+    let html_part_id = find_html_part_in_tree(&parsed.parts, &part_paths);
     let mut attachments: Vec<ParsedAttachment> = Vec::new();
     for &att_id in &parsed.attachments {
         let Some(part) = parsed.part(att_id) else { continue };
@@ -130,6 +238,7 @@ fn parse_message_inner(raw: &[u8], max_attach_bytes: Option<usize>) -> MailResul
         has_attachments: !attachments.is_empty(),
         attachments,
         date: parsed.date().map(|d| d.to_rfc3339()),
+        html_part_id,
     })
 }
 

@@ -155,6 +155,7 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
                       size="icon"
                       className="h-8 w-8"
                       onClick={() => handleEdit(template)}
+                      aria-label={t("mail.editTemplate")}
                     >
                       <Edit2 className="h-3.5 w-3.5" />
                     </Button>
@@ -163,6 +164,7 @@ export function EmailTemplateDialog({ open, onOpenChange, onSelect }: EmailTempl
                       size="icon"
                       className="h-8 w-8 text-destructive"
                       onClick={() => handleDelete(template.id)}
+                      aria-label={t("mail.deleteTemplate")}
                     >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

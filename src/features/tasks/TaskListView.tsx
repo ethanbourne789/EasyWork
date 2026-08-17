@@ -60,9 +60,9 @@ export function TaskListView({ onTaskClick }: TaskListViewProps) {
             onClick={(e) => e.stopPropagation()}
           />
           <div className="flex-1 min-w-0">
-            <h3 className={cn("font-medium text-sm", task.status === "done" && "line-through text-muted-foreground")}>
+            <h2 className={cn("font-medium text-sm", task.status === "done" && "line-through text-muted-foreground")}>
               {task.title}
-            </h3>
+            </h2>
             {task.description && (
               <p className="text-xs text-muted-foreground truncate mt-0.5">
                 {task.description}

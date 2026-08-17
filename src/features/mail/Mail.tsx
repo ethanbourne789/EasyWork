@@ -29,10 +29,12 @@ import { UNIFIED_INBOX_ID } from "./mailApi";
 import { SyncProgressIndicator, SyncProgressBar } from "./SyncProgressIndicator";
 import { useSyncProgress } from "./useSyncProgress";
 import type { Email } from "@/types";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 export function Mail() {
   const { t } = useTranslation();
   const [selectedFolderId, setSelectedFolderId] = useState<string | undefined>();
+  const isLargeDesktop = useMediaQuery('(min-width: 1024px)');
 
   // 进入邮箱页应直接看到邮件，而不是停在「请选择一个文件夹」空态。
   // 默认选中「统一收件箱」虚拟节点，聚合所有账户的收件箱邮件；
@@ -166,6 +168,7 @@ export function Mail() {
               size="icon"
               className="md:hidden"
               onClick={() => setDrawerOpen(true)}
+              aria-label={t("mail.openMenu")}
             >
               <Menu className="h-5 w-5" />
             </Button>
@@ -264,16 +267,19 @@ export function Mail() {
           </div>
         </Drawer>
 
-        {/* 桌面左栏 — 账户树 (lg 以上显示，平板使用抽屉) */}
-        <aside className="hidden w-[180px] shrink-0 border-r lg:block">
+        {/* 桌面左栏 — 账户树 (lg 以上显示，平板使用抽屉） */}
+        {isLargeDesktop && (
+        <aside className="w-[180px] shrink-0 border-r">
           <MailAccountTree
             selectedFolderId={selectedFolderId}
             onFolderSelect={setSelectedFolderId}
           />
         </aside>
+        )}
 
         {/* 平板/小桌面端文件夹切换下拉（lg 以上用左侧账户树，md-lg 用下拉兜底） */}
-        <div className="w-full border-b p-3 md:block lg:hidden">
+        {!isLargeDesktop && (
+        <div className="w-full border-b p-3 md:block">
           <Select
             value={selectedFolderId ?? ""}
             onChange={(e) => {
@@ -290,9 +296,10 @@ export function Mail() {
             ))}
           </Select>
         </div>
+        )}
 
         {/* 中栏 — 邮件列表 */}
-        <div className={`w-full shrink-0 border-r md:block md:min-w-0 md:w-[360px] lg:w-[400px] ${mobileView === 'reader' ? 'hidden' : 'block'}`}>
+        <div className={`w-full shrink-0 border-r md:block md:min-w-0 md:w-[360px] lg:w-[400px] ${mobileView === 'reader' ? 'hidden md:block' : 'block'}`}>
           <MailList
             folderId={selectedFolderId}
             selectedEmailId={selectedEmail?.id}

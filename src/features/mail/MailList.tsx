@@ -153,6 +153,7 @@ export function MailList({ folderId, selectedEmailId, onEmailSelect }: MailListP
           size="icon"
           className="h-8 w-8"
           onClick={() => refetch()}
+          aria-label={t("mail.refresh")}
         >
           <RefreshCw className="h-4 w-4" />
         </Button>

@@ -11,6 +11,7 @@ pub struct SyncConfig {
     pub id: String,
     pub enabled: bool,
     pub provider: String,
+    #[serde(skip_serializing)]
     pub connection_string: String,
     pub database_name: String,
     pub last_sync_at: Option<String>,

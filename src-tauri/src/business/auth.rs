@@ -74,6 +74,10 @@ pub async fn auth_register(
         }
         return Err(e.to_string());
     }
+
+    // 播种默认记账分类（在同一锁内，原子写入）
+    seed_default_categories(&db, &ts).map_err(|e| e.to_string())?;
+
     db.query_row(&format!("SELECT {} FROM users WHERE id = ?1", AUTH_USER_COLS), params![id], |r| row_to_auth_user(r))
         .map_err(|e| e.to_string())
 }
@@ -179,6 +183,113 @@ pub async fn auth_change_password(
         params![user_id, new_hash, now()],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+// ---------------------------------------------------------------------------
+// 演示账号（"以演示账号进入"）：确保演示用户存在并返回，前端据此建立本地会话。
+// 演示数据本身由前端 seedDemoData 在每次进入/打开时重新生成（日期相对 now），
+// 因此本命令只负责"演示用户"这一身份，不触碰业务数据。
+// ---------------------------------------------------------------------------
+
+// ---------------------------------------------------------------------------
+// 默认分类播种（新注册用户自动获得）
+// ---------------------------------------------------------------------------
+
+/// 在数据库中插入默认记账分类。
+/// 先插入所有顶级分类，再插入子分类，通过 sort_order 保证展示顺序。
+fn seed_default_categories(db: &rusqlite::Connection, ts: &str) -> rusqlite::Result<()> {
+    // 检查是否已存在默认分类（避免重复播种）
+    let count: i64 = db.query_row(
+        "SELECT COUNT(*) FROM categories",
+        [],
+        |r| r.get(0),
+    )?;
+    if count > 0 {
+        return Ok(());
+    }
+
+    let mut sort = 0i64;
+
+    // 支出 — 顶级分类
+    let dining_id = new_id();
+    sort += 1;
+    db.execute(
+        "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![dining_id, "餐饮", "expense", "🍜", None::<String>, sort, ts],
+    )?;
+
+    let transit_id = new_id();
+    sort += 1;
+    db.execute(
+        "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![transit_id, "交通", "expense", "🚌", None::<String>, sort, ts],
+    )?;
+
+    let shopping_id = new_id();
+    sort += 1;
+    db.execute(
+        "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![shopping_id, "购物", "expense", "🛍️", None::<String>, sort, ts],
+    )?;
+
+    let housing_id = new_id();
+    sort += 1;
+    db.execute(
+        "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![housing_id, "居住", "expense", "🏠", None::<String>, sort, ts],
+    )?;
+
+    let fun_id = new_id();
+    sort += 1;
+    db.execute(
+        "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![fun_id, "娱乐", "expense", "🎮", None::<String>, sort, ts],
+    )?;
+
+    // 支出 — 子分类
+    let children: Vec<(&str, &str, &str, &str)> = vec![
+        ("早餐", "🥐", "expense", &dining_id),
+        ("午餐", "🍱", "expense", &dining_id),
+        ("晚餐", "🍲", "expense", &dining_id),
+        ("地铁", "🚇", "expense", &transit_id),
+        ("打车", "🚕", "expense", &transit_id),
+        ("服饰", "👕", "expense", &shopping_id),
+        ("日用", "🧴", "expense", &shopping_id),
+        ("房租", "💸", "expense", &housing_id),
+    ];
+    for (name, icon, r#type, parent) in &children {
+        sort += 1;
+        let cid = new_id();
+        db.execute(
+            "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![cid, name, r#type, icon, Some(parent), sort, ts],
+        )?;
+    }
+
+    // 收入 — 顶级分类
+    let income_id = new_id();
+    sort += 1;
+    db.execute(
+        "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+        params![income_id, "收入", "income", "💰", None::<String>, sort, ts],
+    )?;
+
+    // 收入 — 子分类
+    let income_children: Vec<(&str, &str, &str)> = vec![
+        ("工资", "💼", &income_id),
+        ("兼职", "🧑‍💻", &income_id),
+        ("理财", "📈", &income_id),
+    ];
+    for (name, icon, parent) in &income_children {
+        sort += 1;
+        let cid = new_id();
+        db.execute(
+            "INSERT INTO categories (id,name,type,icon,parent_id,sort_order,created_at) VALUES (?1,?2,?3,?4,?5,?6,?7)",
+            params![cid, name, "income", icon, Some(parent), sort, ts],
+        )?;
+    }
+
     Ok(())
 }
 

@@ -184,6 +184,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                       className="h-8 w-8"
                       onClick={() => handleSetDefault(sig.id)}
                       title={t("mail.setDefault")}
+                      aria-label={t("mail.setDefault")}
                     >
                       <Star className="h-3.5 w-3.5" />
                     </Button>
@@ -193,6 +194,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                     size="icon"
                     className="h-8 w-8"
                     onClick={() => handleEdit(sig)}
+                    aria-label={t("mail.editSignature")}
                   >
                     <Edit2 className="h-3.5 w-3.5" />
                   </Button>
@@ -201,6 +203,7 @@ export function EmailSignatureDialog({ open, onOpenChange }: EmailSignatureDialo
                     size="icon"
                     className="h-8 w-8 text-destructive"
                     onClick={() => handleDelete(sig.id)}
+                    aria-label={t("mail.deleteSignature")}
                   >
                     <Trash2 className="h-3.5 w-3.5" />
                   </Button>

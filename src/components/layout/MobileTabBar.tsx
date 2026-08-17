@@ -2,6 +2,7 @@ import { Link, useRouterState } from "@tanstack/react-router";
 import { useTranslation } from "react-i18next";
 import { LayoutDashboard, ListChecks, Mail, NotebookText } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 /** 移动端记账 Tab 图标：人民币符号 ¥（与桌面端侧边栏及原型保持一致） */
 function YenIcon({ size = 20 }: { size?: number }) {
@@ -23,8 +24,12 @@ const TAB_ROUTES = [
 export function MobileTabBar() {
   const { t } = useTranslation();
   const pathname = useRouterState({ select: (s) => s.location.pathname });
+  const isDesktop = useMediaQuery('(min-width: 768px)');
+
+  if (isDesktop) return null;
+
   return (
-    <nav className="md:hidden flex items-center justify-around border-t bg-card h-14 pb-[env(safe-area-inset-bottom)]">
+    <nav className="flex items-center justify-around border-t bg-card h-14 pb-[env(safe-area-inset-bottom)]">
       {TAB_ROUTES.map(({ to, key, icon: Icon }) => {
         const active = pathname.startsWith(to);
         const label = t(key);

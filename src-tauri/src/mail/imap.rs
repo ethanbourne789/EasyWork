@@ -97,6 +97,59 @@ impl ImapAdapter {
         Ok(result)
     }
 
+    /// 懒同步：仅拉取元数据与正文，**不拉取任何附件字节**。
+    /// 返回 (UID, 消息头字节, BODY.PEEK[TEXT], FLAGS)。
+    /// 调用方通过解析 HEADER 获取信封字段与正文，通过 BODY.PEEK[TEXT] 获取纯文本正文。
+    pub async fn fetch_range_lazy(&mut self, start: u32, end: u32) -> MailResult<Vec<(u32, Vec<u8>, Option<Vec<u8>>, Vec<String>)>> {
+        let range = format!("{}:{}", start, end);
+        let mut stream = self.session.uid_fetch(range, "(UID FLAGS BODY.PEEK[HEADER] BODY.PEEK[TEXT])").await
+            .map_err(|e| MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", e)))?;
+        let mut result = Vec::new();
+        let mut stream_errors = 0usize;
+        let mut last_err: Option<String> = None;
+        let header_path = SectionPath::Full(MessageSection::Header);
+        let text_path = SectionPath::Part(Vec::new(), Some(MessageSection::Text));
+        while let Some(msg) = stream.next().await {
+            match msg {
+                Ok(msg) => {
+                    let uid = msg.uid.unwrap_or(0);
+                    let flags: Vec<String> = msg.flags().map(|f| format!("{:?}", f)).collect();
+                    let header = msg.section(&header_path).map(|b| b.to_vec());
+                    let body_text = msg.section(&text_path).map(|b| b.to_vec());
+                    result.push((uid, header.unwrap_or_default(), body_text, flags));
+                }
+                Err(e) => {
+                    stream_errors += 1;
+                    last_err = Some(format!("{}", e));
+                }
+            }
+        }
+        if result.is_empty() && stream_errors > 0 {
+            return Err(MailError::new("IMAP_FETCH", &format!("拉取邮件失败: {}", last_err.unwrap_or_default())));
+        }
+        Ok(result)
+    }
+
+    /// 按需拉取单个 UID 的 HTML 正文（给定 part_id）。
+    /// 用于懒同步后补充 HTML 正文：先解析 HEADER 获取 text/html part 编号，再调用此方法拉取。
+    pub async fn fetch_html_body(&mut self, uid: u32, part_id: &str) -> MailResult<Option<Vec<u8>>> {
+        let path: Vec<u32> = part_id.split('.').filter_map(|s| s.trim().parse::<u32>().ok()).collect();
+        if path.is_empty() {
+            return Ok(None);
+        }
+        let query = format!("BODY.PEEK[{}]", part_id);
+        let mut stream = self.session.uid_fetch(uid.to_string(), &query).await
+            .map_err(|e| MailError::new("IMAP_FETCH_HTML", &format!("拉取 HTML 正文失败: {}", e)))?;
+        let section_path = SectionPath::Part(path, None);
+        while let Some(msg) = stream.next().await {
+            let msg = msg.map_err(|e| MailError::new("IMAP_FETCH_HTML", &format!("拉取 HTML 正文失败: {}", e)))?;
+            if let Some(body) = msg.section(&section_path) {
+                return Ok(Some(body.to_vec()));
+            }
+        }
+        Ok(None)
+    }
+
     /// 按需拉取单个 MIME part：重选文件夹后一次 UID FETCH 同时取
     /// `BODY.PEEK[{part_id}.MIME]`（part 的 MIME 头部）与 `BODY.PEEK[{part_id}]`（编码后的 body 字节）。
     pub async fn fetch_attachment(&mut self, folder: &str, uid: u32, part_id: &str) -> MailResult<FetchedPart> {

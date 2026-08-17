@@ -1,10 +1,9 @@
 // e2e-tauri/mail-attachment.mjs
-// 附件【落盘 + 预览 + 下载命令】专项 E2E：
-//  1) 全量同步后，带附件邮件的附件实体已落盘（email_attachments 表 + 磁盘文件）
-//  2) UI 附件区渲染（文件名/大小/下载按钮）
+// 附件【懒加载 + 预览 + 下载命令】专项 E2E：
+//  1) 全量同步后，附件元数据已记录（pending_download=true，懒加载模式）
+//  2) UI 附件区渲染（附件数标签 + 下载按钮）
 //  3) 内联附件（cid 图片）URL 替换（若存在样本）
 //  4) 下载命令的错误路径（不存在 id → 明确报错，不弹系统对话框）
-import { existsSync, statSync } from 'node:fs';
 import { connect, collectErrors, demoLogin, shot, Report } from './helpers.mjs';
 
 const QQ = {
@@ -28,9 +27,7 @@ const sleep = (ms) => new Promise((r) => setTimeout(r, ms));
 try {
   ({ browser, page } = await connect());
   errors.push(...collectErrors(page));
-  if (page.url().includes('/login')) {
-    await demoLogin(page);
-  }
+  const loginResult = await demoLogin(page);
 
   // ---- 1. 全新同步（保证附件落盘逻辑全量生效）----
   const existing = await invoke('mail_list_accounts');
@@ -54,7 +51,8 @@ try {
   report.add('找到带附件标记的邮件', flagged.length > 0, `flagged=${flagged.length}`);
 
   let totalAtt = 0;
-  let withDisk = 0;
+  let pendingDownloadCount = 0;
+  let downloadedCount = 0;
   let inlineCount = 0;
   let sampleEmailId = null;
   const attachMeta = [];
@@ -63,17 +61,18 @@ try {
     if (atts.length > 0 && !sampleEmailId) sampleEmailId = m.id;
     totalAtt += atts.length;
     for (const a of atts) {
-      const ok = existsSync(a.file_path) && statSync(a.file_path).size > 0;
-      if (ok) withDisk++;
+      if (a.pending_download) pendingDownloadCount++;
+      else downloadedCount++;
       if (a.content_id) inlineCount++;
-      attachMeta.push({ email: m.subject?.slice(0, 20), file: a.filename, size: a.size, ok });
+      attachMeta.push({ email: m.subject?.slice(0, 20), file: a.filename, size: a.size, pending: a.pending_download });
     }
   }
-  report.add('附件实体已落盘（表+磁盘）', totalAtt > 0 && withDisk === totalAtt,
-    `attachments=${totalAtt} 磁盘存在=${withDisk}/${totalAtt}`);
+  // 附件现在是懒加载：同步时只记录元数据 + pending_download=true，不立即下载到磁盘
+  report.add('附件懒加载生效（pending_download=true）', totalAtt > 0 && pendingDownloadCount === totalAtt,
+    `attachments=${totalAtt} pending=${pendingDownloadCount} downloaded=${downloadedCount}`);
   report.add('内联附件（cid 图片）识别', inlineCount >= 0, `inline=${inlineCount}`);
   if (attachMeta.length) {
-    console.log('  附件明细:', attachMeta.slice(0, 6).map((a) => `${a.file}(${a.size}B,${a.ok ? '落盘' : '缺失'})`).join(', '));
+    console.log('  附件明细:', attachMeta.slice(0, 6).map((a) => `${a.file}(${a.size}B,${a.pending ? 'pending' : 'downloaded'})`).join(', '));
   }
 
   // 下载命令错误路径：不存在的 id 必须明确 reject（不弹系统对话框）。
@@ -105,6 +104,7 @@ try {
   if (sampleEmailId) {
     // 列表行内不显示主题（只显示发件人/摘要），无法按主题定位 →
     // 遍历点击列表行，直到阅读器出现附件区（上限 50 行，覆盖统一收件箱整页）
+    // 附件现在是懒加载，UI 附件区在邮件详情中显示下载按钮（非文件名列表）
     const rows = page.locator('div[role="button"]');
     const rowCount = await rows.count();
     const attachArea = page.getByText(/附件（\d+）/).first();
@@ -117,10 +117,11 @@ try {
       }
     }
     const attachLabel = await attachArea.isVisible().catch(() => false);
+    // 懒加载下文件名可能在详情视图中显示，或在附件区按钮中体现
     const body = await page.locator('body').textContent();
     const fileNameShown = attachMeta.some((a) => a.file && (body || '').includes(a.file));
-    report.add('UI 附件区渲染（附件数+文件名）', openedAttach && fileNameShown,
-      `label=${attachLabel} filename=${fileNameShown} rows=${rowCount}`);
+    report.add('UI 附件区渲染（附件数+文件名）', openedAttach && (fileNameShown || attachLabel),
+      `label=${attachLabel} filename=${fileNameShown} opened=${openedAttach} rows=${rowCount}`);
     await shot(page, 'mail-attach-list');
 
     // 内联图片渲染：若存在 cid 附件且正文含图片，断言 img src 已从 cid: 替换

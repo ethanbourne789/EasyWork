@@ -19,6 +19,7 @@ import { useProfile } from "@/features/settings/useProfile";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useNotifications } from "@/lib/notifications";
 import { NotificationCenter } from "@/components/layout/NotificationCenter";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 
 type Item = { to: string; labelKey: string; icon: LucideIcon };
@@ -39,11 +40,14 @@ export function Sidebar() {
   const email = useAuthStore((s) => s.user?.email) ?? "";
   const [notifOpen, setNotifOpen] = useState(false);
   const { items: notifications, unreadCount, dismiss, markAllRead } = useNotifications();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   const openSearch = () => window.dispatchEvent(new CustomEvent("ew:search"));
 
+  if (!isDesktop) return null;
+
   return (
-    <aside className="relative hidden md:flex flex-col items-center gap-1 w-[60px] py-4 border-r bg-card">
+    <aside className="relative flex flex-col items-center gap-1 w-[60px] py-4 border-r bg-card">
       {/* 品牌徽标 / 个人头像：有头像时显示头像，否则回退为姓名首字母 */}
       <div className="mb-3">
         <Avatar
@@ -72,7 +76,7 @@ export function Sidebar() {
               <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-brand-500" />
             )}
             <Icon size={23} />
-            <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+            <span className="pointer-events-none absolute left-14 z-50 max-w-[200px] truncate rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
               {label}
             </span>
           </Link>
@@ -88,7 +92,7 @@ export function Sidebar() {
           className="group relative flex h-11 w-11 items-center justify-center rounded-xl text-muted-foreground transition-colors hover:bg-accent"
         >
           <Search size={23} />
-          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+          <span className="pointer-events-none absolute left-14 z-50 max-w-[200px] truncate rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
             {t('common.search')}
           </span>
         </button>
@@ -105,7 +109,7 @@ export function Sidebar() {
               {unreadCount > 99 ? "99+" : unreadCount}
             </span>
           )}
-          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+          <span className="pointer-events-none absolute left-14 z-50 max-w-[200px] truncate rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
             {t('settings.notifications')}
           </span>
         </button>
@@ -132,7 +136,7 @@ export function Sidebar() {
             <span className="absolute left-0 top-2 bottom-2 w-[3px] rounded-r bg-brand-500" />
           )}
           <Settings size={23} />
-          <span className="pointer-events-none absolute left-14 z-50 whitespace-nowrap rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
+          <span className="pointer-events-none absolute left-14 z-50 max-w-[200px] truncate rounded-md bg-foreground px-2 py-1 text-xs font-medium text-background opacity-0 shadow-md transition-opacity group-hover:opacity-100">
             {t('nav.settings')}
           </span>
         </Link>

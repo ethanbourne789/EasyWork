@@ -126,7 +126,7 @@ pub async fn init_cloud_schema(client: &Client) -> Result<(), String> {
             scope TEXT DEFAULT 'category',
             year_month TEXT,
             created_at TEXT NOT NULL,
-            updated_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            updated_at TEXT NOT NULL DEFAULT now()::text,
             sync_modified_at TEXT NOT NULL,
             sync_device_id TEXT NOT NULL
         );

@@ -289,6 +289,7 @@ function AccountSection({
               value={renameName}
               onChange={(e) => setRenameName(e.target.value)}
               placeholder={t("mail.folderNamePlaceholder")}
+              aria-label={t("mail.folderNamePlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter") submitRename();
               }}

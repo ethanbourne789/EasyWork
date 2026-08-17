@@ -142,7 +142,7 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
       setReplySent(true);
       setTimeout(() => setReplySent(false), TOAST_DURATION);
     } catch {
-      /* 发送失败时保持回复表单 */
+      toast(t("mail.replyFailed"), "error");
     }
   };
 
@@ -201,12 +201,12 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
         <div className="flex items-start justify-between mb-3">
           <h2 className="text-lg font-medium flex-1 pr-4">{email.subject}</h2>
           <div className="flex gap-1">
-            <Button variant="ghost" size="icon" onClick={handleToggleStar}>
+            <Button variant="ghost" size="icon" onClick={handleToggleStar} aria-label={t("mail.toggleStar")}>
               <Star
                 className={`h-4 w-4 ${email.is_starred ? "fill-warning text-warning" : ""}`}
               />
             </Button>
-            <Button variant="ghost" size="icon" onClick={handleDelete}>
+            <Button variant="ghost" size="icon" onClick={handleDelete} aria-label={t("mail.deleteEmail")}>
               <Trash className="h-4 w-4" />
             </Button>
           </div>
@@ -310,7 +310,7 @@ export function MailReader({ email, isDraft, onForward, onEditDraft, onDeleted }
             <Button variant="ghost" size="icon" className="h-6 w-6" onClick={() => {
               setReplyMode(false);
               setForwardMode(false);
-            }}>
+            }} aria-label={t("mail.closeReply")}>
               <X className="h-3 w-3" />
             </Button>
           </div>

@@ -1,74 +1,105 @@
-node_modules
-dist
-dist-ssr
-*.local
-.env
-src-tauri/target
-.vite
-coverage
-.DS_Store
+# ============================================================
+# Dependencies
+# ============================================================
+node_modules/
 
-# Supabase Secrets（含真实密钥，切勿提交）
-supabase/.env.secrets
-# Supabase 本地状态文件（不应提交）
-supabase/.temp/
-supabase/_applied_local/
+# ============================================================
+# Build outputs
+# ============================================================
+dist/
+dist-ssr/
 
-# tsc -b 配置项目产物（已由 tsconfig.node.json noEmit 抑制，双重保险）
-vite.config.js
-vite.config.d.ts
-*.timestamp-*.mjs
-tsconfig.tsbuildinfo
-tsconfig.node.tsbuildinfo
-*.tsbuildinfo
-
-# Brainstorm visual companion（本地临时 mockup）
-.superpowers/
-
-# Build artifacts
-gradle-*.zip
-android-*.log
-android-build*.log
-build-green.log
-cargo-build.log
-pnpm-install.log
-_tmp_*
-android-release/
-release-green/
+# ============================================================
+# Tauri
+# ============================================================
+src-tauri/target/
+src-tauri/gen/
 src-tauri/gen/schemas/
 src-tauri/build-green.log
+
+# Tauri build artifacts
+release-green/
 *.apk
 *.apk.idsig
 
-# Tauri 生成的 Android 项目（从 src-tauri/icons 自动生成）
-src-tauri/gen/
+# ============================================================
+# TypeScript / Vite
+# ============================================================
+.vite/
+tsconfig.tsbuildinfo
+tsconfig.node.tsbuildinfo
+*.tsbuildinfo
+vite.config.js
+vite.config.d.ts
+*.timestamp-*.mjs
 
-# 日志文件
+# ============================================================
+# Supabase
+# ============================================================
+supabase/.env.secrets
+supabase/.temp/
+supabase/_applied_local/
+
+# ============================================================
+# Environment
+# ============================================================
+.env
+*.local
+
+# ============================================================
+# Logs
+# ============================================================
 *.log
-dev-server.log
 
-# 临时文件
-tmp_*.json
-skills-lock.json
-downloaded.ts
-
-# 测试截图目录（本地调试产物，不提交）
+# ============================================================
+# Test / E2E artifacts
+# ============================================================
+coverage/
+e2e-screenshots/
+test-results/
+playwright-report/
 audit-shots/
 audit-shots-v2/
 gui-test-screenshots/
-.workbuddy/shots/
-scripts/mail-e2e-shots/
-e2e-screenshots/
 
-# Playwright 报告与产物
-playwright-report/
-test-results/
+# ============================================================
+# Temporary files
+# ============================================================
+_tmp_*
+tmp_*.json
+skills-lock.json
+downloaded.ts
+build-green.log
+cargo-build.log
+pnpm-install.log
+dev-server.log
 
-# IDE/编辑器
+# ============================================================
+# AI / tooling workspace
+# ============================================================
+.superpowers/
+.workbuddy/
+
+# ============================================================
+# IDE / Editor
+# ============================================================
 .idea/
 .vscode/*.suo
 *.sdf
 *.sln.docstates
-
-# Android Studio
 *.iml
+
+# ============================================================
+# OS
+# ============================================================
+.DS_Store
+Thumbs.db
+Desktop.ini
+
+# ============================================================
+# Android (generated, not tracked)
+# ============================================================
+android-release/
+gradle-*.zip
+android-*.log
+android-build*.log

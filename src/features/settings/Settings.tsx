@@ -3,8 +3,10 @@ import { User, Mail, Palette, Bell, Database, Check, Info, LogOut, Upload, Trash
 import { useNavigate } from "@tanstack/react-router";
 import { useQueryClient } from "@tanstack/react-query";
 import { useAuthStore } from "@/features/auth/authStore";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
+import { Label } from "@/components/ui/label";
 import { Select } from "@/components/ui/select";
 import { Avatar } from "@/components/ui/avatar";
 import { useTheme } from "@/components/theme/ThemeProvider";
@@ -38,6 +40,7 @@ export function Settings() {
   const [activeTab, setActiveTab] = useState("profile");
   const [savedFlag, setSavedFlag] = useState<string | null>(null);
   const fileInputRef = useRef<HTMLInputElement>(null);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const { data: emailAccounts = [] } = useEmailAccounts();
   const deleteAccount = useDeleteEmailAccount();
   const [editAccount, setEditAccount] = useState<EmailAccount | null>(null);
@@ -176,10 +179,10 @@ export function Settings() {
       if (!isTauri()) throw new Error(t('sync.desktopOnly'));
       const { invoke } = await import("@tauri-apps/api/core");
       const path = await invoke<string>("export_logs");
-      toast(`诊断日志已导出到：${path}`, "success");
+      toast(t("settings.logsExported", { path }), "success");
     } catch (err) {
       console.error("导出日志失败:", err);
-      toast(`导出日志失败：${String(err ?? "未知错误")}`, "error");
+      toast(t("settings.logsExportFailed", { error: String(err ?? t("common.unknownError")) }), "error");
     }
   };
 
@@ -258,11 +261,14 @@ export function Settings() {
   return (
     <div className="h-full flex flex-col md:flex-row">
       {/* Mobile: dropdown selector */}
-      <div className="w-full border-b p-3 md:hidden">
+      {!isDesktop && (
+      <div className="w-full border-b p-3">
+        <Label htmlFor="settings-tab-select" className="sr-only">{t('settings.profile')}</Label>
         <Select
           value={activeTab}
           onChange={(e) => setActiveTab(e.target.value)}
           className="w-full"
+          id="settings-tab-select"
         >
           {tabs.map((tab) => (
             <option key={tab.id} value={tab.id}>
@@ -271,8 +277,10 @@ export function Settings() {
           ))}
         </Select>
       </div>
+      )}
       {/* Desktop: vertical tabs */}
-      <div className="hidden w-48 border-r p-2 flex-col gap-1 md:flex shrink-0">
+      {isDesktop && (
+      <div className="w-48 border-r p-2 flex-col gap-1 flex shrink-0">
         {tabs.map((tab) => {
           const Icon = tab.icon;
           return (
@@ -291,6 +299,7 @@ export function Settings() {
           );
         })}
       </div>
+      )}
 
       <div className="flex-1 p-6 overflow-auto">
         {activeTab === "profile" && (
@@ -310,6 +319,8 @@ export function Settings() {
                   type="file"
                   accept="image/*"
                   className="hidden"
+                  tabIndex={-1}
+                  aria-hidden="true"
                   onChange={handleAvatarUpload}
                 />
                 <div className="flex gap-2">
@@ -339,12 +350,13 @@ export function Settings() {
             </div>
 
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t('settings.email')}</label>
-              <Input value={sessionEmail} disabled />
+              <Label htmlFor="settings-email">{t('settings.email')}</Label>
+              <Input id="settings-email" value={sessionEmail} disabled />
             </div>
             <div className="space-y-2">
-              <label className="text-sm font-medium">{t('settings.displayName')}</label>
+              <Label htmlFor="settings-display-name">{t('settings.displayName')}</Label>
               <Input
+                id="settings-display-name"
                 placeholder={t('settings.displayNamePlaceholder')}
                 value={displayName}
                 onChange={(e) => setDisplayName(e.target.value)}
@@ -636,6 +648,8 @@ export function Settings() {
                   type="file"
                   accept="application/json,.json"
                   className="hidden"
+                  tabIndex={-1}
+                  aria-hidden="true"
                   onChange={handleImportData}
                 />
                 <Button variant="outline" onClick={() => fileInputRef.current?.click()}>

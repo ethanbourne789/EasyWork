@@ -147,7 +147,7 @@ function DraggableTask({ task, onClick, idx, t }: { task: Task; onClick: () => v
       className="cursor-pointer rounded-xl border bg-card p-3 shadow-xs transition-all hover:shadow-md hover:-translate-y-0.5 hover:border-border-strong"
     >
       {/* 标题 — 对齐原型 .task-card .t */}
-      <h4 className="text-[14px] font-semibold leading-snug">{task.title}</h4>
+      <h3 className="text-[14px] font-semibold leading-snug">{task.title}</h3>
 
       {/* 标签 chips — 对齐原型 .task-card .meta > .tag */}
       {tags.length > 0 && (
@@ -212,13 +212,13 @@ function DroppableColumn({
       )}
     >
       {/* 列头 — 对齐原型 .col-head */}
-      <div className="mb-2.5 flex items-center gap-2 px-1.5 py-1">
+      <h2 className="mb-2.5 flex items-center gap-2 px-1.5 py-1">
         <span className={cn("h-[9px] w-[9px] shrink-0 rounded-full", dotClass)} />
         <span className="font-bold text-[13.5px]">{label}</span>
         <span className="ml-auto text-[12px] font-semibold text-muted-foreground/60">
           {tasks.length}
         </span>
-      </div>
+      </h2>
 
       {/* 卡片列表 */}
       <div className="flex-1 space-y-2 overflow-auto">
@@ -271,7 +271,7 @@ export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
     <DndContext sensors={sensors} onDragStart={handleDragStart} onDragEnd={handleDragEnd}>
       {/* 窄屏横向滚动，列不被压扁（每列 min-w-[260px]）；两侧渐变提示可滚动 */}
       <div className="relative">
-        <div className="flex h-full flex-col gap-3.5 overflow-x-auto md:flex-row md:gap-3.5 p-0 pb-2">
+        <div className="flex h-full flex-row gap-3.5 overflow-x-auto p-0 pb-2">
           {getColumnDefs(t).map((col) => {
           const columnTasks = tasks.filter((t2) => t2.status === col.status);
           return (
@@ -287,15 +287,15 @@ export function TaskBoardView({ onTaskClick }: TaskBoardViewProps) {
           );
         })}
         </div>
-        {/* 小屏横滚视觉提示 */}
-        <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-background to-transparent md:hidden" />
-        <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-background to-transparent md:hidden" />
+        {/* 横滚视觉提示 */}
+        <div className="pointer-events-none absolute inset-y-0 left-0 w-4 bg-gradient-to-r from-background to-transparent" />
+        <div className="pointer-events-none absolute inset-y-0 right-0 w-4 bg-gradient-to-l from-background to-transparent" />
       </div>
 
       <DragOverlay>
         {activeTask && (
           <div className="rotate-3 cursor-grabbing rounded-xl border bg-card p-3 shadow-lg opacity-90">
-            <h4 className="text-[14px] font-semibold leading-snug">{activeTask.title}</h4>
+            <h3 className="text-[14px] font-semibold leading-snug">{activeTask.title}</h3>
             {activeTask.description && (
               <p className="mt-1 line-clamp-2 text-xs text-muted-foreground">
                 {activeTask.description}

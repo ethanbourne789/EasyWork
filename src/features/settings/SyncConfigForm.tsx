@@ -130,8 +130,8 @@ export function SyncConfigForm() {
       </div>
 
       <div className="space-y-2">
-        <Label>{t("sync.provider")}</Label>
-        <Select {...register("provider")}>
+        <Label htmlFor="sync-provider">{t("sync.provider")}</Label>
+        <Select id="sync-provider" {...register("provider")}>
           {PROVIDERS.map((p) => (
             <option key={p.value} value={p.value}>
               {t(p.labelKey)}
@@ -141,18 +141,18 @@ export function SyncConfigForm() {
       </div>
 
       <div className="space-y-2">
-        <Label>{t("sync.connectionString")}</Label>
-        <Input placeholder={t("sync.connectionStringPlaceholder")} {...register("connection_string")} />
+        <Label htmlFor="sync-connection-string">{t("sync.connectionString")}</Label>
+        <Input id="sync-connection-string" placeholder={t("sync.connectionStringPlaceholder")} {...register("connection_string")} />
       </div>
 
       <div className="space-y-2">
-        <Label>{t("sync.databaseName")}</Label>
-        <Input placeholder="postgres" {...register("database_name")} />
+        <Label htmlFor="sync-database-name">{t("sync.databaseName")}</Label>
+        <Input id="sync-database-name" placeholder="postgres" {...register("database_name")} />
       </div>
 
       <div className="space-y-2">
-        <Label>{t("sync.deviceName")}</Label>
-        <Input placeholder="My Laptop" {...register("device_name")} />
+        <Label htmlFor="sync-device-name">{t("sync.deviceName")}</Label>
+        <Input id="sync-device-name" placeholder="My Laptop" {...register("device_name")} />
       </div>
 
       <p className="text-xs text-muted-foreground rounded-lg border p-3">{t("sync.securityNotice")}</p>

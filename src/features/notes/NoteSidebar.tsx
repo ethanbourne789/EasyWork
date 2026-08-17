@@ -115,6 +115,7 @@ function FolderItem({
         {isEditing ? (
           <input
             autoFocus
+            aria-label={t("notes.renameFolder")}
             className="flex-1 rounded border bg-background px-1 text-sm outline-none"
             value={editValue}
             onChange={(e) => onEditValueChange(e.target.value)}
@@ -288,6 +289,7 @@ export function NoteSidebar({
           className="h-8 w-8 shrink-0"
           onClick={handleCreateNote}
           title={t('notes.newNote')}
+          aria-label="New note"
         >
           <FilePlus className="h-4 w-4" />
         </Button>
@@ -297,6 +299,7 @@ export function NoteSidebar({
           className="h-8 w-8 shrink-0"
           onClick={handleCreateFolder}
           title={t('notes.newFolder')}
+          aria-label="New folder"
         >
           <FolderPlus className="h-4 w-4" />
         </Button>
@@ -305,6 +308,7 @@ export function NoteSidebar({
           value={searchQuery}
           onChange={(e) => onSearchChange(e.target.value)}
           className="h-8 flex-1"
+          aria-label={t('notes.searchPlaceholder')}
         />
       </div>
 
@@ -406,6 +410,7 @@ export function NoteSidebar({
             {creatingTag && (
               <input
                 autoFocus
+                aria-label={t('notes.newTag')}
                 className="w-20 rounded-full border bg-background px-2 py-0.5 text-xs outline-none"
                 placeholder={t('notes.tagNamePlaceholder')}
                 value={newTagName}

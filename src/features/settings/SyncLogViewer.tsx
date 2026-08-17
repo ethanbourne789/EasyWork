@@ -1,4 +1,4 @@
-import { ArrowUp, ArrowDown, XCircle } from "lucide-react";
+import { ArrowUp, ArrowDown } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { Table, TableHeader, TableBody, TableRow, TableHead, TableCell } from "@/components/ui/table";
 import { Badge } from "@/components/ui/badge";
@@ -55,10 +55,7 @@ export function SyncLogViewer() {
                     <Badge variant="success">{t("sync.success")}</Badge>
                   ) : (
                     <Badge variant="danger">
-                      <span className="inline-flex items-center gap-1">
-                        <XCircle size={12} />
-                        {t("common.error")}
-                      </span>
+                      {t("common.error")}
                     </Badge>
                   )}
                 </div>

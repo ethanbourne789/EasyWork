@@ -601,7 +601,7 @@ pub async fn email_attachment_download(state: State<'_, AppState>, email_id: Str
 
     {
         let db = state.service.db.lock().await;
-        db_queries::mark_attachment_downloaded(&db, &attachment_id, &path_str)?;
+        db_queries::mark_attachment_downloaded(&db, &attachment_id, &path_str, data.len() as i64)?;
     }
     Ok(path_str)
 }

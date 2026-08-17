@@ -211,13 +211,13 @@ export function CategoryManager() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.categoryName')}</label>
-              <Input value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('finance.categoryNamePlaceholder')} />
+              <label htmlFor="category-name" className="text-sm font-medium">{t('finance.categoryName')}</label>
+              <Input id="category-name" value={form.name} onChange={(e) => setForm({ ...form, name: e.target.value })} placeholder={t('finance.categoryNamePlaceholder')} />
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.categoryType')}</label>
-              <Select value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as CategoryType })}>
+              <label htmlFor="category-type" className="text-sm font-medium">{t('finance.categoryType')}</label>
+              <Select id="category-type" value={form.type} onChange={(e) => setForm({ ...form, type: e.target.value as CategoryType })}>
                 <option value="expense">{t('finance.expense')}</option>
                 <option value="income">{t('finance.income')}</option>
               </Select>
@@ -243,8 +243,8 @@ export function CategoryManager() {
             </div>
 
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.parentCategory')}</label>
-              <Select value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
+              <label htmlFor="parent-category" className="text-sm font-medium">{t('finance.parentCategory')}</label>
+              <Select id="parent-category" value={form.parent_id} onChange={(e) => setForm({ ...form, parent_id: e.target.value })}>
                 <option value="">{t('finance.noParent')}</option>
                 {parentOptions
                   .filter((c) => c.id !== form.id)

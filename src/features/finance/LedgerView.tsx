@@ -3,6 +3,7 @@ import type { ReactNode } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useSearch } from '@tanstack/react-router';
 import { format } from 'date-fns';
+import { ResponsiveContainer, PieChart, Pie, Cell, Tooltip } from 'recharts';
 import {
   useTransactions,
   useAccounts,
@@ -34,7 +35,6 @@ import {
   TrendingDown,
   Scale,
 } from 'lucide-react';
-import { ACCOUNT_TYPE_ICONS, ACCOUNT_TYPE_TINT } from './constants';
 import type { Transaction, TransactionType } from '@/types';
 
 type FilterType = 'all' | TransactionType;
@@ -125,19 +125,13 @@ export function LedgerView() {
 
   // ---- 预算（当月） ----
   const currentYearMonth = parseInt(format(new Date(), 'yyyyMM'));
-  const { currentOverall, currentCategoryBudgets, overallSpent, catSpending } = useMemo(() => {
+  const { currentOverall, overallSpent } = useMemo(() => {
     const overall = budgets.find((b) => b.scope === 'overall' && b.year_month === currentYearMonth);
-    const cats = budgets.filter((b) => b.scope === 'category' && b.year_month === currentYearMonth);
-    const spend: Record<string, number> = {};
     let total = 0;
     transactions
       .filter((tr) => tr.type === 'expense' && tr.date.startsWith(curMonthStr))
-      .forEach((tr) => {
-        const v = tr.amount;
-        if (tr.category_id) spend[tr.category_id] = (spend[tr.category_id] || 0) + v;
-        total += v;
-      });
-    return { currentOverall: overall, currentCategoryBudgets: cats, overallSpent: total, catSpending: spend };
+      .forEach((tr) => { total += tr.amount; });
+    return { currentOverall: overall, overallSpent: total };
   }, [budgets, currentYearMonth, transactions, curMonthStr]);
 
   // ---- 近 7 日趋势 ----
@@ -159,8 +153,40 @@ export function LedgerView() {
   }, [transactions]);
   const trendMax = Math.max(1, ...trend7.map((d) => Math.max(d.income, d.expense)));
 
-  // ---- 账户余额分布 ----
-  const accountBalances = useMemo(() => computeAccountBalances(accounts, transactions), [accounts, transactions]);
+  // ---- 支出分类饼图 ----
+  const PIE_COLORS = [
+    'oklch(56% 0.17 264)',   // brand-500
+    'oklch(64% 0.15 150)',   // success
+    'oklch(58% 0.21 25)',    // destructive
+    'oklch(72% 0.15 55)',    // warning
+    'oklch(65% 0.18 195)',   // sky
+    'oklch(65% 0.15 31)',    // orange
+    'oklch(68% 0.16 340)',   // pink
+    'oklch(62% 0.14 170)',   // teal
+    'oklch(60% 0.12 70)',    // amber
+    'oklch(64% 0.13 230)',   // blue
+  ];
+
+  const expensePieData = useMemo(() => {
+    const spend: Record<string, number> = {};
+    transactions
+      .filter((tr) => tr.type === 'expense' && tr.date.startsWith(curMonthStr))
+      .forEach((tr) => {
+        const catId = tr.category_id || '__uncategorized__';
+        spend[catId] = (spend[catId] || 0) + tr.amount;
+      });
+    return Object.entries(spend)
+      .map(([catId, value], i) => {
+        const cat = categories.find((c) => c.id === catId);
+        return {
+          name: cat?.name || t('finance.untitled'),
+          value,
+          fill: PIE_COLORS[i % PIE_COLORS.length],
+        };
+      })
+      .sort((a, b) => b.value - a.value);
+  // eslint-disable-next-line react-hooks/exhaustive-deps -- PIE_COLORS is a stable inline constant
+  }, [transactions, curMonthStr, categories, t]);
 
   // ---- 选择 ----
   const toggleSelect = (id: string) => {
@@ -303,56 +329,63 @@ export function LedgerView() {
           onOpenDetail={setDetailTx}
         />
 
-        <aside className="hidden space-y-4 md:block">
+        <aside className="space-y-4">
           {/* 本月预算 */}
           <div className="rounded-lg border bg-card p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-sm font-bold">
               <Target size={16} className="text-brand-500" /> {t('finance.monthlyBudget')}
             </div>
-            <div className="space-y-3">
-              {currentOverall ? (
-                <BudgetProgressBar name={t('finance.overallBudget')} icon="💰" spent={overallSpent} amount={currentOverall.amount} carryOver={currentOverall.carry_over || 0} />
-              ) : (
-                <div className="text-xs text-muted-foreground">{t('finance.noOverallBudgetSet')}</div>
-              )}
-              {currentCategoryBudgets.map((b) => {
-                const cat = getCategory(b.category_id ?? '');
-                return (
-                  <BudgetProgressBar
-                    key={b.id}
-                    name={cat?.name || t('finance.untitled')}
-                    icon={cat?.icon || '📊'}
-                    spent={catSpending[b.category_id ?? ''] || 0}
-                    amount={b.amount}
-                    carryOver={b.carry_over || 0}
-                  />
-                );
-              })}
-            </div>
+            {currentOverall ? (
+              <BudgetProgressBar name={t('finance.overallBudget')} icon="💰" spent={overallSpent} amount={currentOverall.amount} carryOver={currentOverall.carry_over || 0} />
+            ) : (
+              <div className="text-xs text-muted-foreground">{t('finance.noOverallBudgetSet')}</div>
+            )}
           </div>
 
-          {/* 净资产分布 */}
+          {/* 支出分类占比 */}
           <div className="rounded-lg border bg-card p-4 shadow-sm">
             <div className="mb-3 flex items-center gap-2 text-sm font-bold">
-              <Wallet size={16} className="text-brand-500" /> {t('finance.netWorthDist')}
+              <Activity size={16} className="text-brand-500" /> {t('finance.expenseCategoriesChart')}
             </div>
-            <div className="space-y-1">
-              {accounts.map((acc) => {
-                const Icon = ACCOUNT_TYPE_ICONS[acc.type];
-                const bal = accountBalances[acc.id] || 0;
-                return (
-                  <div key={acc.id} className="flex items-center gap-2.5 py-1">
-                    <span className={cn('flex h-7 w-7 items-center justify-center rounded-lg', ACCOUNT_TYPE_TINT[acc.type])}>
-                      <Icon size={15} />
-                    </span>
-                    <span className="flex-1 truncate text-sm font-medium">{acc.name}</span>
-                    <span className={cn('font-mono text-sm font-semibold tabular-nums', bal < 0 ? 'text-destructive' : 'text-foreground')}>
-                      {formatMoney(bal)}
-                    </span>
-                  </div>
-                );
-              })}
-            </div>
+            {expensePieData.length > 0 ? (
+              <div className="flex flex-col items-center">
+                <div style={{ width: '100%', height: 200 }}>
+                  <ResponsiveContainer width="100%" height="100%">
+                    <PieChart>
+                      <Pie
+                        data={expensePieData}
+                        dataKey="value"
+                        nameKey="name"
+                        cx="50%"
+                        cy="50%"
+                        outerRadius={80}
+                        innerRadius={50}
+                        label={({ name, percent }) => `${name} ${(percent * 100).toFixed(0)}%`}
+                        labelLine={false}
+                      >
+                        {expensePieData.map((_, i) => (
+                          <Cell key={`cell-${i}`} fill={expensePieData[i].fill} />
+                        ))}
+                      </Pie>
+                      <Tooltip
+                        formatter={(value: number) => formatMoney(value)}
+                        contentStyle={{ borderRadius: 8, fontSize: 13 }}
+                      />
+                    </PieChart>
+                  </ResponsiveContainer>
+                </div>
+                <div className="mt-3 grid grid-cols-2 gap-x-4 gap-y-1.5 text-xs">
+                  {expensePieData.map((entry, i) => (
+                    <div key={i} className="flex items-center gap-1.5">
+                      <span className="h-2.5 w-2.5 shrink-0 rounded-full" style={{ background: entry.fill }} />
+                      <span className="truncate text-muted-foreground">{entry.name}</span>
+                    </div>
+                  ))}
+                </div>
+              </div>
+            ) : (
+              <div className="py-8 text-center text-xs text-muted-foreground">{t('finance.noExpenseData')}</div>
+            )}
           </div>
 
           {/* 近 7 日趋势 */}

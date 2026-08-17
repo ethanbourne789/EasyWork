@@ -30,9 +30,7 @@ try {
   errors.push(...collectErrors(page));
 
   // ---- 1. 登录并进入邮箱页 ----
-  if (page.url().includes('/login')) {
-    await demoLogin(page);
-  }
+  const loginResult = await demoLogin(page);
   // SPA 内导航（整页 reload 会触发演示模式重新播种，必须避免）
   await page.locator('a[href="/mail"]').first().click();
   await page.waitForTimeout(2000);

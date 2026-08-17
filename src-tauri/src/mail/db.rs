@@ -101,10 +101,14 @@ fn migrate(conn: &Connection) -> MailResult<()> {
     "#)?;
 
     if current.as_str() < "2" {
-        // 幂等添加同步列：先检查避免重复 ALTER 报错
+        // 幂等添加同步列：先检查避免重复 ALTER 报错。
+        // ⚠️ 禁止「ADD COLUMN ... NOT NULL DEFAULT (strftime(...))」：SQLite 的 ADD COLUMN
+        //    不允许括号表达式作为默认值（Cannot add a column with non-constant default），
+        //    全新库（current=0 也会走本分支）与旧库升级都会崩溃（实测崩溃点）。改用
+        //    「无 DEFAULT 的 NULL 列 + 存量回填」，与 v4 同步列迁移一致；同步引擎已兜底 NULL。
         if !has_column(conn, "email_accounts", "sync_modified_at") {
             conn.execute(
-                "ALTER TABLE email_accounts ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))",
+                "ALTER TABLE email_accounts ADD COLUMN sync_modified_at TEXT",
                 []
             )?;
         }
@@ -115,6 +119,8 @@ fn migrate(conn: &Connection) -> MailResult<()> {
             )?;
         }
         conn.execute_batch(r#"
+            UPDATE email_accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+
             CREATE TRIGGER IF NOT EXISTS email_accounts_sync_touch AFTER UPDATE ON email_accounts
             BEGIN
                 UPDATE email_accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now')
@@ -375,6 +381,170 @@ fn migrate(conn: &Connection) -> MailResult<()> {
         params![SCHEMA_VERSION]
     )?;
     Ok(())
+}
+
+/// 迁移完整性校验：验证邮件数据库关键表结构是否符合当前 schema 版本预期。
+/// 校验失败时记录警告日志但不阻断启动，保证应用可用性。
+pub fn verify_schema(conn: &Connection) {
+    let version: Result<String, _> = conn.query_row(
+        "SELECT value FROM mail_meta WHERE key='schema_version'",
+        [], |row| row.get(0),
+    );
+
+    let version_str = match version {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("mail schema 校验失败：无法读取版本信息 - {}", e);
+            return;
+        }
+    };
+
+    let version: u32 = version_str.parse().unwrap_or(0);
+    let mut errors = Vec::new();
+
+    // 1. 校验必需业务表是否存在
+    let required_tables = [
+        "email_accounts", "email_folders", "emails", "email_attachments",
+        "mail_sync_state", "emails_fts", "mail_meta",
+    ];
+
+    for table in &required_tables {
+        if !table_exists(conn, table) {
+            errors.push(format!("缺少必需表: {}", table));
+        }
+    }
+
+    // 2. 校验 v3+ 必需的联系人表
+    if version >= 3 {
+        let contact_tables = ["contacts", "contact_groups", "contact_group_members"];
+        for table in &contact_tables {
+            if !table_exists(conn, table) {
+                errors.push(format!("v3 必需表缺失: {}", table));
+            }
+        }
+    }
+
+    // 3. 校验 v4+ 必需的模板和签名表
+    if version >= 4 {
+        let template_tables = ["email_templates", "email_signatures"];
+        for table in &template_tables {
+            if !table_exists(conn, table) {
+                errors.push(format!("v4 必需表缺失: {}", table));
+            }
+        }
+    }
+
+    // 4. 校验 v5+ 必需的 mute 开关表
+    if version >= 5 {
+        if !table_exists(conn, "sync_mute_triggers") {
+            errors.push("v5 必需表缺失: sync_mute_triggers".to_string());
+        }
+    }
+
+    // 5. 校验 v6+ 必需的 tombstone 表
+    if version >= 6 {
+        if !table_exists(conn, "sync_tombstones") {
+            errors.push("v6 必需表缺失: sync_tombstones".to_string());
+        }
+    }
+
+    // 6. 校验关键表的核心列（抽样检查）
+    let critical_columns: Vec<(&str, Vec<&str>)> = vec![
+        ("email_accounts", vec!["id", "email", "credential_ref", "created_at"]),
+        ("emails", vec!["id", "account_id", "subject", "received_at"]),
+        ("email_attachments", vec!["id", "email_id", "file_path"]),
+    ];
+
+    for (table, columns) in &critical_columns {
+        if table_exists(conn, table) {
+            for column in columns {
+                if !has_column(conn, table, column) {
+                    errors.push(format!("{} 表缺少关键列: {}", table, column));
+                }
+            }
+        }
+    }
+
+    // 7. 校验 FTS 触发器（v4+）
+    if version >= 4 {
+        let fts_triggers = [
+            "emails_fts_insert", "emails_fts_delete", "emails_fts_update",
+        ];
+
+        for trigger in &fts_triggers {
+            if !trigger_exists(conn, trigger) {
+                errors.push(format!("缺少 FTS 触发器: {}", trigger));
+            }
+        }
+    }
+
+    // 8. 校验同步触发器（v5+）
+    if version >= 5 {
+        let sync_triggers = [
+            "email_accounts_sync_touch", "email_templates_sync_touch",
+            "email_signatures_sync_touch", "contacts_sync_touch",
+        ];
+
+        for trigger in &sync_triggers {
+            if !trigger_exists(conn, trigger) {
+                errors.push(format!("缺少同步触发器: {}", trigger));
+            }
+        }
+    }
+
+    // 9. 校验 tombstone 触发器（v6+）
+    if version >= 6 {
+        let tombstone_triggers = [
+            "email_accounts_sync_tombstone", "email_templates_sync_tombstone",
+            "contacts_sync_tombstone",
+        ];
+
+        for trigger in &tombstone_triggers {
+            if !trigger_exists(conn, trigger) {
+                errors.push(format!("缺少 tombstone 触发器: {}", trigger));
+            }
+        }
+    }
+
+    // 输出校验结果
+    if errors.is_empty() {
+        tracing::info!("mail schema 完整性校验通过 (v{})", version_str);
+    } else {
+        tracing::warn!(
+            "mail schema 完整性校验发现 {} 个问题 (v{}):\n  {}",
+            errors.len(),
+            version_str,
+            errors.join("\n  ")
+        );
+    }
+}
+
+/// 辅助函数：检查表是否存在
+fn table_exists(conn: &Connection, table: &str) -> bool {
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='{}')",
+            table
+        ),
+        [],
+        |row| row.get::<_, i32>(0),
+    )
+    .unwrap_or(0)
+        == 1
+}
+
+/// 辅助函数：检查触发器是否存在
+fn trigger_exists(conn: &Connection, trigger: &str) -> bool {
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='{}')",
+            trigger
+        ),
+        [],
+        |row| row.get::<_, i32>(0),
+    )
+    .unwrap_or(0)
+        == 1
 }
 
 /// 幂等迁移辅助：检查某表是否已存在某列

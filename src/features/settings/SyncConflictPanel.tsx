@@ -52,7 +52,7 @@ export function SyncConflictPanel() {
       {conflicts.map((c) => (
         <div key={c.id} className="rounded-lg border p-3">
           <div className="mb-2 flex flex-wrap items-center gap-2">
-            <Badge variant="warning">
+            <Badge variant="warning" showIcon={false}>
               <span className="inline-flex items-center gap-1">
                 <GitMerge size={12} />
                 {t("sync.conflict")}

@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   Users, UserPlus, Upload, Download, Search, Trash2, Pencil, Plus, X, Folder,
 } from "lucide-react";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Textarea } from "@/components/ui/textarea";
@@ -27,6 +28,7 @@ const EMPTY_CONTACT: Contact = {
 /** 联系人管理面板：增删改查 + 分组 + VCF 导入导出 */
 export function ContactsPanel() {
   const { t } = useTranslation();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [activeGroupId, setActiveGroupId] = useState<string | undefined>();
   const [search, setSearch] = useState("");
   const [editing, setEditing] = useState<Contact | null>(null);
@@ -75,7 +77,8 @@ export function ContactsPanel() {
   return (
     <div className="flex h-full overflow-hidden">
       {/* 分组侧栏：桌面固定，移动端隐藏（用顶部横向 chips 代替） */}
-      <aside className="hidden w-[180px] shrink-0 flex-col border-r md:flex">
+      {isDesktop && (
+      <aside className="w-[180px] shrink-0 flex-col border-r flex">
         <div className="flex items-center justify-between px-3 py-2">
           <span className="text-xs font-medium text-muted-foreground">{t("mail.contacts.group")}</span>
           <Button
@@ -110,6 +113,7 @@ export function ContactsPanel() {
           ))}
         </nav>
       </aside>
+      )}
 
       {/* 主区域 */}
       <div className="flex flex-1 flex-col overflow-hidden">
@@ -122,6 +126,7 @@ export function ContactsPanel() {
               onChange={(e) => setSearch(e.target.value)}
               placeholder={t("mail.contacts.searchPlaceholder")}
               className="pl-8"
+              aria-label={t("mail.contacts.searchPlaceholder")}
             />
           </div>
           <div className="flex items-center gap-1">
@@ -140,6 +145,8 @@ export function ContactsPanel() {
           </div>
           <input
             ref={fileInputRef} type="file" accept=".vcf,text/vcard" className="hidden"
+            tabIndex={-1}
+            aria-hidden="true"
             onChange={(e) => {
               const f = e.target.files?.[0];
               if (f) handleImportFile(f);
@@ -149,7 +156,8 @@ export function ContactsPanel() {
         </div>
 
         {/* 移动端分组 chips */}
-        <div className="flex gap-1.5 overflow-x-auto border-b px-3 py-2 md:hidden">
+        {!isDesktop && (
+        <div className="flex gap-1.5 overflow-x-auto border-b px-3 py-2">
           <Badge
             variant={!activeGroupId ? "default" : "outline"}
             className="cursor-pointer shrink-0"
@@ -168,6 +176,7 @@ export function ContactsPanel() {
             </Badge>
           ))}
         </div>
+        )}
 
         {/* 联系人列表 */}
         <div className="flex-1 overflow-y-auto">
@@ -253,6 +262,7 @@ export function ContactsPanel() {
               value={groupDialog?.name ?? ""}
               onChange={(e) => setGroupDialog((d) => d && { ...d, name: e.target.value })}
               placeholder={t("mail.contacts.groupNamePlaceholder")}
+              aria-label={t("mail.contacts.groupNamePlaceholder")}
               onKeyDown={(e) => {
                 if (e.key === "Enter" && groupDialog?.name.trim()) {
                   saveGroup.mutate(
@@ -300,15 +310,17 @@ function GroupItem(props: {
       <span className="min-w-0 flex-1 truncate">{props.label}</span>
       <span className="text-xs text-muted-foreground">{props.count}</span>
       {props.onEdit && (
-        <span className="hidden shrink-0 items-center group-hover:flex">
+        <span className="hidden shrink-0 items-center group-hover:flex" aria-hidden>
           <button
             className="rounded p-0.5 hover:bg-accent" aria-label={t("mail.contacts.renameGroup")}
+            tabIndex={-1}
             onClick={(e) => { e.stopPropagation(); props.onEdit?.(); }}
           >
             <Pencil className="h-3 w-3 text-muted-foreground" />
           </button>
           <button
             className="rounded p-0.5 hover:bg-accent" aria-label={t("mail.contacts.deleteGroup")}
+            tabIndex={-1}
             onClick={(e) => { e.stopPropagation(); props.onDelete?.(); }}
           >
             <X className="h-3 w-3 text-muted-foreground" />
@@ -335,6 +347,7 @@ function MultiValueEditor(props: {
             value={v}
             type={props.type ?? "text"}
             placeholder={props.placeholder}
+            aria-label={`${props.label} ${i + 1}`}
             onChange={(e) => {
               const next = [...rows];
               next[i] = e.target.value;
@@ -397,8 +410,9 @@ function ContactEditDialog(props: {
         {current && (
           <div className="space-y-3">
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t("mail.contacts.nameRequired")}</label>
+              <label htmlFor="contact-name" className="text-sm font-medium">{t("mail.contacts.nameRequired")}</label>
               <Input
+                id="contact-name"
                 value={current.name}
                 onChange={(e) => update({ name: e.target.value })}
                 placeholder={t("mail.contacts.namePlaceholder")}
@@ -420,23 +434,26 @@ function ContactEditDialog(props: {
             />
             <div className="grid grid-cols-2 gap-2">
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">{t("mail.contacts.company")}</label>
+                <label htmlFor="contact-company" className="text-sm font-medium">{t("mail.contacts.company")}</label>
                 <Input
+                  id="contact-company"
                   value={current.company ?? ""}
                   onChange={(e) => update({ company: e.target.value || null })}
                 />
               </div>
               <div className="space-y-1.5">
-                <label className="text-sm font-medium">{t("mail.contacts.title")}</label>
+                <label htmlFor="contact-title" className="text-sm font-medium">{t("mail.contacts.title")}</label>
                 <Input
+                  id="contact-title"
                   value={current.title ?? ""}
                   onChange={(e) => update({ title: e.target.value || null })}
                 />
               </div>
             </div>
             <div className="space-y-1.5">
-              <label className="text-sm font-medium">{t("mail.contacts.notes")}</label>
+              <label htmlFor="contact-notes" className="text-sm font-medium">{t("mail.contacts.notes")}</label>
               <Textarea
+                id="contact-notes"
                 value={current.notes ?? ""}
                 rows={2}
                 onChange={(e) => update({ notes: e.target.value || null })}

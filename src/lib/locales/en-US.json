@@ -621,7 +621,7 @@
     "noResult": "No transactions match the filters"
   },
   "calendar": {
-    "title": "Title",
+    "title": "Calendar",
     "subtitle": "Tasks, events, and daily finances at a glance",
     "today": "Today",
     "month": "Month",
@@ -701,7 +701,33 @@
     "providerLabelICS": "ICS Subscription URL",
     "providerLabelDingtalkCalDAV": "DingTalk CalDAV",
     "providerLabelCalDAV": "Other CalDAV",
-    "weekdayPrefix": "W"
+    "weekdayPrefix": "W",
+    "weekdaySun": "Sun",
+    "weekdayMon": "Mon",
+    "weekdayTue": "Tue",
+    "weekdayWed": "Wed",
+    "weekdayThu": "Thu",
+    "weekdayFri": "Fri",
+    "weekdaySat": "Sat",
+    "yearUnit": "-",
+    "monthUnit": "/",
+    "dayUnit": "",
+    "dayDetail": "Day Details",
+    "incomeExpense": "Income & Expense",
+    "netBalance": "Net Balance",
+    "noTransactions": "No transactions for this day",
+    "events": "Events",
+    "noEvents": "No events",
+    "tasks": "Tasks",
+    "noTasks": "No tasks for this day",
+    "agendaEmpty": "No events, tasks, or transactions in this period",
+    "subscribed": "Subscribed",
+    "dailyIncomeExpense": "Today's Income & Expense"
+  },
+  "calendarView": {
+    "title": "Calendar View",
+    "today": "Today",
+    "noTasks": "No Tasks"
   },
   "settings": {
     "title": "Settings",

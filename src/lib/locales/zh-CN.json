@@ -48,7 +48,9 @@
     "formatError": "格式错误",
     "unsavedChanges": "您有未保存的更改",
     "discardChanges": "丢弃更改？",
-    "discardMessage": "确定放弃当前编辑的内容吗？"
+    "discardMessage": "确定放弃当前编辑的内容吗？",
+    "confirmAction": "确认操作",
+    "pleaseConfirm": "请确认"
   },
   "auth": {
     "login": "登录",
@@ -701,7 +703,33 @@
     "providerLabelICS": "ICS 订阅链接",
     "providerLabelDingtalkCalDAV": "钉钉 CalDAV",
     "providerLabelCalDAV": "其他 CalDAV",
-    "weekdayPrefix": "周"
+    "weekdayPrefix": "周",
+    "weekdaySun": "周日",
+    "weekdayMon": "周一",
+    "weekdayTue": "周二",
+    "weekdayWed": "周三",
+    "weekdayThu": "周四",
+    "weekdayFri": "周五",
+    "weekdaySat": "周六",
+    "yearUnit": "年",
+    "monthUnit": "月",
+    "dayUnit": "日",
+    "dayDetail": "当日详情",
+    "incomeExpense": "收支",
+    "netBalance": "净结余",
+    "noTransactions": "当日无收支记录",
+    "events": "日程",
+    "noEvents": "暂无日程",
+    "tasks": "任务",
+    "noTasks": "当日无任务",
+    "agendaEmpty": "这段时间没有日程、任务或收支记录",
+    "subscribed": "订阅",
+    "dailyIncomeExpense": "当日收支"
+  },
+  "calendarView": {
+    "title": "日历视图",
+    "today": "今天",
+    "noTasks": "无任务"
   },
   "settings": {
     "title": "设置",

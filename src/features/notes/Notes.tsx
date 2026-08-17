@@ -8,6 +8,7 @@ import { NoteList } from './NoteList';
 import { NoteEditor } from './NoteEditor';
 import { useNote, useCreateNote } from './useNotes';
 import { ModuleFab } from '@/components/layout/ModuleFab';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function Notes() {
   const { t } = useTranslation();
@@ -16,6 +17,7 @@ export function Notes() {
   const [selectedTagId, setSelectedTagId] = useState<string | null>(null);
   const [searchQuery, setSearchQuery] = useState('');
   const [mobileView, setMobileView] = useState<'sidebar' | 'list' | 'editor'>('list');
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   const { data: selectedNote } = useNote(selectedNoteId || undefined);
 
@@ -93,13 +95,16 @@ export function Notes() {
           <h1 className="font-display text-[28px] font-semibold leading-tight">{t('notes.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('notes.subtitle')}</p>
         </div>
-        <Button size="sm" onClick={() => handleCreateNote()} className="hidden md:flex items-center gap-1">
-          <Plus size={15} /> {t('notes.newNote')}
-        </Button>
+        {isDesktop && (
+          <Button size="sm" onClick={() => handleCreateNote()} className="items-center gap-1">
+            <Plus size={15} /> {t('notes.newNote')}
+          </Button>
+        )}
       </div>
 
       {/* 桌面端布局：未选笔记时两栏，选中后三栏 */}
-      <div className="hidden h-full w-full md:flex">
+      {isDesktop && (
+      <div className="h-full w-full flex">
         {/* 文件夹树 - 左栏 */}
         <div className="h-full w-[200px] shrink-0 border-r">
           <NoteSidebar
@@ -131,14 +136,16 @@ export function Notes() {
             <NoteEditor note={selectedNote} />
           </div>
         ) : (
-          <div className="hidden flex-1 items-center justify-center text-sm text-muted-foreground md:flex">
+          <div className="flex-1 items-center justify-center text-sm text-muted-foreground flex">
             {t('notes.selectNoteToEdit')}
           </div>
         )}
       </div>
+      )}
 
       {/* 移动端单栏切换布局 */}
-      <div className="flex h-full w-full flex-col md:hidden">
+      {!isDesktop && (
+      <div className="flex h-full w-full flex-col">
         {/* 视图切换标签栏 */}
         <div className="flex border-b bg-muted/30">
           <button
@@ -209,12 +216,15 @@ export function Notes() {
           )}
         </div>
       </div>
+      )}
 
       <input
         ref={fileInputRef}
         type="file"
         accept=".txt,.md,text/*"
         className="hidden"
+        tabIndex={-1}
+        aria-hidden="true"
         onChange={handleImportFile}
       />
       <ModuleFab

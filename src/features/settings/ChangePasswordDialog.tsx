@@ -85,9 +85,10 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
 
         <div className="space-y-4">
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('settings.currentPassword')}</label>
+            <label htmlFor="change-current-password" className="text-sm font-medium">{t('settings.currentPassword')}</label>
             <div className="relative">
               <Input
+                id="change-current-password"
                 type={showCurrent ? "text" : "password"}
                 placeholder={t('settings.enterCurrentPassword')}
                 value={currentPassword}
@@ -105,9 +106,10 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('settings.newPassword')}</label>
+            <label htmlFor="change-new-password" className="text-sm font-medium">{t('settings.newPassword')}</label>
             <div className="relative">
               <Input
+                id="change-new-password"
                 type={showNew ? "text" : "password"}
                 placeholder={t('settings.newPasswordPlaceholder')}
                 value={newPassword}
@@ -125,9 +127,10 @@ export function ChangePasswordDialog({ open, onOpenChange }: { open: boolean; on
           </div>
 
           <div className="space-y-2">
-            <label className="text-sm font-medium">{t('settings.confirmNewPassword')}</label>
+            <label htmlFor="change-confirm-password" className="text-sm font-medium">{t('settings.confirmNewPassword')}</label>
             <div className="relative">
               <Input
+                id="change-confirm-password"
                 type={showConfirm ? "text" : "password"}
                 placeholder={t('settings.confirmNewPasswordPlaceholder')}
                 value={confirmPassword}

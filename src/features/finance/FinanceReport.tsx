@@ -122,7 +122,7 @@ export function FinanceReport() {
               <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
               <Tooltip
                 formatter={(v: number) => `¥${v.toFixed(2)}`}
-                contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }}
+                contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12, background: "var(--popover)", color: "var(--popover-foreground)" }}
               />
               <Bar dataKey="amount" radius={[6, 6, 0, 0]}>
                 <Cell fill={INCOME_COLOR} />
@@ -157,7 +157,7 @@ export function FinanceReport() {
                         <Cell key={`cell-${index}`} fill={CHART_COLORS[index % CHART_COLORS.length]} />
                       ))}
                 </Pie>
-                <Tooltip formatter={(v: number) => `¥${v.toFixed(2)}`} contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+                <Tooltip formatter={(v: number) => `¥${v.toFixed(2)}`} contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12, background: "var(--popover)", color: "var(--popover-foreground)" }} />
               </PieChart>
             </ResponsiveContainer>
           ) : (
@@ -176,7 +176,7 @@ export function FinanceReport() {
             <LineChart data={trendData} margin={{ top: 8, right: 8, left: -16, bottom: 0 }}>
               <XAxis dataKey="date" tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
               <YAxis tick={{ fontSize: 12 }} axisLine={false} tickLine={false} />
-              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12 }} />
+              <Tooltip contentStyle={{ borderRadius: 12, border: "1px solid var(--border)", fontSize: 12, background: "var(--popover)", color: "var(--popover-foreground)" }} />
               <Legend wrapperStyle={{ fontSize: 12 }} />
               <Line type="monotone" dataKey="income" stroke={INCOME_COLOR} strokeWidth={2} dot={{ r: 3 }} name={t('finance.income')} />
               <Line type="monotone" dataKey="expense" stroke={EXPENSE_COLOR} strokeWidth={2} dot={{ r: 3 }} name={t('finance.expense')} />

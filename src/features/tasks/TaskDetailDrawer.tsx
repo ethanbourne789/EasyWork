@@ -151,7 +151,7 @@ export function TaskDetailDrawer({ task, onClose, onEdit }: TaskDetailDrawerProp
               {t('tasks.editTask')}
             </Button>
           )}
-          <Button variant="ghost" size="icon" onClick={onClose}>
+          <Button variant="ghost" size="icon" onClick={onClose} aria-label="Close task details">
             <X className="h-4 w-4" />
           </Button>
         </div>

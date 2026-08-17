@@ -175,7 +175,7 @@ export function NoteList({
                     <div className="flex-1 min-w-0">
                       <div className="flex items-center gap-1.5">
                         {note.is_pinned && (
-                          <Pin className="h-3 w-3 shrink-0 fill-current text-amber-500" />
+                          <Pin className="h-3 w-3 shrink-0 fill-current text-warning" />
                         )}
                         <h3 className="truncate text-sm font-medium">
                           {note.title || t('notes.untitled')}

@@ -41,19 +41,86 @@ export function collectErrors(page) {
 
 // ---- 导航 ----
 export async function navTo(page, label) {
-  const link = page.locator('nav a').filter({ hasText: label }).first();
-  await link.click();
-  await page.waitForTimeout(1200);
+  // 标签到路径的映射
+  const labelToPath = {
+    '仪表': '/dashboard',
+    '任务': '/tasks',
+    '邮箱': '/mail',
+    '笔记': '/notes',
+    '记账': '/finance',
+    '日历': '/calendar',
+    '设置': '/settings',
+  };
+  
+  const targetPath = labelToPath[label];
+  if (!targetPath) {
+    throw new Error(`未知页面标签: ${label}`);
+  }
+  
+  // 如果已经在目标页面，跳过
+  if (page.url().includes(targetPath)) {
+    return;
+  }
+  
+  // 方法1: 尝试直接通过 URL 导航（最快）
+  try {
+    await page.goto(`tauri://localhost${targetPath}`, { waitUntil: 'domcontentloaded', timeout: 5000 });
+    await page.waitForTimeout(1500);
+    return;
+  } catch (e) {
+    // URL 导航失败，尝试其他方法
+  }
+  
+  // 方法2: 尝试通过 JavaScript 触发路由跳转
+  try {
+    await page.evaluate((path) => {
+      window.location.href = path;
+    }, targetPath);
+    await page.waitForTimeout(1500);
+    return;
+  } catch (e) {
+    // JS 导航也失败，尝试点击
+  }
+  
+  // 方法3: 尝试展开侧边栏并点击
+  try {
+    // 尝试展开侧边栏
+    const sidebarTrigger = page.locator('[data-state="closed"] button, [aria-label*="展开"], [aria-label*="toggle"]').first();
+    if (await sidebarTrigger.isVisible({ timeout: 1000 }).catch(() => false)) {
+      await sidebarTrigger.click({ timeout: 2000 }).catch(() => {});
+      await page.waitForTimeout(500);
+    }
+    
+    // 现在尝试点击导航链接
+    const link = page.locator('nav a').filter({ hasText: label }).first();
+    await link.click({ timeout: 5000, force: true });
+    await page.waitForTimeout(1200);
+  } catch (e) {
+    console.log(`    ⚠️  导航到 ${label} 失败，尝试直接评估`);
+    // 最后尝试: 使用 React Router
+    await page.evaluate((path) => {
+      if (window.__router) {
+        window.__router.navigate(path);
+      } else {
+        window.location.hash = path;
+      }
+    }, targetPath);
+    await page.waitForTimeout(1500);
+  }
 }
 
 // ---- 演示登录 ----
 export async function demoLogin(page, { timeoutMs = 20000 } = {}) {
+  // Check if already logged in (any route that is NOT login/register)
+  const url = page.url();
+  if (!url.includes('/login') && !url.includes('/register')) {
+    return true; // already logged in
+  }
   const btn = page.locator('button').filter({ hasText: /演示/ }).first();
   await btn.click();
-  // 等 URL 变为 /dashboard（含播种时间）
   await page.waitForURL('**/dashboard', { timeout: timeoutMs }).catch(() => {});
   await page.waitForTimeout(1500);
-  return page.url();
+  return true;
 }
 
 // ---- 断言工具 ----

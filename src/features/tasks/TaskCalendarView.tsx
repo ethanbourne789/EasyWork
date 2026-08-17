@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useTranslation } from "react-i18next";
 import { ChevronLeft, ChevronRight, Calendar } from "lucide-react";
 import { useTasks } from "./useTasks";
 import { Badge } from "@/components/ui/badge";
@@ -7,13 +8,13 @@ import { cn, getMonday } from "@/lib/utils";
 import { priorityColors, priorityLabels } from "./taskConstants";
 import type { Task } from "@/types";
 
-const weekdayNames = ["周日", "周一", "周二", "周三", "周四", "周五", "周六"];
-
 interface TaskCalendarViewProps {
   onTaskClick: (task: Task) => void;
 }
 
 export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
+  const { t } = useTranslation();
+  const WEEKDAYS = [t("calendar.weekdaySun"), t("calendar.weekdayMon"), t("calendar.weekdayTue"), t("calendar.weekdayWed"), t("calendar.weekdayThu"), t("calendar.weekdayFri"), t("calendar.weekdaySat")];
   const { data: tasks = [] } = useTasks();
   const [currentWeekStart, setCurrentWeekStart] = useState(() => getMonday());
   
@@ -54,21 +55,21 @@ export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
     return date.toDateString() === today.toDateString();
   };
 
-  const weekLabel = `${weekDays[0].getMonth() + 1}月${weekDays[0].getDate()}日 - ${weekDays[6].getMonth() + 1}月${weekDays[6].getDate()}日`;
+  const weekLabel = `${weekDays[0].getMonth() + 1}${t("calendar.monthUnit")}${weekDays[0].getDate()}${t("calendar.dayUnit")} - ${weekDays[6].getMonth() + 1}${t("calendar.monthUnit")}${weekDays[6].getDate()}${t("calendar.dayUnit")}`;
 
   return (
     <div className="h-full flex flex-col p-4">
       <div className="flex flex-wrap items-center justify-between gap-y-2 mb-4">
         <div className="flex items-center gap-2">
           <Calendar className="h-5 w-5 text-muted-foreground" />
-          <h2 className="text-lg font-semibold">日历视图</h2>
+          <h2 className="text-lg font-semibold">{t("calendarView.title")}</h2>
         </div>
         <div className="flex flex-wrap items-center gap-2">
           <Button variant="outline" size="sm" onClick={previousWeek}>
             <ChevronLeft className="h-4 w-4" />
           </Button>
           <Button variant="outline" size="sm" onClick={goToToday}>
-            今天
+            {t("calendarView.today")}
           </Button>
           <Button variant="outline" size="sm" onClick={nextWeek}>
             <ChevronRight className="h-4 w-4" />
@@ -92,7 +93,7 @@ export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
             >
               <div className="text-center mb-2">
                 <div className="text-xs text-muted-foreground">
-                  {weekdayNames[idx]}
+                  {WEEKDAYS[idx]}
                 </div>
                 <div className={cn(
                   "text-lg font-semibold rounded-full w-8 h-8 mx-auto flex items-center justify-center",
@@ -103,7 +104,7 @@ export function TaskCalendarView({ onTaskClick }: TaskCalendarViewProps) {
               </div>
               <div className="flex-1 space-y-1.5 overflow-auto">
                 {dayTasks.length === 0 ? (
-                  <div className="text-xs text-muted-foreground text-center py-2">无任务</div>
+                  <div className="text-xs text-muted-foreground text-center py-2">{t("calendarView.noTasks")}</div>
                 ) : (
                   dayTasks.map((task) => (
                     <div

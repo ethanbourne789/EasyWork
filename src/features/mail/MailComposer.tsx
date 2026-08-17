@@ -231,7 +231,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
       <DialogContent className="flex h-[80vh] max-h-[90vh] w-full max-w-2xl flex-col rounded-lg border bg-background p-0 shadow-xl">
         <div className="flex items-center justify-between border-b p-3">
           <h3 className="text-sm font-medium">{draftId ? t("mail.editDraft") : t("mail.writeMail")}</h3>
-          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose}>
+          <Button variant="ghost" size="icon" className="h-8 w-8" onClick={handleClose} aria-label={t("mail.close")}>
             <X className="h-4 w-4" />
           </Button>
         </div>
@@ -257,9 +257,10 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
         </div>
         <div className="flex-1 space-y-2 overflow-y-auto p-4">
           <div className="flex items-center gap-2">
-            <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.fromAccount")}</label>
+            <label htmlFor="mail-from-account" className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.fromAccount")}</label>
             <div className="flex flex-1 items-center gap-2">
               <Select
+                id="mail-from-account"
                 value={selectedAccountId ?? accounts[0]?.id ?? ""}
                 onChange={(e) => setSelectedAccountId(e.target.value)}
                 className="flex-1"
@@ -279,8 +280,9 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             </div>
           </div>
           <div className="flex items-center gap-2">
-            <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.to")}</label>
+            <label htmlFor="mail-to" className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.to")}</label>
             <Input
+              id="mail-to"
               value={to}
               onChange={(e) => setTo(e.target.value)}
               placeholder={t("mail.toPlaceholder")}
@@ -305,8 +307,9 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
           </div>
           {showCc && (
             <div className="flex items-center gap-2">
-              <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.cc")}</label>
+              <label htmlFor="mail-cc" className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.cc")}</label>
               <Input
+                id="mail-cc"
                 value={cc}
                 onChange={(e) => setCc(e.target.value)}
                 placeholder={t("mail.ccPlaceholder")}
@@ -316,8 +319,9 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             </div>
           )}
           <div className="flex items-center gap-2">
-            <label className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.subject")}</label>
+            <label htmlFor="mail-subject" className="w-16 shrink-0 text-sm text-muted-foreground">{t("mail.subject")}</label>
             <Input
+              id="mail-subject"
               value={subject}
               onChange={(e) => setSubject(e.target.value)}
               placeholder={t("mail.subjectPlaceholder")}
@@ -329,6 +333,7 @@ export function MailComposer({ open, onClose, draftId, initialData }: MailCompos
             onChange={(e) => setBody(e.target.value)}
             placeholder={t("mail.bodyPlaceholder")}
             className="min-h-[200px] flex-1"
+            aria-label={t("mail.body")}
           />
         </div>
         <div className="flex items-center justify-end gap-2 border-t p-3">

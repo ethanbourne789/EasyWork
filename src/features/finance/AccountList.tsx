@@ -271,8 +271,9 @@ export function AccountList() {
           </DialogHeader>
           <div className="space-y-4 py-4">
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.accountName')}</label>
+              <label htmlFor="account-name" className="text-sm font-medium">{t('finance.accountName')}</label>
               <Input
+                id="account-name"
                 type="text"
                 placeholder={t('finance.accountNamePlaceholder')}
                 value={accountForm.name}
@@ -280,8 +281,9 @@ export function AccountList() {
               />
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.accountType')}</label>
+              <label htmlFor="account-type" className="text-sm font-medium">{t('finance.accountType')}</label>
               <Select
+                id="account-type"
                 value={accountForm.type}
                 onChange={(e) => setAccountForm({ ...accountForm, type: e.target.value as AccountType })}
               >
@@ -291,8 +293,9 @@ export function AccountList() {
               </Select>
             </div>
             <div className="space-y-1">
-              <label className="text-sm font-medium">{t('finance.initialBalance')}</label>
+              <label htmlFor="initial-balance" className="text-sm font-medium">{t('finance.initialBalance')}</label>
               <Input
+                id="initial-balance"
                 type="number"
                 step="0.01"
                 value={accountForm.initial_balance}

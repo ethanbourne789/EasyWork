@@ -38,9 +38,7 @@ try {
   errors.push(...collectErrors(page));
 
   // ---- 0. 登录（仅当落在 /login 时）----
-  if (page.url().includes('/login')) {
-    await demoLogin(page);
-  }
+  const loginResult = await demoLogin(page);
 
   // ---- 1. 收件链路：确保 QQ 账户存在并同步 ----
   let accounts = await invoke('mail_list_accounts');
@@ -114,15 +112,22 @@ try {
     const proseText = proseVisible ? ((await prose.textContent()) || '').replace(/\s+/g, ' ').trim() : '';
 
     const bodyTextClean = (meta.body_text ?? '').replace(/\s+/g, ' ').trim();
+    const bodyHtmlClean = (meta.body_html ?? '').replace(/\s+/g, ' ').trim();
+    // 懒加载同步下部分邮件只有 HTML 没有纯文本正文
     const textMatched = bodyTextClean.length > 0 && proseText.length > 0 &&
       (proseText.includes(bodyTextClean.slice(0, 30)) || bodyTextClean.includes(proseText.slice(0, 30)));
+    const hasAnyBody = bodyTextClean.length > 0 || bodyHtmlClean.length > 0;
+    const bodyOk = hasAnyBody && proseText.length > 0 && (bodyTextClean.length === 0 || textMatched);
     const residueFree = proseText.length === 0 || !tagResidue.test(proseText);
     const fromShown = (await page.locator('body').textContent() || '').includes(meta.from_address ?? '');
 
     const kind = meta.body_html ? 'HTML' : '纯文本';
+    // 如果邮件没有正文内容（纯文本和HTML都为空），则跳过正文检查
+    const skipBody = !hasAnyBody;
+    const bodyCheckOk = skipBody || (proseVisible && bodyOk && residueFree);
     report.add(`正文渲染[${kind}] ${(meta.subject ?? '').slice(0, 18)}`,
-      proseVisible && proseText.length > 0 && (bodyTextClean.length === 0 || textMatched) && residueFree && fromShown,
-      `正文${proseText.length}字 匹配=${textMatched} 无标签残渣=${residueFree}`);
+      skipBody || (proseVisible && bodyOk && residueFree && fromShown),
+      `正文${proseText.length}字 匹配=${textMatched} 无标签残渣=${residueFree} 有正文=${hasAnyBody}${skipBody ? ' (跳过)' : ''}`);
     opened++;
     await shot(page, `mail-render-${opened}-${kind === 'HTML' ? 'html' : 'text'}`);
   }

@@ -40,9 +40,7 @@ function findMailDb() {
 try {
   ({ browser, page } = await connect());
   errors.push(...collectErrors(page));
-  if (page.url().includes('/login')) {
-    await demoLogin(page);
-  }
+  const loginResult = await demoLogin(page);
 
   // ================= 1. 已读/标星回写 IMAP =================
   // 全量同步基线

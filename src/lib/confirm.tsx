@@ -8,6 +8,7 @@ import {
   DialogFooter,
 } from "@/components/ui/dialog";
 import { Button } from "@/components/ui/button";
+import i18n from "@/lib/i18n";
 
 export interface ConfirmOptions {
   title?: string;
@@ -23,8 +24,8 @@ export interface ConfirmOptions {
 function ConfirmDialogImpl({
   title,
   description,
-  confirmText = "确定",
-  cancelText = "取消",
+  confirmText = i18n.t("common.confirm"),
+  cancelText = i18n.t("common.cancel"),
   destructive = false,
   loading = false,
   onConfirm,
@@ -44,11 +45,11 @@ function ConfirmDialogImpl({
       onOpenChange={(o) => {
         if (!o) finish(false);
       }}
-      ariaLabel={title ?? "确认操作"}
+      ariaLabel={title ?? i18n.t("common.confirmAction")}
     >
       <DialogContent>
         <DialogHeader>
-          <DialogTitle>{title ?? "请确认"}</DialogTitle>
+          <DialogTitle>{title ?? i18n.t("common.pleaseConfirm")}</DialogTitle>
         </DialogHeader>
         {description && (
           <div className="text-sm text-muted-foreground">{description}</div>

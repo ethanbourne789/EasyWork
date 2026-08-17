@@ -7,6 +7,7 @@ import { Drawer, DrawerBody, DrawerClose, DrawerHeader, DrawerTitle } from "@/co
 import { cn } from "@/lib/utils";
 import { useAuthStore } from "@/features/auth/authStore";
 import { useNavigate } from "@tanstack/react-router";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 const MORE_ROUTES = [
   { to: "/calendar", key: "nav.calendar", icon: CalendarDays },
@@ -19,6 +20,7 @@ export function MobileNavDrawer() {
   const pathname = useRouterState({ select: (s) => s.location.pathname });
   const navigate = useNavigate();
   const logout = useAuthStore((s) => s.logout);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   const openSearch = () => {
     setOpen(false);
@@ -31,12 +33,13 @@ export function MobileNavDrawer() {
     navigate({ to: "/login" });
   };
 
+  if (isDesktop) return null;
+
   return (
     <>
       <Button
         variant="ghost"
         size="icon"
-        className="md:hidden"
         aria-label={t("common.menu")}
         onClick={() => setOpen(true)}
       >

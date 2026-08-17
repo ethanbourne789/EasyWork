@@ -3,6 +3,7 @@ import { Plus, FileText } from "lucide-react";
 import { useTranslation } from "react-i18next";
 import { useSearch } from "@tanstack/react-router";
 import { Button } from "@/components/ui/button";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogClose } from "@/components/ui/dialog";
 import { ModuleFab } from "@/components/layout/ModuleFab";
 import { TaskListView } from "./TaskListView";
@@ -23,6 +24,7 @@ export function Tasks() {
   const [formOpen, setFormOpen] = useState(false);
   const [editingTask, setEditingTask] = useState<Task | null>(null);
   const [templateOpen, setTemplateOpen] = useState(false);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const { data: tasks = [] } = useTasks();
   const createTask = useCreateTask();
 
@@ -76,16 +78,18 @@ export function Tasks() {
         </div>
 
         <div className="flex items-center gap-3">
-          <Button size="sm" onClick={openCreate} className="hidden md:flex items-center gap-1">
-            <Plus size={15} /> {t('tasks.newTask')}
-          </Button>
+          {isDesktop && (
+            <Button size="sm" onClick={openCreate} className="items-center gap-1">
+              <Plus size={15} /> {t('tasks.newTask')}
+            </Button>
+          )}
 
           {/* 视图切换器 — 对齐原型 .seg-ctl，放在右侧 */}
           <div className="flex gap-2 rounded-[11px] bg-muted/60 p-1">
           <button
             onClick={() => setViewMode("board")}
             className={cn(
-              "rounded-[9px] px-3.5 py-2 text-[13.5px] font-semibold transition-colors",
+              "rounded-[9px] px-3.5 py-2 text-[13.5px] font-semibold transition-colors min-h-[44px]",
               viewMode === "board"
                 ? "bg-card text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
@@ -96,7 +100,7 @@ export function Tasks() {
           <button
             onClick={() => setViewMode("list")}
             className={cn(
-              "rounded-[9px] px-3.5 py-2 text-[13.5px] font-semibold transition-colors",
+              "rounded-[9px] px-3.5 py-2 text-[13.5px] font-semibold transition-colors min-h-[44px]",
               viewMode === "list"
                 ? "bg-card text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"
@@ -107,7 +111,7 @@ export function Tasks() {
           <button
             onClick={() => setViewMode("calendar")}
             className={cn(
-              "rounded-[9px] px-3.5 py-2 text-[13.5px] font-semibold transition-colors",
+              "rounded-[9px] px-3.5 py-2 text-[13.5px] font-semibold transition-colors min-h-[44px]",
               viewMode === "calendar"
                 ? "bg-card text-foreground shadow-xs"
                 : "text-muted-foreground hover:text-foreground"

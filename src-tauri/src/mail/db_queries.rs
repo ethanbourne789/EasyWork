@@ -309,11 +309,11 @@ pub fn insert_attachment(conn: &Connection, att: &EmailAttachment) -> MailResult
     Ok(())
 }
 
-/// 按需下载完成后回写本地路径并清除待下载标记
-pub fn mark_attachment_downloaded(conn: &Connection, id: &str, file_path: &str) -> MailResult<()> {
+/// 按需下载完成后回写本地路径、实际大小并清除待下载标记
+pub fn mark_attachment_downloaded(conn: &Connection, id: &str, file_path: &str, size: i64) -> MailResult<()> {
     conn.execute(
-        "UPDATE email_attachments SET file_path = ?1, pending_download = 0 WHERE id = ?2",
-        params![file_path, id],
+        "UPDATE email_attachments SET file_path = ?1, size = ?2, pending_download = 0 WHERE id = ?3",
+        params![file_path, size, id],
     )?;
     Ok(())
 }

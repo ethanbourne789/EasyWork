@@ -188,6 +188,7 @@ export function NoteEditor({ note }: NoteEditorProps) {
           onChange={handleTitleChange}
           className="flex-1 min-w-0 text-lg font-medium bg-transparent border-none outline-none"
           placeholder={t('notes.noteTitlePlaceholder')}
+          aria-label={t('notes.noteTitlePlaceholder')}
         />
         {updateNote.isPending && (
           <span className="shrink-0 text-xs text-muted-foreground">{t('notes.saving')}</span>
@@ -219,6 +220,7 @@ export function NoteEditor({ note }: NoteEditorProps) {
         {creatingTag ? (
           <input
             autoFocus
+            aria-label={t('notes.newTag')}
             className="w-20 rounded-full border bg-background px-2 py-0.5 text-xs outline-none"
             placeholder={t('notes.tagNamePlaceholder')}
             value={newTagName}

@@ -7,6 +7,7 @@
 #   powershell -ExecutionPolicy Bypass -File scripts/build-green.ps1
 #   powershell -ExecutionPolicy Bypass -File scripts/build-green.ps1 -DebugBuild
 #   powershell -ExecutionPolicy Bypass -File scripts/build-green.ps1 -Clean
+#   powershell -ExecutionPolicy Bypass -File scripts/build-green.ps1 -E2E
 #
 # Prerequisites:
 #   - Node.js 20.19+ / 22.12+ (Vite 7 要求) with pnpm (canonical package manager)
@@ -18,7 +19,8 @@
 # -Debug parameter and the clash aborts parsing. Use -DebugBuild instead.
 param(
     [switch]$DebugBuild,
-    [switch]$Clean
+    [switch]$Clean,
+    [switch]$E2E
 )
 
 $ErrorActionPreference = "Stop"
@@ -101,24 +103,35 @@ if ($Clean) {
     if (Test-Path "$root/src-tauri/target/$targetDir") { Remove-Item "$root/src-tauri/target/$targetDir" -Recurse -Force }
 }
 
-# 4. Frontend build (canonical: `tsc -b && vite build`).
-#    `tsc -b` is the type-check gate; vite only runs if it passes (&& short-circuit).
-#    tsconfig.node.json now emits declarations to a temp dir, so a fresh checkout builds
-#    cleanly (no TS6310) while incremental builds stay fast.
+# 4-5. Build frontend + backend
+#    `-E2E`: use `tauri build --config` to merge E2E config (remote debugging port 9222).
+#      Tauri CLI handles both frontend (`beforeBuildCommand`) and backend in one go.
+#    Normal: build frontend separately, then `cargo build` (faster iterations).
 $start = Get-Date
-Write-Host "==> Building frontend (pnpm run build = tsc -b && vite build) ..." -ForegroundColor Cyan
-Push-Location $root
-Invoke-Step -Command "pnpm" -Arguments @("run", "build")
-Pop-Location
+if ($E2E) {
+    Write-Host "==> Building frontend + Tauri binary with E2E support (tauri build --config tauri-e2e-green.conf.json) ..." -ForegroundColor Cyan
+    Push-Location $root
+    Invoke-Step -Command "pnpm" -Arguments @("exec", "--", "tauri", "build", "--config", "src-tauri/tauri-e2e-green.conf.json", ("--" + $profile))
+    Pop-Location
+} else {
+    # 4. Frontend build (canonical: `tsc -b && vite build`).
+    #    `tsc -b` is the type-check gate; vite only runs if it passes (&& short-circuit).
+    #    tsconfig.node.json now emits declarations to a temp dir, so a fresh checkout builds
+    #    cleanly (no TS6310) while incremental builds stay fast.
+    Write-Host "==> Building frontend (pnpm run build = tsc -b && vite build) ..." -ForegroundColor Cyan
+    Push-Location $root
+    Invoke-Step -Command "pnpm" -Arguments @("run", "build")
+    Pop-Location
 
-# 5. Backend build (no bundling; tauri.conf.json bundle.active=false).
-#    `--features custom-protocol` is REQUIRED for release (and any self-contained exe):
-#    without it Tauri treats the build as "dev" and tries to load devUrl
-#    (http://localhost:1420) instead of embedding the frontend dist assets.
-Write-Host "==> Building Tauri $profile binary (cargo build --$targetDir --features custom-protocol) ..." -ForegroundColor Cyan
-Push-Location "$root/src-tauri"
-Invoke-Step -Command "cargo" -Arguments @("build", "--$targetDir", "--features", "custom-protocol")
-Pop-Location
+    # 5. Backend build (no bundling; tauri.conf.json bundle.active=false).
+    #    `--features custom-protocol` is REQUIRED for release (and any self-contained exe):
+    #    without it Tauri treats the build as "dev" and tries to load devUrl
+    #    (http://localhost:1420) instead of embedding the frontend dist assets.
+    Write-Host "==> Building Tauri $profile binary (cargo build --$targetDir --features custom-protocol) ..." -ForegroundColor Cyan
+    Push-Location "$root/src-tauri"
+    Invoke-Step -Command "cargo" -Arguments @("build", "--$targetDir", "--features", "custom-protocol")
+    Pop-Location
+}
 
 # 6. Collect artifact
 $exe = "$root/src-tauri/target/$targetDir/easywork.exe"
@@ -133,4 +146,7 @@ $duration = (Get-Date) - $start
 Write-Host ""
 Write-Host "==> Green build ready:" -ForegroundColor Green
 Write-Host "    $greenDir/EasyWork.exe  ($sizeMB MB, took $($duration.TotalSeconds.ToString('0.0')) s)" -ForegroundColor Green
+if ($E2E) {
+    Write-Host "    E2E mode: --remote-debugging-port=9222 enabled for Playwright." -ForegroundColor Green
+}
 Write-Host "    Ship the whole release-green/ folder. End-user PC needs WebView2 Runtime (preinstalled on Win10/11)." -ForegroundColor Gray

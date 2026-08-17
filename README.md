@@ -21,10 +21,10 @@ EasyWork replaces six scattered tools with one unified workspace:
 
 ## Features
 
-### 📊 Dashboard
+### Dashboard
 Your daily command center. See at-a-glance: today's tasks, unread emails, note count, and monthly spending — with smart trend indicators.
 
-### ✅ Tasks
+### Tasks
 Three views for every workflow style:
 - **Kanban board** — drag & drop across To Do / In Progress / Cancelled / Done
 - **List view** — compact, high-density browsing
@@ -32,15 +32,15 @@ Three views for every workflow style:
 
 Supports priorities, labels, due dates, subtasks, and recurring tasks (daily/weekly/monthly).
 
-### 📅 Calendar
+### Calendar
 More than dates — it's a **time-dimension aggregator**:
 - **Month view** with daily income/expense badges
 - **Week view** with timeline layout
 - **Agenda view** listing all upcoming items
 - **ICS subscription** — sync Google Calendar, CalDAV, etc.
 
-### 📧 Email
-Full-featured IMAP/SMTP email client:
+### Email
+Full-featured native IMAP/SMTP email client powered by Tauri Rust backend:
 - Multiple account support with unified inbox
 - Automatic folder sync with unread counts
 - HTML rendering with XSS protection (DOMPurify)
@@ -48,14 +48,14 @@ Full-featured IMAP/SMTP email client:
 - Compose with draft auto-save
 - Incremental sync (manual + background every 5 minutes)
 
-### 📝 Notes
+### Notes
 Rich-text editor powered by **TipTap**:
 - Bold, italic, headings, lists, code blocks, quotes, images
 - Folder hierarchy + color-coded tags
 - Auto-save (500ms title / 1500ms content debounced)
 - Import `.txt` / `.md` files
 
-### 💰 Finance
+### Finance
 Complete personal finance management:
 - **Transactions** — income, expenses, transfers with receipt photos
 - **Accounts** — cash, bank cards, credit cards with auto-balance
@@ -64,11 +64,12 @@ Complete personal finance management:
 - **Reports** — bar charts, pie charts, trend lines, CSV export
 - Integer-based cent storage — zero floating-point drift
 
-### ⚙️ Settings
+### Settings
 - Profile management with avatar upload
 - Theme switching (Light / Dark / System)
 - Notification toggles (tasks, email, budget alerts)
 - Data export (JSON) & import — your data, always yours
+- Cloud sync configuration (optional, for multi-device sync)
 
 ---
 
@@ -80,44 +81,108 @@ Complete personal finance management:
 | **UI**         | shadcn/ui (new-york) + Radix + Lucide icons             |
 | **Routing**    | TanStack Router                                         |
 | **Data Cache** | TanStack Query v5                                       |
-| **State**      | Zustand (auth & realtime only)                          |
+| **State**      | Zustand (auth & UI state)                               |
 | **Rich Text**  | TipTap                                                  |
 | **Drag & Drop**| @dnd-kit                                                |
 | **Charts**     | Recharts                                                |
 | **i18n**       | i18next (English + Chinese)                             |
-| **Backend**    | Supabase (PostgreSQL 17 + Auth + Realtime + Storage)    |
-| **Serverless** | Supabase Edge Functions (Deno)                          |
-| **Desktop**    | Tauri v2 (Rust) — native IMAP/SMTP mail service         |
+| **Local DB**   | SQLite (rusqlite, WAL mode)                             |
+| **Desktop**    | Tauri v2 (Rust)                                         |
+| **Native Mail**| Rust (async-imap + lettre + mail-parser)                |
+| **Auth**       | Local SQLite + Argon2 password hashing                  |
+| **Cloud Sync** | Optional PostgreSQL (Supabase / Aiven / Render) via tokio-postgres |
 | **Testing**    | Vitest + Testing Library + Playwright (E2E)             |
 
 ---
 
 ## Architecture
 
+EasyWork is a **local-first** desktop application. All data lives in a local SQLite database, accessed through Tauri IPC commands implemented in Rust. Cloud sync to PostgreSQL is optional and user-configured.
+
 ```
-┌─────────────────────────────────────────────┐
-│           Client (React SPA + Tauri)         │
-│  UI → TanStack Query → Supabase.js Client    │
-└──────────────────┬──────────────────────────┘
-                   │ REST / WebSocket / Tauri Commands
-┌──────────────────▼──────────────────────────┐
-│              Supabase Backend                │
-│  PostgreSQL + Auth + Realtime + Storage      │
-│  Edge Functions (IMAP/SMTP/ICS proxy)        │
-└─────────────────────────────────────────────┘
++------------------------------------------------------------------+
+|                    Frontend (React SPA)                           |
+|  UI Components                                                    |
+|    -> TanStack Query (caching, invalidation)                      |
+|      -> *Api.ts adapters (taskApi, notesApi, financeApi, etc.)    |
+|        -> tauri.invoke() (Tauri IPC bridge)                       |
++-------------------------------+----------------------------------+
+                                |  Tauri IPC (JSON commands)
++-------------------------------v----------------------------------+
+|                   Tauri Rust Backend                              |
+|                                                                    |
+|  +-------------------+  +--------------------------------------+   |
+|  | commands.rs       |  | business/                            |   |
+|  | (IPC entry point) |  |  - tasks.rs     (15 commands)        |   |
+|  | invoke_handler![] |  |  - notes.rs     (17 commands)        |   |
+|  +--------+----------+  |  - finance.rs   (16 commands)        |   |
+|           |              |  - calendar.rs (11 commands)         |   |
+|  +--------v----------+  |  - auth.rs      (Argon2 local auth)  |   |
+|  | AppState          |  |  - backup.rs    (export/import/clear)|   |
+|  |  - db: SQLite     |  +-------------------+------------------+   |
+|  |  - service: Mail  |                        |                    |
+|  +--------+----------+                 +------v-------+            |
+|           |                              | sync/         |            |
+|  +--------v----------+                   |  - engine.rs  | (LWW merge|
+|  | mail/             |                   |  - postgres.rs|  upload/dl)|
+|  |  - imap.rs        |                   |  - schema.rs  | (cloud DDL)|
+|  |  - smtp.rs        |                   |  - config.rs  |            |
+|  |  - mime.rs        |                   +--------------+            |
+|  |  - service.rs     |                                               |
+|  |  - db.rs (SQLite) |  +--------------------------------------+     |
+|  |  - creds.rs       |  | db.rs (main SQLite, schema v12)     |     |
+|  |  (OS Keyring)     |  |  users/tasks/notes/finance/calendar  |     |
+|  +-------------------+  +--------------------------------------+     |
++----------------------------------------------------------------------+
+                                |
+                   +------------+------------+
+                   |                         |
+            (local-only, default)   (optional, user config)
+                   |                         |
+            +------v------+          +------v--------------------+
+            |  SQLite DB   |          |  PostgreSQL (cloud sync)  |
+            |  (WAL mode)  |          |  Supabase / Aiven / Render|
+            +-------------+           +---------------------------+
+```
+
+### Data Flow
+
+```
+User action (React UI)
+  -> TanStack Query hook (useTasks, useMail, etc.)
+    -> *Api.ts adapter (taskApi.createTask, mailApi.sync, etc.)
+      -> tauri.invoke('command_name', args)
+        -> Rust command handler (commands.rs)
+          -> Business logic (business/*.rs, mail/*.rs)
+            -> SQLite read/write (rusqlite)
+              -> Result back up the chain
+                -> Query cache invalidation -> UI re-render
 ```
 
 ### Security
-- Row-Level Security (RLS) isolates all data per user
-- Email passwords encrypted at rest (AES-256)
-- HTML content sanitized with DOMPurify
-- Sensitive fields stripped on data export
+- **Local SQLite with user isolation** — all queries filter by `user_id`; single-user desktop model means no cross-tenant leakage
+- **Password hashing** — Argon2id with per-user salt, stored in SQLite `users.password_hash`
+- **Email credential storage** — OS Keyring (via `tauri-plugin-keyring` / `keyring` crate), never stored in plaintext in SQLite
+- **HTML sanitization** — DOMPurify on the frontend, `ammonia` in Rust MIME parsing
+- **Sensitive data stripped on export** — password hashes, email credentials excluded from JSON backups
+- **TLS enforcement** — IMAP/SMTP connections require TLS; no plaintext downgrade
 
-### Realtime Sync
+### Optional Cloud Sync
+
+Cloud sync is **opt-in** and configured entirely in-app (Settings -> Sync). When enabled:
+
+- Local SQLite changes are incrementally uploaded to a user-provided PostgreSQL database
+- Supports **Supabase**, **Aiven**, **Render**, or any standard PostgreSQL connection string
+- Conflict resolution: **Last-Write-Wins (LWW)** based on `updated_at` timestamps
+- Background sync every 60 seconds + instant upload on data changes
+- Email message content is **not** synced (only email account settings)
+- Works offline — queue uploads when network recovers
+
 ```
-User A edits task → Supabase Realtime broadcasts
-                                      ↓
-User B's Query cache invalidates → refetch → UI updates
+Local change -> SQLite trigger updates sync_modified_at
+  -> Instant upload queued (tokio spawn, fire-and-forget)
+    -> PostgreSQL UPSERT with LWW conflict resolution
+      -> Sync log entry recorded (visible in Settings)
 ```
 
 ---
@@ -128,8 +193,7 @@ User B's Query cache invalidates → refetch → UI updates
 
 - **Node.js** >= 18
 - **pnpm** >= 9
-- **Rust** (for Tauri backend)
-- **Supabase CLI** (for local database development)
+- **Rust** (stable, for Tauri backend)
 
 ### Installation
 
@@ -140,10 +204,6 @@ cd EasyWork
 
 # Install dependencies
 pnpm install
-
-# Set up environment variables
-cp .env.example .env
-# Edit .env with your Supabase credentials
 
 # Start development server
 pnpm dev
@@ -168,80 +228,95 @@ pnpm tauri dev
 pnpm tauri build
 ```
 
-### Supabase Local Development
-
-```bash
-# Start local Supabase
-supabase start
-
-# Apply migrations
-supabase db push
-
-# Set Edge Function secrets
-supabase secrets set --env-file supabase/.env.secrets
-```
-
 ---
 
 ## Project Structure
 
 ```
 EasyWork/
-├── src/
-│   ├── components/           # Shared UI components
-│   │   ├── layout/           # App shell (sidebar, tabs, etc.)
-│   │   ├── theme/            # Theme provider & toggle
-│   │   └── ui/               # shadcn/ui atoms
-│   ├── features/             # Feature modules
-│   │   ├── auth/             # Login & registration
-│   │   ├── calendar/         # Calendar module
-│   │   ├── dashboard/        # Dashboard module
-│   │   ├── finance/          # Finance module
-│   │   ├── mail/             # Email module
-│   │   ├── notes/            # Notes module
-│   │   ├── realtime/         # Realtime sync
-│   │   ├── settings/         # Settings module
-│   │   └── tasks/            # Tasks module
-│   ├── lib/                  # Utilities & services
-│   └── types/                # TypeScript type definitions
-├── src-tauri/                # Tauri Rust backend
-│   └── src/mail/             # Native IMAP/SMTP service
-├── supabase/                 # Supabase configuration
-│   ├── migrations/           # Database migrations (31 files)
-│   ├── functions/            # Edge Functions
-│   └── config.toml           # Supabase CLI config
-├── e2e/                      # Playwright E2E tests
-├── design/                   # Design system & prototype
-└── docs/                     # Documentation
+src/
+  components/           # Shared UI components
+    layout/             # App shell (sidebar, tabs, etc.)
+    theme/              # Theme provider & toggle
+    ui/                 # shadcn/ui atoms
+  features/             # Feature modules
+    auth/               # Login, registration, local auth
+    calendar/           # Calendar module
+    dashboard/          # Dashboard module
+    finance/            # Finance module
+    mail/               # Email module
+    notes/              # Notes module
+    settings/           # Settings module (profile, sync, etc.)
+    sync/               # Cloud sync API adapters
+    tasks/              # Tasks module
+  lib/                  # Utilities & services
+    tauri.ts            # Tauri IPC bridge (invoke wrapper)
+    authApi.ts          # Auth API (register, login, profile)
+    locales/            # i18n translation files
+  types/                # TypeScript type definitions
+src-tauri/              # Tauri Rust backend
+  src/
+    main.rs             # Tauri entry point
+    lib.rs              # App setup, DB init, command registration
+    commands.rs         # Tauri IPC command handlers (~870 lines)
+    db.rs               # SQLite schema migrations (v12)
+    business/           # Business logic modules
+      auth.rs           # Local auth (Argon2 register/login)
+      tasks.rs          # Task CRUD, tags, subtasks
+      notes.rs          # Notes, folders, tags
+      finance.rs        # Transactions, accounts, budgets, categories
+      calendar.rs       # Calendar events, ICS subscriptions
+      backup.rs         # Data export/import/clear
+    mail/               # Native email service
+      imap.rs           # IMAP adapter (async-imap)
+      smtp.rs           # SMTP sender (lettre)
+      mime.rs           # MIME parser (mail-parser)
+      service.rs        # Mail orchestration & sync
+      db.rs             # Mail SQLite schema
+      db_queries.rs     # Mail DAO queries
+      creds.rs          # OS Keyring credential store
+      contacts.rs       # Contact extraction
+      events.rs         # Tauri event emission (sync progress)
+    sync/               # Cloud sync engine
+      engine.rs         # Upload/download/LWW merge
+      postgres.rs       # PostgreSQL client (tokio-postgres)
+      schema.rs         # Cloud schema initialization
+      config.rs         # Sync config, device info, logs
+  capabilities/         # Tauri permission declarations
+  tauri.conf.json       # Tauri app configuration
+e2e/                    # Playwright E2E tests
+design/                 # Design system & prototype
+docs/                   # Documentation
+  archive/              # Archived plans & legacy references
 ```
 
 ---
 
 ## Cross-Module Workflows
 
-### Email → Task
+### Email -> Task
 ```
-Receive email → "Create Task" button → Auto-fill title from subject
-→ Set due date & priority → Task appears on board & calendar
-```
-
-### Task → Calendar
-```
-Create task with due date → Auto-shown on calendar
-→ Click calendar event → Open task details
+Receive email -> "Create Task" button -> Auto-fill title from subject
+-> Set due date & priority -> Task appears on board & calendar
 ```
 
-### Finance → Task
+### Task -> Calendar
 ```
-Record expense → Link to task (e.g., "Q3 Client Visit")
-→ View related expenses in task details
-→ Filter reports by task
+Create task with due date -> Auto-shown on calendar
+-> Click calendar event -> Open task details
 ```
 
-### Dashboard → Global Search
+### Finance -> Task
 ```
-Search bar → Query across tasks, notes, emails, transactions
-→ Click result → Navigate directly to the item
+Record expense -> Link to task (e.g., "Q3 Client Visit")
+-> View related expenses in task details
+-> Filter reports by task
+```
+
+### Dashboard -> Global Search
+```
+Search bar -> Query across tasks, notes, emails, transactions
+-> Click result -> Navigate directly to the item
 ```
 
 ---
@@ -250,7 +325,7 @@ Search bar → Query across tasks, notes, emails, transactions
 
 EasyWork follows a strict design system with **OKLCH color space** (perceptually uniform), **Fraunces** display font, and **Plus Jakarta Sans** UI font. Key principles:
 
-- **Quiet first** — neutral backgrounds (~60%), brand color only for CTAs/active states (≤10%)
+- **Quiet first** — neutral backgrounds (~60%), brand color only for CTAs/active states (10%)
 - **Scannable at a glance** — priority dots, unread bold, tabular numbers for amounts
 - **Smooth transitions** — ease-out-quart for transforms; respects `prefers-reduced-motion`
 - **Consistent patterns** — same shape for same action; uniform row interactions
@@ -285,4 +360,4 @@ pnpm lint
 
 ## Acknowledgments
 
-Built with [React](https://react.dev/), [Tauri](https://tauri.app/), [Supabase](https://supabase.com/), [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/), and [Lucide](https://lucide.dev/).
+Built with [React](https://react.dev/), [Tauri](https://tauri.app/), [SQLite](https://www.sqlite.org/), [Tailwind CSS](https://tailwindcss.com/), [shadcn/ui](https://ui.shadcn.com/), and [Lucide](https://lucide.dev/).

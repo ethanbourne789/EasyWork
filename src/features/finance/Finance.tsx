@@ -10,9 +10,11 @@ import { ModuleFab } from '@/components/layout/ModuleFab';
 import { Button } from '@/components/ui/button';
 import { Plus, Receipt, BarChart3, Settings2, TrendingUp, TrendingDown, ArrowLeftRight } from 'lucide-react';
 import type { TransactionType } from '@/types';
+import { useMediaQuery } from '@/hooks/useMediaQuery';
 
 export function Finance() {
   const { t } = useTranslation();
+  const isDesktop = useMediaQuery('(min-width: 768px)');
   const [activeTab, setActiveTab] = useState('ledger');
   const [showFormDialog, setShowFormDialog] = useState(false);
   const [formType, setFormType] = useState<TransactionType>('expense');
@@ -29,9 +31,11 @@ export function Finance() {
           <h1 className="font-display text-[28px] font-semibold leading-tight">{t('finance.title')}</h1>
           <p className="mt-1 text-sm text-muted-foreground">{t('finance.subtitle')}</p>
         </div>
-        <Button size="sm" onClick={() => openForm('expense')} className="hidden items-center gap-1 md:flex">
-          <Plus size={15} /> {t('finance.addTransaction')}
-        </Button>
+        {isDesktop && (
+          <Button size="sm" onClick={() => openForm('expense')} className="items-center gap-1">
+            <Plus size={15} /> {t('finance.addTransaction')}
+          </Button>
+        )}
       </div>
 
       <Tabs value={activeTab} onValueChange={setActiveTab}>

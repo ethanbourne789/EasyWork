@@ -35,6 +35,19 @@ fn schema_version(conn: &Connection) -> i32 {
     }
 }
 
+/// 幂等迁移辅助：检查某表是否已存在某列。
+/// SQLite 无 ADD COLUMN IF NOT EXISTS，迁移前需探测，避免重复 ALTER 报错。
+fn has_column(conn: &Connection, table: &str, column: &str) -> bool {
+    let Ok(mut stmt) = conn.prepare(&format!("PRAGMA table_info({})", table)) else {
+        return false;
+    };
+    let names: Vec<String> = match stmt.query_map([], |row| row.get::<_, String>(1)) {
+        Ok(rows) => rows.filter_map(Result::ok).collect(),
+        Err(_) => return false,
+    };
+    names.iter().any(|c| c == column)
+}
+
 /// v7 增量迁移：note_folders 表补 updated_at 列。
 /// 该列被 note_folder_create/update 的 SQL 引用，但历史建表（含 v6 全新库）遗漏了它，
 /// 导致「创建笔记文件夹」报错 `no column named updated_at`。
@@ -118,6 +131,140 @@ fn migrate_v5(conn: &Connection) -> rusqlite::Result<()> {
 
 /// 全新库：删除可能存在的残留表并重建全部业务表（不含 sync 元数据列）。
 /// 仅在 schema_version() == 0（无 app_meta 且无业务表）时调用。
+#[cfg(test)]
+pub(crate) fn create_all_tables_for_test(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(
+        "CREATE TABLE IF NOT EXISTS app_meta (key TEXT PRIMARY KEY, value INTEGER);",
+    )?;
+    create_all_tables(conn)?;
+    // Skip versioned migration path (which has ALTER bugs on fresh DB).
+    // Directly add sync columns, triggers, tombstones, and metadata tables.
+    // All columns that might be added by migrations are already in create_all_tables.
+    // We only need: sync columns, triggers, sync_mute_triggers, sync_tombstones, users, note_tag_master, note_note_tags, calendar_event_reminders
+    conn.execute_batch(r#"
+        -- Sync columns for tables that create_all_tables already defines
+        ALTER TABLE tasks ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE tasks ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE subtasks ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE subtasks ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE tags ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE tags ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE task_tags ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE task_tags ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE accounts ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE accounts ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE categories ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE categories ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE transactions ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE transactions ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE budgets ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE budgets ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE notes ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE notes ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE note_folders ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE note_folders ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE note_tags ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE note_tags ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE calendar_events ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE calendar_events ADD COLUMN sync_device_id TEXT;
+        ALTER TABLE calendar_subscriptions ADD COLUMN sync_modified_at TEXT;
+        ALTER TABLE calendar_subscriptions ADD COLUMN sync_device_id TEXT;
+
+        -- note_tag_master and note_note_tags (from v4)
+        CREATE TABLE IF NOT EXISTS note_tag_master (
+            id TEXT PRIMARY KEY,
+            name TEXT NOT NULL,
+            color TEXT,
+            created_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            sync_device_id TEXT
+        );
+        CREATE TABLE IF NOT EXISTS note_note_tags (
+            id TEXT PRIMARY KEY,
+            note_id TEXT NOT NULL REFERENCES notes(id) ON DELETE CASCADE,
+            tag_id TEXT NOT NULL REFERENCES note_tag_master(id) ON DELETE CASCADE,
+            sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            sync_device_id TEXT,
+            UNIQUE (note_id, tag_id)
+        );
+        CREATE INDEX IF NOT EXISTS idx_note_note_tags_note ON note_note_tags(note_id);
+        CREATE INDEX IF NOT EXISTS idx_note_note_tags_tag ON note_note_tags(tag_id);
+
+        -- users table (from v5)
+        CREATE TABLE IF NOT EXISTS users (
+            id TEXT PRIMARY KEY,
+            email TEXT NOT NULL UNIQUE,
+            password_hash TEXT NOT NULL,
+            display_name TEXT,
+            avatar_data TEXT,
+            created_at TEXT NOT NULL,
+            updated_at TEXT NOT NULL,
+            sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            sync_device_id TEXT
+        );
+
+        -- sync_mute_triggers (from v10)
+        CREATE TABLE IF NOT EXISTS sync_mute_triggers (
+            id INTEGER PRIMARY KEY CHECK (id = 0),
+            muted INTEGER NOT NULL DEFAULT 0
+        );
+        INSERT OR IGNORE INTO sync_mute_triggers (id, muted) VALUES (0, 0);
+
+        -- sync_tombstones (from v10)
+        CREATE TABLE IF NOT EXISTS sync_tombstones (
+            table_name TEXT NOT NULL,
+            pk_value TEXT NOT NULL,
+            deleted_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now')),
+            sync_device_id TEXT,
+            synced_at TEXT,
+            PRIMARY KEY (table_name, pk_value)
+        );
+        CREATE INDEX IF NOT EXISTS idx_sync_tombstones_deleted_at ON sync_tombstones(deleted_at);
+        CREATE INDEX IF NOT EXISTS idx_sync_tombstones_synced_at ON sync_tombstones(synced_at);
+
+        -- calendar_event_reminders (from v12)
+        CREATE TABLE IF NOT EXISTS calendar_event_reminders (
+            event_id TEXT PRIMARY KEY,
+            reminded_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'))
+        );
+    "#)?;
+
+    // Add sync triggers (simplified version without tombstone triggers)
+    add_sync_triggers_for_test(conn)?;
+
+    conn.execute(
+        "INSERT OR REPLACE INTO app_meta (key, value) VALUES ('schema_version', ?1)",
+        params![SCHEMA_VERSION],
+    )?;
+    Ok(())
+}
+
+#[cfg(test)]
+fn add_sync_triggers_for_test(conn: &Connection) -> rusqlite::Result<()> {
+    conn.execute_batch(r#"
+        CREATE TRIGGER IF NOT EXISTS tasks_sync_touch AFTER UPDATE ON tasks
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN UPDATE tasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+
+        CREATE TRIGGER IF NOT EXISTS accounts_sync_touch AFTER UPDATE ON accounts
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN UPDATE accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+
+        CREATE TRIGGER IF NOT EXISTS transactions_sync_touch AFTER UPDATE ON transactions
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN UPDATE transactions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+
+        CREATE TRIGGER IF NOT EXISTS notes_sync_touch AFTER UPDATE ON notes
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN UPDATE notes SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+
+        CREATE TRIGGER IF NOT EXISTS calendar_events_sync_touch AFTER UPDATE ON calendar_events
+        WHEN (SELECT COALESCE(muted, 0) FROM sync_mute_triggers WHERE id = 0) = 0
+        BEGIN UPDATE calendar_events SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE id = NEW.id; END;
+    "#)?;
+    Ok(())
+}
+
 fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
     conn.execute_batch(r#"
         DROP TABLE IF EXISTS calendar_events;
@@ -301,33 +448,40 @@ fn create_all_tables(conn: &Connection) -> rusqlite::Result<()> {
 /// v3 增量迁移：为既有业务表补充云端同步元数据列与 UPDATE 触发器。
 /// 使用 ADD COLUMN 而非重建表，保证旧库数据不丢失。
 fn add_sync_columns_and_triggers(conn: &Connection) -> rusqlite::Result<()> {
+    // ⚠️ 同步列一律用「无 DEFAULT 的 NULL 列 + 存量回填」：
+    //    SQLite 的 ADD COLUMN 不允许括号表达式作为默认值（Cannot add a column with
+    //    non-constant default）。旧代码的 `NOT NULL DEFAULT (strftime(...))` 在全新库
+    //    （current=0 也走本分支）与旧库升级时都会崩溃（实测邮件库 email_accounts 崩溃，
+    //    本库 v3 同源）。同步引擎已兜底 NULL sync_modified_at（上传按纪元时间、冲突检测视为未改）。
+    const SYNC_TABLES: &[&str] = &[
+        "tasks", "subtasks", "tags", "task_tags", "accounts", "categories",
+        "transactions", "budgets", "notes", "note_folders", "note_tags",
+        "calendar_events", "calendar_subscriptions",
+    ];
+    for table in SYNC_TABLES {
+        if !has_column(conn, table, "sync_modified_at") {
+            conn.execute(&format!("ALTER TABLE {} ADD COLUMN sync_modified_at TEXT", table), [])?;
+        }
+        if !has_column(conn, table, "sync_device_id") {
+            conn.execute(&format!("ALTER TABLE {} ADD COLUMN sync_device_id TEXT", table), [])?;
+        }
+    }
+
+    // 存量回填（幂等）：仅对旧库已有数据生效；全新库表为空，语句为空操作。
     conn.execute_batch(r#"
-        ALTER TABLE tasks ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE tasks ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE subtasks ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE subtasks ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE tags ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE tags ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE task_tags ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE task_tags ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE accounts ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE accounts ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE categories ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE categories ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE transactions ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE transactions ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE budgets ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE budgets ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE notes ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE notes ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE note_folders ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE note_folders ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE note_tags ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE note_tags ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE calendar_events ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE calendar_events ADD COLUMN sync_device_id TEXT;
-        ALTER TABLE calendar_subscriptions ADD COLUMN sync_modified_at TEXT NOT NULL DEFAULT (strftime('%Y-%m-%dT%H:%M:%fZ', 'now'));
-        ALTER TABLE calendar_subscriptions ADD COLUMN sync_device_id TEXT;
+        UPDATE tasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE subtasks SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE task_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE accounts SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE categories SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE transactions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE budgets SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE notes SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE note_folders SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE note_tags SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE calendar_events SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
+        UPDATE calendar_subscriptions SET sync_modified_at = strftime('%Y-%m-%dT%H:%M:%fZ', 'now') WHERE sync_modified_at IS NULL;
     "#)?;
 
     conn.execute_batch(r#"
@@ -859,4 +1013,150 @@ fn migrate(conn: &Connection) -> rusqlite::Result<()> {
         params![SCHEMA_VERSION],
     )?;
     Ok(())
+}
+
+/// 迁移完整性校验：验证关键表结构是否符合当前 schema 版本预期。
+/// 校验失败时记录警告日志但不阻断启动，保证应用可用性。
+pub fn verify_schema(conn: &Connection) {
+    let version: Result<i32, _> = conn.query_row(
+        "SELECT value FROM app_meta WHERE key='schema_version'",
+        [], |row| row.get(0),
+    );
+
+    let version = match version {
+        Ok(v) => v,
+        Err(e) => {
+            tracing::error!("schema 校验失败：无法读取版本信息 - {}", e);
+            return;
+        }
+    };
+
+    let mut errors = Vec::new();
+
+    // 1. 校验必需业务表是否存在
+    let required_tables = [
+        "tasks", "subtasks", "tags", "task_tags",
+        "accounts", "categories", "transactions", "budgets",
+        "notes", "note_folders", "note_tags",
+        "calendar_events", "calendar_subscriptions",
+        "users", "app_meta",
+    ];
+
+    for table in &required_tables {
+        if !table_exists(conn, table) {
+            errors.push(format!("缺少必需表: {}", table));
+        }
+    }
+
+    // 2. 校验 v4+ 必需的笔记标签表
+    if version >= 4 {
+        for table in &["note_tag_master", "note_note_tags"] {
+            if !table_exists(conn, table) {
+                errors.push(format!("v4 必需表缺失: {}", table));
+            }
+        }
+    }
+
+    // 3. 校验 v10+ 必需的 tombstone 表
+    if version >= 10 {
+        if !table_exists(conn, "sync_tombstones") {
+            errors.push("v10 必需表缺失: sync_tombstones".to_string());
+        }
+        if !table_exists(conn, "sync_mute_triggers") {
+            errors.push("v10 必需表缺失: sync_mute_triggers".to_string());
+        }
+    }
+
+    // 4. 校验 v12+ 必需的日历提醒表
+    if version >= 12 {
+        if !table_exists(conn, "calendar_event_reminders") {
+            errors.push("v12 必需表缺失: calendar_event_reminders".to_string());
+        }
+    }
+
+    // 5. 校验关键表的核心列（抽样检查）
+    let critical_columns: Vec<(&str, Vec<&str>)> = vec![
+        ("tasks", vec!["id", "title", "status", "created_at", "updated_at", "sync_modified_at"]),
+        ("accounts", vec!["id", "name", "balance_cents", "created_at", "updated_at"]),
+        ("transactions", vec!["id", "amount_cents", "date", "account_id"]),
+        ("notes", vec!["id", "title", "content", "created_at", "updated_at"]),
+    ];
+
+    for (table, columns) in &critical_columns {
+        if table_exists(conn, table) {
+            for column in columns {
+                if !has_column(conn, table, column) {
+                    errors.push(format!("{} 表缺少关键列: {}", table, column));
+                }
+            }
+        }
+    }
+
+    // 6. 校验同步触发器是否存在（v9+）
+    if version >= 9 {
+        let key_triggers = [
+            "tasks_sync_touch", "accounts_sync_touch", "transactions_sync_touch",
+            "notes_sync_touch", "calendar_events_sync_touch",
+        ];
+
+        for trigger in &key_triggers {
+            if !trigger_exists(conn, trigger) {
+                errors.push(format!("缺少关键触发器: {}", trigger));
+            }
+        }
+    }
+
+    // 7. 校验 tombstone 触发器（v10+）
+    if version >= 10 {
+        let tombstone_triggers = [
+            "tasks_sync_tombstone", "accounts_sync_tombstone",
+            "transactions_sync_tombstone", "notes_sync_tombstone",
+        ];
+
+        for trigger in &tombstone_triggers {
+            if !trigger_exists(conn, trigger) {
+                errors.push(format!("缺少 tombstone 触发器: {}", trigger));
+            }
+        }
+    }
+
+    // 输出校验结果
+    if errors.is_empty() {
+        tracing::info!("schema 完整性校验通过 (v{})", version);
+    } else {
+        tracing::warn!(
+            "schema 完整性校验发现 {} 个问题 (v{}):\n  {}",
+            errors.len(),
+            version,
+            errors.join("\n  ")
+        );
+    }
+}
+
+/// 辅助函数：检查表是否存在
+fn table_exists(conn: &Connection, table: &str) -> bool {
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='table' AND name='{}')",
+            table
+        ),
+        [],
+        |row| row.get::<_, i32>(0),
+    )
+    .unwrap_or(0)
+        == 1
+}
+
+/// 辅助函数：检查触发器是否存在
+fn trigger_exists(conn: &Connection, trigger: &str) -> bool {
+    conn.query_row(
+        &format!(
+            "SELECT EXISTS(SELECT 1 FROM sqlite_master WHERE type='trigger' AND name='{}')",
+            trigger
+        ),
+        [],
+        |row| row.get::<_, i32>(0),
+    )
+    .unwrap_or(0)
+        == 1
 }

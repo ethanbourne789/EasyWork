@@ -2,6 +2,7 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
+import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 export interface FabAction {
   label: string;
@@ -26,6 +27,7 @@ export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label }: ModuleF
   const defaultLabel = label ?? t("layout.new");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
+  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   useEffect(() => {
     if (!open) return;
@@ -43,13 +45,16 @@ export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label }: ModuleF
     };
   }, [open]);
 
+  if (isDesktop) return null;
+
   return (
-    <div ref={ref} className="fixed bottom-20 right-4 z-40 md:bottom-6 md:right-6 md:hidden">
+    <div ref={ref} className="fixed bottom-20 right-4 z-40 md:bottom-6 md:right-6">
       <div
         className={cn(
           "mb-3 flex flex-col items-end gap-2 transition-all duration-200 origin-bottom-right",
           open ? "opacity-100 scale-100" : "pointer-events-none opacity-0 scale-90"
         )}
+        aria-hidden={!open}
       >
         {actions.map((a) => {
           const Icon = a.icon;
@@ -61,6 +66,7 @@ export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label }: ModuleF
                 a.onClick();
                 setOpen(false);
               }}
+              tabIndex={open ? 0 : -1}
               className="flex items-center gap-2 rounded-xl border bg-popover px-3 py-2 text-sm font-medium text-foreground shadow-md ring-1 ring-border transition-colors hover:bg-accent"
             >
               <span className="flex h-[30px] w-[30px] items-center justify-center rounded-[9px] bg-brand-50 text-brand-700">

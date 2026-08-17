@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { Drawer, DrawerHeader, DrawerTitle, DrawerClose, DrawerBody } from "@/components/ui/drawer";
 import { Button } from "@/components/ui/button";
 import { formatMoney } from "@/lib/money";
@@ -38,19 +39,19 @@ export function DayDetailDrawer({
   onTaskClick,
   onAddEvent,
 }: DayDetailDrawerProps) {
+  const { t } = useTranslation();
+  const WEEKDAYS = [t("calendar.weekdaySun"), t("calendar.weekdayMon"), t("calendar.weekdayTue"), t("calendar.weekdayWed"), t("calendar.weekdayThu"), t("calendar.weekdayFri"), t("calendar.weekdaySat")];
   const dateLabel = date
-    ? `${date.getFullYear()}年${date.getMonth() + 1}月${date.getDate()}日 ${
-        ["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()]
-      }`
+    ? `${date.getFullYear()}${t("calendar.yearUnit")}${date.getMonth() + 1}${t("calendar.monthUnit")}${date.getDate()}${t("calendar.dayUnit")} ${WEEKDAYS[date.getDay()]}`
     : "";
 
   return (
-    <Drawer open={open} onOpenChange={onOpenChange} ariaLabel="当日详情">
+    <Drawer open={open} onOpenChange={onOpenChange} ariaLabel={t("calendar.dayDetail")}>
       <DrawerHeader className="flex items-center justify-between border-b">
-        <DrawerTitle>当日详情</DrawerTitle>
+        <DrawerTitle>{t("calendar.dayDetail")}</DrawerTitle>
         <div className="flex items-center gap-1">
           <Button size="sm" variant="outline" onClick={onAddEvent}>
-            新建日程
+            {t("calendar.newEvent")}
           </Button>
           <DrawerClose onClose={() => onOpenChange(false)} />
         </div>
@@ -61,12 +62,12 @@ export function DayDetailDrawer({
         {/* 收支汇总 */}
         {(bucket?.income ?? 0) > 0 || (bucket?.expense ?? 0) > 0 ? (
           <div className="rounded-xl border bg-card p-3">
-            <div className="mb-2 text-xs font-medium text-muted-foreground">收支</div>
+            <div className="mb-2 text-xs font-medium text-muted-foreground">{t("calendar.incomeExpense")}</div>
             <div className="space-y-1">
-              {moneyRow("收入", bucket?.income ?? 0, true)}
-              {moneyRow("支出", bucket?.expense ?? 0, false)}
+              {moneyRow(t("calendar.income"), bucket?.income ?? 0, true)}
+              {moneyRow(t("calendar.expense"), bucket?.expense ?? 0, false)}
               <div className="flex items-center justify-between border-t pt-1.5 text-sm">
-                <span className="text-muted-foreground">净结余</span>
+                <span className="text-muted-foreground">{t("calendar.netBalance")}</span>
                 <span
                   className={cn(
                     "font-mono font-semibold",
@@ -80,7 +81,7 @@ export function DayDetailDrawer({
           </div>
         ) : (
           <div className="rounded-xl border border-dashed p-3 text-center text-xs text-muted-foreground">
-            当日无收支记录
+            {t("calendar.noTransactions")}
           </div>
         )}
 
@@ -88,11 +89,11 @@ export function DayDetailDrawer({
         <div>
           <div className="mb-2 flex items-center justify-between">
             <span className="text-xs font-medium text-muted-foreground">
-              日程{bucket ? `（${bucket.events.length}）` : ""}
+              {t("calendar.events")}{bucket ? `（${bucket.events.length}）` : ""}
             </span>
           </div>
           {!bucket || bucket.events.length === 0 ? (
-            <p className="text-xs text-muted-foreground">暂无日程</p>
+            <p className="text-xs text-muted-foreground">{t("calendar.noEvents")}</p>
           ) : (
             <div className="space-y-2">
               {bucket.events.map((ev) => (
@@ -121,10 +122,10 @@ export function DayDetailDrawer({
         {/* 任务 */}
         <div>
           <div className="mb-2 text-xs font-medium text-muted-foreground">
-            任务{bucket ? `（${bucket.tasks.length}）` : ""}
+            {t("calendar.tasks")}{bucket ? `（${bucket.tasks.length}）` : ""}
           </div>
           {!bucket || bucket.tasks.length === 0 ? (
-            <p className="text-xs text-muted-foreground">当日无任务</p>
+            <p className="text-xs text-muted-foreground">{t("calendar.noTasks")}</p>
           ) : (
             <div className="space-y-2">
               {bucket.tasks.map((t) => (

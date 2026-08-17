@@ -180,15 +180,25 @@ pub fn run() {
             std::fs::create_dir_all(mail_dir.join("attachments"))?;
 
             let db_path = mail_dir.join("easywork-mail.db");
-            let conn = mail::db::init_db(&db_path)
-                .expect("无法初始化邮件数据库");
+            let conn = mail::db::init_db(&db_path).map_err(|e| {
+                tracing::error!("无法初始化邮件数据库: {:?}", e);
+                format!("邮件数据库初始化失败: {:?}", e)
+            })?;
 
             // 主应用本地数据库（任务/笔记等业务表 + 同步元数据表）。
             let app_db_path = data_root.join("easywork.db");
-            let app_conn = db::init_db(&app_db_path)
-                .expect("无法初始化应用数据库");
-            crate::sync::config::create_sync_tables(&app_conn)
-                .expect("无法创建同步元数据表");
+            let app_conn = db::init_db(&app_db_path).map_err(|e| {
+                tracing::error!("无法初始化应用数据库: {}", e);
+                e
+            })?;
+            crate::sync::config::create_sync_tables(&app_conn).map_err(|e| {
+                tracing::error!("无法创建同步元数据表: {}", e);
+                e
+            })?;
+
+            // 迁移完整性校验（非阻塞，仅记录日志）
+            db::verify_schema(&app_conn);
+            mail::db::verify_schema(&conn);
 
             let service = mail::service::MailService {
                 db: Arc::new(tokio::sync::Mutex::new(conn)),

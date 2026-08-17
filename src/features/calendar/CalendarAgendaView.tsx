@@ -1,3 +1,4 @@
+import { useTranslation } from "react-i18next";
 import { formatMoney } from "@/lib/money";
 import { statusColors, statusLabels } from "@/features/tasks/taskConstants";
 import { cn } from "@/lib/utils";
@@ -12,10 +13,13 @@ interface AgendaViewProps {
 }
 
 export function CalendarAgendaView({ entries, onEventClick, onTaskClick }: AgendaViewProps) {
+  const { t } = useTranslation();
+  const WEEKDAYS = [t("calendar.weekdaySun"), t("calendar.weekdayMon"), t("calendar.weekdayTue"), t("calendar.weekdayWed"), t("calendar.weekdayThu"), t("calendar.weekdayFri"), t("calendar.weekdaySat")];
+
   if (entries.length === 0) {
     return (
       <div className="flex h-full items-center justify-center py-16 text-sm text-muted-foreground">
-        这段时间没有日程、任务或收支记录
+        {t("calendar.agendaEmpty")}
       </div>
     );
   }
@@ -28,10 +32,10 @@ export function CalendarAgendaView({ entries, onEventClick, onTaskClick }: Agend
           <div className="flex w-16 shrink-0 flex-col items-center pt-1">
             <span className="text-2xl font-semibold leading-none">{date.getDate()}</span>
             <span className="text-[11px] text-muted-foreground">
-              {["周日", "周一", "周二", "周三", "周四", "周五", "周六"][date.getDay()]}
+              {WEEKDAYS[date.getDay()]}
             </span>
             <span className="mt-0.5 text-[10px] text-muted-foreground">
-              {date.getMonth() + 1}月
+              {date.getMonth() + 1}{t("calendar.monthUnit")}
             </span>
           </div>
 
@@ -52,7 +56,7 @@ export function CalendarAgendaView({ entries, onEventClick, onTaskClick }: Agend
                 {ev.location && <span className="truncate text-xs text-muted-foreground">@ {ev.location}</span>}
                 {ev.source !== "local" && (
                   <span className="ml-auto shrink-0 rounded bg-muted px-1.5 py-0.5 text-[10px] text-muted-foreground">
-                    订阅
+                    {t("calendar.subscribed")}
                   </span>
                 )}
               </button>
@@ -79,12 +83,12 @@ export function CalendarAgendaView({ entries, onEventClick, onTaskClick }: Agend
 
             {(bucket.income > 0 || bucket.expense > 0) && (
               <div className="flex items-center gap-4 px-3 py-1 text-xs">
-                <span className="text-muted-foreground">当日收支</span>
+                <span className="text-muted-foreground">{t("calendar.dailyIncomeExpense")}</span>
                 {bucket.income > 0 && (
-                  <span className="font-mono font-semibold text-success">收入 +{formatMoney(bucket.income)}</span>
+                  <span className="font-mono font-semibold text-success">{t("calendar.income")} +{formatMoney(bucket.income)}</span>
                 )}
                 {bucket.expense > 0 && (
-                  <span className="font-mono font-semibold text-destructive">支出 -{formatMoney(bucket.expense)}</span>
+                  <span className="font-mono font-semibold text-destructive">{t("calendar.expense")} -{formatMoney(bucket.expense)}</span>
                 )}
               </div>
             )}
