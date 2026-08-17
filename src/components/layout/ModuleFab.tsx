@@ -2,7 +2,6 @@ import { useEffect, useRef, useState } from "react";
 import { useTranslation } from "react-i18next";
 import { Plus, type LucideIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { useMediaQuery } from "@/hooks/useMediaQuery";
 
 export interface FabAction {
   label: string;
@@ -27,7 +26,6 @@ export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label }: ModuleF
   const defaultLabel = label ?? t("layout.new");
   const [open, setOpen] = useState(false);
   const ref = useRef<HTMLDivElement>(null);
-  const isDesktop = useMediaQuery('(min-width: 768px)');
 
   useEffect(() => {
     if (!open) return;
@@ -45,10 +43,8 @@ export function ModuleFab({ actions, mainIcon: MainIcon = Plus, label }: ModuleF
     };
   }, [open]);
 
-  if (isDesktop) return null;
-
   return (
-    <div ref={ref} className="fixed bottom-20 right-4 z-40 md:bottom-6 md:right-6">
+    <div ref={ref} className="fixed right-6 z-40 bottom-20 md:bottom-6">
       <div
         className={cn(
           "mb-3 flex flex-col items-end gap-2 transition-all duration-200 origin-bottom-right",

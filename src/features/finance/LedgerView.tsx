@@ -439,7 +439,7 @@ export function LedgerView() {
                 </div>
                 <div>
                   <div className="text-xs text-muted-foreground">{t('finance.date')}</div>
-                  <div className="text-sm font-semibold">{format(new Date(detailTx.date), 'yyyy-MM-dd HH:mm')}</div>
+                  <div className="text-sm font-semibold">{format(new Date(detailTx.date), 'yyyy-MM-dd')}</div>
                 </div>
                 {detailTx.to_account_id && (
                   <div>

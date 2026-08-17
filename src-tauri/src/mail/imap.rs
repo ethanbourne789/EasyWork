@@ -130,24 +130,42 @@ impl ImapAdapter {
         Ok(result)
     }
 
-    /// 按需拉取单个 UID 的 HTML 正文（给定 part_id）。
+    /// 按需拉取单个 UID 的 HTML 正文（给定 part_id），同时拉取 MIME 头部以便正确解码 CTE。
     /// 用于懒同步后补充 HTML 正文：先解析 HEADER 获取 text/html part 编号，再调用此方法拉取。
-    pub async fn fetch_html_body(&mut self, uid: u32, part_id: &str) -> MailResult<Option<Vec<u8>>> {
+    pub async fn fetch_html_body(&mut self, uid: u32, part_id: &str) -> MailResult<Option<FetchedPart>> {
         let path: Vec<u32> = part_id.split('.').filter_map(|s| s.trim().parse::<u32>().ok()).collect();
         if path.is_empty() {
             return Ok(None);
         }
-        let query = format!("BODY.PEEK[{}]", part_id);
+        let query = format!("(BODY.PEEK[{}.MIME] BODY.PEEK[{}])", part_id, part_id);
         let mut stream = self.session.uid_fetch(uid.to_string(), &query).await
             .map_err(|e| MailError::new("IMAP_FETCH_HTML", &format!("拉取 HTML 正文失败: {}", e)))?;
-        let section_path = SectionPath::Part(path, None);
+        let mime_path = SectionPath::Part(path.clone(), Some(MessageSection::Mime));
+        let body_path = SectionPath::Part(path, None);
+        let mut mime_headers: Option<Vec<u8>> = None;
+        let mut body: Option<Vec<u8>> = None;
         while let Some(msg) = stream.next().await {
             let msg = msg.map_err(|e| MailError::new("IMAP_FETCH_HTML", &format!("拉取 HTML 正文失败: {}", e)))?;
-            if let Some(body) = msg.section(&section_path) {
-                return Ok(Some(body.to_vec()));
+            if mime_headers.is_none() {
+                if let Some(h) = msg.section(&mime_path) {
+                    mime_headers = Some(h.to_vec());
+                }
+            }
+            if body.is_none() {
+                if let Some(b) = msg.section(&body_path) {
+                    body = Some(b.to_vec());
+                }
+            }
+            // 两者都获取到即可提前退出
+            if mime_headers.is_some() && body.is_some() {
+                break;
             }
         }
-        Ok(None)
+        let body = body.ok_or_else(|| MailError::new("IMAP_FETCH_HTML", "未获取到 HTML 正文"))?;
+        Ok(Some(FetchedPart {
+            mime_headers: mime_headers.unwrap_or_default(),
+            body,
+        }))
     }
 
     /// 按需拉取单个 MIME part：重选文件夹后一次 UID FETCH 同时取

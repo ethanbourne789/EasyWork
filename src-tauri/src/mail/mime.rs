@@ -1,6 +1,7 @@
 use std::collections::HashMap;
 use mail_parser::{MessageParser, MessagePart, MimeHeaders, PartType};
 use crate::mail::error::{MailError, MailResult};
+use crate::mail::imap::FetchedPart;
 
 /// 附件实体（含内联图片）：由 do_sync 落盘到 attachments_dir 并写入 email_attachments 表
 pub struct ParsedAttachment {
@@ -306,21 +307,72 @@ pub fn sanitize_html(html: &str) -> String {
     html.to_string()
 }
 
+/// 解析单个 MIME part 的头部 + body，并正确解码 Content-Transfer-Encoding（QP/Base64）与字符集。
+/// 将 IMAP 拉取的 part MIME headers + body 拼接为一个 mini MIME 消息，交给 mail-parser 解析。
+pub fn decode_mime_part(part: &FetchedPart) -> Option<String> {
+    // IMAP 返回的 BODY.PEEK[{part_id}.MIME] 已包含完整的头部与分隔空行（以 \r\n\r\n 结尾）。
+    // 若头部末尾缺少空行分隔，则手动补一个，确保 mail-parser 能正确解析。
+    let headers = if part.mime_headers.ends_with(b"\r\n\r\n") || part.mime_headers.ends_with(b"\n\n") {
+        part.mime_headers.clone()
+    } else {
+        let mut h = part.mime_headers.clone();
+        // 头部可能以 \r\n 结尾也可能不以，统一保证以 \r\n\r\n 结尾
+        if h.ends_with(b"\r\n") {
+            h.extend_from_slice(b"\r\n");
+        } else if h.ends_with(b"\n") {
+            h.extend_from_slice(b"\n");
+        } else {
+            h.extend_from_slice(b"\r\n\r\n");
+        }
+        h
+    };
+    let raw: Vec<u8> = headers.into_iter()
+        .chain(part.body.iter().cloned())
+        .collect();
+    let parsed = MessageParser::default()
+        .with_mime_headers()
+        .parse(&raw)?;
+    let text_part = parsed.parts.first()?;
+    text_part.text_contents().map(|s| s.to_string())
+}
+
 pub fn infer_folder_type(imap_path: &str, flags: &[String]) -> &'static str {
     let path_upper = imap_path.to_uppercase();
     if flags.iter().any(|f| f.to_uppercase().contains("INBOX")) || path_upper == "INBOX" {
         return "inbox";
     }
-    match path_upper.as_str() {
+    // 按路径分隔符拆分，检查最后一个组件与完整路径
+    let last_component = path_upper.split('/').last().unwrap_or(&path_upper);
+    match last_component {
         "SENT" | "SENT ITEMS" | "SENT MESSAGES" | "已发送" => "sent",
         "DRAFTS" | "DRAFT" | "草稿" | "草稿箱" => "drafts",
-        "TRASH" | "DELETED" | "DELETED ITEMS" | "已删除" | "垃圾箱" => "trash",
+        "TRASH" | "DELETED" | "DELETED ITEMS" | "已删除" | "垃圾箱" | "DELETED MESSAGES" => "trash",
         "JUNK" | "SPAM" | "JUNK EMAIL" | "垃圾邮件" => "spam",
-        _ => "other",
+        _ => {
+            // 兜底：检查完整路径是否包含常见关键词（处理 "QQ/Deleted Messages" 等嵌套路径）
+            if path_upper.contains("DELETED") || path_upper.contains("TRASH") {
+                return "trash";
+            }
+            if path_upper.contains("JUNK") || path_upper.contains("SPAM") {
+                return "spam";
+            }
+            if path_upper.contains("SENT") {
+                return "sent";
+            }
+            if path_upper.contains("DRAFT") {
+                return "drafts";
+            }
+            "other"
+        }
     }
 }
 
 pub fn folder_display_name(imap_path: &str, folder_type: &str) -> String {
+    // 按路径分隔符拆分，取最后一个组件作为匹配依据
+    let last_component = imap_path.split('/').last().unwrap_or(imap_path);
+    let last_upper = last_component.to_uppercase();
+
+    // 精确匹配常见 IMAP 文件夹名称
     let mapping: &[(&str, &str)] = &[
         ("INBOX", "收件箱"),
         ("SENT", "已发送"),
@@ -330,17 +382,45 @@ pub fn folder_display_name(imap_path: &str, folder_type: &str) -> String {
         ("DRAFT", "草稿箱"),
         ("TRASH", "已删除"),
         ("DELETED", "已删除"),
+        ("DELETED MESSAGES", "已删除"),
+        ("DELETED ITEMS", "已删除"),
         ("JUNK", "垃圾邮件"),
         ("SPAM", "垃圾邮件"),
+        ("JUNK EMAIL", "垃圾邮件"),
     ];
-    let path_upper = imap_path.to_uppercase();
     for (key, name) in mapping {
-        if path_upper == *key {
+        if last_upper == *key {
             return name.to_string();
         }
     }
-    if folder_type == "inbox" {
-        return "收件箱".to_string();
+    // 兜底：通过 folder_type 推断
+    match folder_type {
+        "inbox" => return "收件箱".to_string(),
+        "sent" => return "已发送".to_string(),
+        "drafts" => return "草稿箱".to_string(),
+        "trash" => return "已删除".to_string(),
+        "spam" => return "垃圾邮件".to_string(),
+        _ => {}
     }
-    imap_path.to_string()
+    // 完全匹配不上时，使用最后一个路径组件（去除前缀账号标识）
+    // 检查原始组件是否已经是中文
+    if last_component.chars().any(|c| c.is_ascii_alphabetic()) {
+        // 英文文件夹名，尝试通过关键词匹配翻译
+        if last_upper.contains("DELETED") || last_upper.contains("TRASH") {
+            return "已删除".to_string();
+        }
+        if last_upper.contains("JUNK") || last_upper.contains("SPAM") {
+            return "垃圾邮件".to_string();
+        }
+        if last_upper.contains("SENT") {
+            return "已发送".to_string();
+        }
+        if last_upper.contains("DRAFT") {
+            return "草稿箱".to_string();
+        }
+        if last_upper.contains("INBOX") {
+            return "收件箱".to_string();
+        }
+    }
+    last_component.to_string()
 }

@@ -28,7 +28,7 @@ pub struct AppSharedState {
 }
 
 /// 应用数据根目录（本次会话解析结果，供各模块共享）。
-/// 优先「文档/EasyWork」，解析或迁移失败时回退到应用数据目录。
+/// 优先「文档/EasyWork」，解析失败时回退到应用数据目录。
 #[derive(Clone)]
 pub struct DataRoot(pub std::path::PathBuf);
 
@@ -38,63 +38,6 @@ fn resolve_data_root(app: &tauri::AppHandle) -> Result<std::path::PathBuf, tauri
         Ok(doc) => Ok(doc.join("EasyWork")),
         Err(_) => app.path().app_data_dir(),
     }
-}
-
-/// 递归复制目录内容。
-fn copy_dir_recursive(src: &std::path::Path, dst: &std::path::Path) -> std::io::Result<()> {
-    std::fs::create_dir_all(dst)?;
-    for entry in std::fs::read_dir(src)? {
-        let entry = entry?;
-        let dst_path = dst.join(entry.file_name());
-        if entry.file_type()?.is_dir() {
-            copy_dir_recursive(&entry.path(), &dst_path)?;
-        } else {
-            std::fs::copy(entry.path(), &dst_path)?;
-        }
-    }
-    Ok(())
-}
-
-/// 把旧位置（应用数据目录）的数据库迁移到新根目录。
-/// 仅在新位置尚无数据库且旧位置存在库时执行；先 checkpoint WAL 再复制，避免丢最新数据。
-fn migrate_legacy_data(
-    new_root: &std::path::Path,
-    legacy_root: &std::path::Path,
-) -> std::io::Result<()> {
-    if new_root.join("easywork.db").exists() || !legacy_root.join("easywork.db").exists() {
-        return Ok(());
-    }
-    // 先 checkpoint 旧库，把 WAL 日志合并进主文件，再复制（否则复制主文件会丢最新写入）。
-    for rel in ["easywork.db", "mail/easywork-mail.db"] {
-        let p = legacy_root.join(rel);
-        if p.exists() {
-            if let Ok(conn) = rusqlite::Connection::open(&p) {
-                let _ = conn.execute_batch("PRAGMA wal_checkpoint(TRUNCATE);");
-            }
-        }
-    }
-    std::fs::create_dir_all(new_root)?;
-    std::fs::copy(legacy_root.join("easywork.db"), new_root.join("easywork.db"))?;
-    let legacy_mail = legacy_root.join("mail");
-    if legacy_mail.exists() {
-        let new_mail = new_root.join("mail");
-        std::fs::create_dir_all(&new_mail)?;
-        if legacy_mail.join("easywork-mail.db").exists() {
-            std::fs::copy(
-                legacy_mail.join("easywork-mail.db"),
-                new_mail.join("easywork-mail.db"),
-            )?;
-        }
-        let la = legacy_mail.join("attachments");
-        if la.exists() {
-            copy_dir_recursive(&la, &new_mail.join("attachments"))?;
-        }
-    }
-    let lr = legacy_root.join("receipts");
-    if lr.exists() {
-        copy_dir_recursive(&lr, &new_root.join("receipts"))?;
-    }
-    Ok(())
 }
 
 /// 返回应用版本号。
@@ -161,19 +104,9 @@ pub fn run() {
             }
         })
         .setup(|app| {
-            let legacy_root = app.path().app_data_dir()
-                .expect("无法获取应用数据目录");
-            // 数据根目录优先「文档/EasyWork」；解析失败或迁移失败时回退旧目录，保证数据不丢。
-            let data_root = match resolve_data_root(app.handle()) {
-                Ok(root) => match migrate_legacy_data(&root, &legacy_root) {
-                    Ok(()) => root,
-                    Err(e) => {
-                        tracing::warn!("数据迁移到文档目录失败，本次回退使用旧目录: {e}");
-                        legacy_root
-                    }
-                },
-                Err(_) => legacy_root,
-            };
+            // 数据根目录：优先「文档/EasyWork」，解析失败时回退到应用数据目录。
+            let data_root = resolve_data_root(app.handle())
+                .unwrap_or_else(|_| app.path().app_data_dir().expect("无法获取应用数据目录"));
             app.manage(DataRoot(data_root.clone()));
             let mail_dir = data_root.join("mail");
             std::fs::create_dir_all(&mail_dir)?;

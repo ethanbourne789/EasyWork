@@ -75,8 +75,38 @@ pub async fn auth_register(
         return Err(e.to_string());
     }
 
+    // 清除上一用户残留的邮箱账号数据（local-first 单用户模式，邮箱数据不跨用户共享）
+    {
+        let mail_db = state.service.db.lock().await;
+
+        // 先读取所有账号 ID，用于清理系统密钥库中的凭证
+        let account_ids: Vec<String> = mail_db
+            .prepare("SELECT id FROM email_accounts")
+            .ok()
+            .and_then(|mut stmt| {
+                let rows = stmt.query_map([], |row| row.get::<_, String>(0)).ok();
+                rows.map(|r| r.filter_map(|r| r.ok()).collect())
+            })
+            .unwrap_or_default();
+
+        // 清除系统密钥库中的邮箱凭证
+        for account_id in &account_ids {
+            if crate::mail::creds::CredentialStore::delete_password(account_id).is_err() {
+                tracing::warn!("清除邮箱凭证失败: {}", account_id);
+            }
+        }
+
+        // 清除数据库中的邮箱数据
+        if let Err(e) = crate::mail::db_queries::clear_all_email_data(&mail_db) {
+            tracing::warn!("清除残留邮箱数据失败: {:?}", e);
+        }
+    }
+
     // 播种默认记账分类（在同一锁内，原子写入）
     seed_default_categories(&db, &ts).map_err(|e| e.to_string())?;
+
+    // 播种默认账户（在同一锁内，原子写入）
+    seed_default_account(&db, &ts).map_err(|e| e.to_string())?;
 
     db.query_row(&format!("SELECT {} FROM users WHERE id = ?1", AUTH_USER_COLS), params![id], |r| row_to_auth_user(r))
         .map_err(|e| e.to_string())
@@ -183,6 +213,27 @@ pub async fn auth_change_password(
         params![user_id, new_hash, now()],
     )
     .map_err(|e| e.to_string())?;
+    Ok(())
+}
+
+/// 在数据库中插入默认账户（现金钱包）。
+/// 仅在 accounts 表为空时播种，避免重复创建。
+fn seed_default_account(db: &rusqlite::Connection, ts: &str) -> rusqlite::Result<()> {
+    let count: i64 = db.query_row(
+        "SELECT COUNT(*) FROM accounts",
+        [],
+        |r| r.get(0),
+    )?;
+    if count > 0 {
+        return Ok(());
+    }
+
+    let id = new_id();
+    db.execute(
+        "INSERT INTO accounts (id,name,type,balance_cents,currency,sort_order,created_at,updated_at) VALUES (?1,?2,?3,?4,?5,?6,?7,?7)",
+        params![id, "现金钱包", "cash", 0_i64, "CNY", 0_i64, ts],
+    )?;
+
     Ok(())
 }
 

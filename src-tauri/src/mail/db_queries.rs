@@ -86,6 +86,17 @@ pub fn delete_account_data(conn: &Connection, id: &str) -> MailResult<()> {
     Ok(())
 }
 
+/// 清除全部邮箱数据（新注册用户时调用，移除上一用户的残留数据）。
+/// 按依赖顺序删除：attachments → emails → folders → sync_state → accounts。
+pub fn clear_all_email_data(conn: &Connection) -> MailResult<()> {
+    conn.execute("DELETE FROM email_attachments", [])?;
+    conn.execute("DELETE FROM emails", [])?;
+    conn.execute("DELETE FROM email_folders", [])?;
+    conn.execute("DELETE FROM mail_sync_state", [])?;
+    conn.execute("DELETE FROM email_accounts", [])?;
+    Ok(())
+}
+
 pub fn insert_account(conn: &Connection, account: &EmailAccount) -> MailResult<()> {
     conn.execute(
         "INSERT INTO email_accounts (id, email, display_name, username, credential_ref, imap_host, imap_port,

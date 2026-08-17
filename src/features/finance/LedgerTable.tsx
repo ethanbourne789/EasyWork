@@ -105,7 +105,7 @@ export function LedgerTable({
                     </td>
                   )}
                   <td className="whitespace-nowrap p-2.5 font-mono text-xs text-muted-foreground">
-                    {format(new Date(tx.date), 'M/d EEEE HH:mm', { locale: zhCN })}
+                    {format(new Date(tx.date), 'M/d EEEE', { locale: zhCN })}
                   </td>
                   <td className="p-2.5">
                     <div className="flex min-w-0 items-center gap-2">

@@ -8,7 +8,7 @@ use crate::mail::creds::CredentialStore;
 use crate::mail::db_queries;
 use crate::mail::events::emit_progress;
 use crate::mail::imap::{ImapAdapter, calc_fetch_range};
-use crate::mail::mime::{parse_message_lazy_from_sections, find_html_part_id, infer_folder_type, folder_display_name, sanitize_html};
+use crate::mail::mime::{parse_message_lazy_from_sections, find_html_part_id, infer_folder_type, folder_display_name, sanitize_html, decode_mime_part};
 use crate::mail::types::*;
 use crate::mail::error::{MailError, MailResult};
 
@@ -132,12 +132,11 @@ impl MailService {
                         let mut html_cache: Vec<Option<String>> = vec![None; parsed_batch.len()];
                         for (uid, pid, slot) in html_fetches {
                             match imap.fetch_html_body(uid, &pid).await {
-                                Ok(Some(raw)) => {
-                                    let decoded = match String::from_utf8(raw) {
-                                        Ok(s) => s,
-                                        Err(_) => continue,
-                                    };
-                                    html_cache[slot] = Some(sanitize_html(&decoded));
+                                Ok(Some(part)) => {
+                                    // 通过 mail-parser 正确解码 Content-Transfer-Encoding（QP/Base64）与字符集
+                                    if let Some(decoded) = decode_mime_part(&part) {
+                                        html_cache[slot] = Some(sanitize_html(&decoded));
+                                    }
                                 }
                                 Ok(None) => {}
                                 Err(e) => {

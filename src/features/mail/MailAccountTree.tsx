@@ -48,6 +48,7 @@ const folderIconMap: Record<string, typeof Inbox> = {
   已发送: Send,
   草稿箱: FileEdit,
   垃圾邮件: AlertOctagon,
+  已删除: Trash2,
 };
 
 /** 根据邮箱域名自动推断 IMAP/SMTP 服务器配置（见 ./EmailAccountDialog.tsx） */
@@ -161,9 +162,16 @@ function AccountSection({
   const [editOpen, setEditOpen] = useState(false);
   const displayName = account.display_name || account.email;
 
-  const isSystem = (f: EmailFolder) =>
-    ["INBOX", "SENT", "DRAFTS"].includes((f.imap_path ?? "").toUpperCase()) ||
-    ["收件箱", "已发送", "草稿箱"].includes(f.name);
+  const isSystem = (f: EmailFolder) => {
+    const pathUpper = (f.imap_path ?? "").toUpperCase();
+    const systemPaths = ["INBOX", "SENT", "DRAFTS", "TRASH", "DELETED", "JUNK", "SPAM"];
+    // 精确匹配或路径中包含系统文件夹名（处理 "QQ/Deleted Messages" 等嵌套路径）
+    if (systemPaths.some((p) => pathUpper === p || pathUpper.includes(`/${p}`) || pathUpper.includes(`/${p} `) || pathUpper.endsWith(p))) {
+      return true;
+    }
+    const systemNames = ["收件箱", "已发送", "草稿箱", "已删除", "垃圾邮件"];
+    return systemNames.includes(f.name);
+  };
 
   const openRename = (f: EmailFolder) => {
     setMenuId(null);

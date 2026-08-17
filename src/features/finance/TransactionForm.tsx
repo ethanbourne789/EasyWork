@@ -17,7 +17,7 @@ const transactionSchema = z
   .object({
     type: z.enum(['income', 'expense', 'transfer']),
     amount: z.number().min(0.01),
-    account_id: z.string().min(1),
+    account_id: z.string().optional(),
     to_account_id: z.string().optional(),
     category_id: z.string().optional(),
     date: z.string().min(1),
@@ -25,6 +25,13 @@ const transactionSchema = z
   })
   .superRefine((data, ctx) => {
     if (data.type === 'transfer') {
+      if (!data.account_id) {
+        ctx.addIssue({
+          code: z.ZodIssueCode.custom,
+          message: '',
+          path: ['account_id'],
+        });
+      }
       if (!data.to_account_id) {
         ctx.addIssue({
           code: z.ZodIssueCode.custom,
@@ -85,6 +92,7 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
       : {
           type: defaultType,
           amount: 0,
+          account_id: '',
           date: format(new Date(), 'yyyy-MM-dd'),
           note: '',
         },
@@ -99,8 +107,8 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
   }, [accounts, t]);
 
   useEffect(() => {
-    if (isEdit || activeType === 'transfer' || !defaultAccountId) return;
-    if (!getValues('account_id')) setValue('account_id', defaultAccountId);
+    if (isEdit || activeType === 'transfer') return;
+    if (defaultAccountId && !getValues('account_id')) setValue('account_id', defaultAccountId);
   }, [defaultAccountId, activeType, isEdit, setValue, getValues]);
 
   const watchedAmount = watch('amount');
@@ -135,10 +143,11 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
 
   const onSubmit = (data: TransactionFormData) => {
     const userId = getCurrentUserId();
+    const accountId = data.account_id || (data.type !== 'transfer' ? defaultAccountId : '');
     const payload: Partial<Transaction> = {
       type: data.type,
       amount: data.amount,
-      account_id: data.account_id,
+      account_id: accountId,
       date: data.date,
       note: data.note,
       user_id: userId,
@@ -236,6 +245,8 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
     }
     return msg;
   };
+
+  const showAccountError = activeType === 'transfer' && errors.account_id;
 
   return (
     <form onSubmit={handleSubmit(onSubmit)} className="space-y-4 p-4 border rounded-lg bg-card">
@@ -337,7 +348,7 @@ export function TransactionForm({ transaction, onSuccess, defaultType = 'expense
             </option>
           ))}
         </Select>
-        {errors.account_id && <p className="text-xs text-destructive">{getErrorMessage('account_id')}</p>}
+        {showAccountError && <p className="text-xs text-destructive">{getErrorMessage('account_id')}</p>}
       </div>
 
       {/* To Account (for transfer) */}
